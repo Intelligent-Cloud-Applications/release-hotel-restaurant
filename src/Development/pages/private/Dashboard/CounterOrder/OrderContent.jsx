@@ -532,23 +532,29 @@ const handleSettleUnpaidOrder = (order, paymentMethod, bookingInfo = null) => {
 };
 
 
-  const confirmSettleOrder = async () => {
-    if (!selectedUnpaidOrder || !settleUnpaidOrder) {
-      toast.error("Unable to settle order. Please try again.");
-      return;
-    }
+const confirmSettleOrder = async () => {
+  if (!selectedUnpaidOrder || !settleUnpaidOrder) {
+    toast.error("Unable to settle order. Please try again.");
+    return;
+  }
 
-    try {
-      await settleUnpaidOrder(selectedUnpaidOrder, selectedUnpaidOrder.paymentMethod);
-      toast.success(`Order #${selectedUnpaidOrder.orderId} settled successfully`);
-    } catch (error) {
-      console.error("Error settling unpaid order:", error);
-      toast.error("Failed to settle order. Please try again.");
-    } finally {
-      setShowSettleModal(false);
-      setSelectedUnpaidOrder(null);
-    }
-  };
+  try {
+    // pass bookingInfo if present so parent can call addHotelService
+    await settleUnpaidOrder(
+      selectedUnpaidOrder,
+      selectedUnpaidOrder.paymentMethod,
+      selectedUnpaidOrder.bookingInfo || null
+    );
+    toast.success(`Order #${selectedUnpaidOrder.orderId} settled successfully`);
+  } catch (error) {
+    console.error("Error settling unpaid order:", error);
+    toast.error("Failed to settle order. Please try again.");
+  } finally {
+    setShowSettleModal(false);
+    setSelectedUnpaidOrder(null);
+  }
+};
+
 
   const moveItemBetweenOrders = async (item, fromOrderId, toOrderId, quantity) => {
     if (!fromOrderId || !toOrderId) {
@@ -755,7 +761,7 @@ const handleSettleUnpaidOrder = (order, paymentMethod, bookingInfo = null) => {
   <option value="cash">Cash</option>
   <option value="card">Card</option>
   <option value="upi">UPI</option>
-  <option value="room">Room</option>
+  <option value="room">Hotel Bill</option>
 </select>
 
                   </div>

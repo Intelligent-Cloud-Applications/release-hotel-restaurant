@@ -458,63 +458,73 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
     }
   };
 
-  // Function to handle settling an unpaid order
-  const settleUnpaidOrder = async (order, paymentMethod) => {
-    if (!order || !paymentMethod) {
-      toast.error("Order or payment method not selected.");
-      return;
-    }
+// Function to handle settling an unpaid order
+// NOTE: added bookingInfo param so UI can pass selected room/booking explicitly.
+const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
+  if (!order || !paymentMethod) {
+    toast.error("Order or payment method not selected.");
+    return;
+  }
 
-    setLoader(true);
-    try {
-      const tableIdStr = String(order.tableName);
+  setLoader(true);
+  try {
+    const tableIdStr = String(order.tableName);
+    let booking = null;
+    if (bookingInfo && bookingInfo.bookingId) {
+      booking = hotelBookings?.find((b) => String(b.bookingId) === String(bookingInfo.bookingId)) || null;
+    } else {
       const isHotelOrder = tableIdStr.toLowerCase().startsWith("hotel");
-      const roomNumber = isHotelOrder ? tableIdStr.replace(/^hotel/i, "") : null;
-      const booking = isHotelOrder ? hotelBookings.find(b => b.roomNumber === roomNumber) : null;
-
-      if (isHotelOrder && booking) {
-        const items = order.items || [];
-        const totalFoodBill = items.reduce((sum, item) => sum + (item.type !== "bar" ? item.price * item.quantity : 0), 0);
-        const totalBarBill = items.reduce((sum, item) => sum + (item.type === "bar" ? item.price * item.quantity : 0), 0);
-
-        await addHotelService(booking.bookingId, {
-          [booking.roomNumber]: {
-            [new Date().toISOString().split("T")[0]]: [
-              {
-                food_charges: totalFoodBill,
-                extra_bed_charges: 0,
-                laundry_charges: 0,
-                manual_charges: 0,
-                minibar_charges: totalBarBill,
-                order_id: order.orderId,
-              },
-            ],
-          },
-        });
+      if (isHotelOrder) {
+        const roomNumber = tableIdStr.replace(/^hotel/i, "");
+        booking = hotelBookings?.find((b) => String(b.roomNumber) === String(roomNumber)) || null;
       }
-
-      await API.post(
-        "main",
-        `/admin/settle-bill-order/${institutionData.institution}/${tableIdStr}/${order.orderId}`,
-        {
-          body: {
-            paymentStatus: true,
-            paymentMode: "offline",
-            paymentMethod: paymentMethod,
-            table:false
-          },
-        }
-      );
-
-      toast.success(`Order ${order.orderId} settled successfully!`);
-      await fetchAllTableData(); // Refresh data
-    } catch (error) {
-      console.error("Error settling unpaid order:", error);
-      toast.error("Failed to settle order.");
-    } finally {
-      setLoader(false);
     }
-  };
+
+    if (booking) {
+      const items = order.items || [];
+      const totalFoodBill = items.reduce((sum, item) => sum + (item.type !== "bar" ? item.price * item.quantity : 0), 0);
+      const totalBarBill = items.reduce((sum, item) => sum + (item.type === "bar" ? item.price * item.quantity : 0), 0);
+
+      // Call addHotelService with the bookingId we resolved
+      await addHotelService(booking.bookingId, {
+        [booking.roomNumber]: {
+          [new Date().toISOString().split("T")[0]]: [
+            {
+              food_charges: totalFoodBill,
+              extra_bed_charges: 0,
+              laundry_charges: 0,
+              manual_charges: 0,
+              minibar_charges: totalBarBill,
+              order_id: order.orderId,
+            },
+          ],
+        },
+      });
+    }
+
+    await API.post(
+      "main",
+      `/admin/settle-bill-order/${institutionData.institution}/${tableIdStr}/${order.orderId}`,
+      {
+        body: {
+          paymentStatus: true,
+          paymentMode: "offline",
+          paymentMethod: paymentMethod,
+          table: false,
+        },
+      }
+    );
+
+    toast.success(`Order ${order.orderId} settled successfully!`);
+    await fetchAllTableData(); // Refresh data
+  } catch (error) {
+    console.error("Error settling unpaid order:", error);
+    toast.error("Failed to settle order.");
+  } finally {
+    setLoader(false);
+  }
+};
+
   const processTableData = (tableId, tableInfo) => {
     if (!tableId || !tableInfo) return;
     
