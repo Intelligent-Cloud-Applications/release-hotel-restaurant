@@ -2,29 +2,52 @@ import React from "react";
 import data from '../../../../../Operation/data.json';
 import qrimage from '../../../../utils/image/qrimage.jpeg'
 
-const PrintBill = ({ table, items, institutionData, screenWidth, orderId }) => {
+const PrintBill = ({ table, items, institutionData, screenWidth, orderId, discountMethod = "none", discountValue = 0 }) => {
   const { printerpaperSize } = data;
 
   // Calculate totals based on provided items
-  const billSubtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const cgstRate = institutionData?.cgst ?? 2.5;
-  const sgstRate = institutionData?.sgst ?? 2.5;
-  const serviceTaxRate = institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0;
+   // Calculate totals based on provided items
+  const billSubtotal = items.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
 
-  // Calculate taxable subtotal (exclude items with type 'bar')
+  // Tax rates from institutionData (fallbacks)
+  const cgstRate = Number(institutionData?.cgst ?? 2.5);
+  const sgstRate = Number(institutionData?.sgst ?? 2.5);
+  const serviceTaxRate = Number(institutionData?.serviceTax ?? 0);
+
+  // Taxable subtotal: exclude 'bar' type items
   const taxableSubtotal = items.reduce((sum, item) => {
-    return sum + (item.type !== 'bar' ? item.price * item.quantity : 0);
+    return sum + ((item.type !== 'bar') ? (Number(item.price) || 0) * (Number(item.quantity) || 0) : 0);
   }, 0);
 
-  const calculatedCgst = (taxableSubtotal * cgstRate) / 100;
-  const calculatedSgst = (taxableSubtotal * sgstRate) / 100;
-  const calculatedServiceTax = (billSubtotal * serviceTaxRate) / 100;
-  let calculatedTotal;
-  if (institutionData.cgst === 0 || institutionData.sgst === 0) {
-    calculatedTotal = Math.round(billSubtotal);
-  } else {
-    calculatedTotal = Math.round(billSubtotal + calculatedCgst + calculatedSgst + calculatedServiceTax);
+  // ---- Discount calculation ----
+  let discountAmount = 0;
+  let discountPercentShown = 0;
+
+  if (discountMethod === "percentage" && Number(discountValue) > 0) {
+    discountPercentShown = Math.min(100, Number(discountValue));
+    discountAmount = (billSubtotal * discountPercentShown) / 100;
+  } else if (discountMethod === "amount" && Number(discountValue) > 0) {
+    discountAmount = Math.min(Number(discountValue), billSubtotal);
   }
+
+  // Subtotals after discount
+  const discountedSubtotal = Math.max(0, billSubtotal - discountAmount);
+
+  const discountedTaxableSubtotal = Math.max(0, taxableSubtotal - Math.min(discountAmount, taxableSubtotal));
+
+  // Recalculate taxes on discountedTaxableSubtotal
+  const calculatedCgst = (discountedTaxableSubtotal * cgstRate) / 100;
+  const calculatedSgst = (discountedTaxableSubtotal * sgstRate) / 100;
+  const calculatedServiceTax = (discountedSubtotal * serviceTaxRate) / 100;
+
+  // Final total: if cgst or sgst are zero, you used an alternate rounding rule in original code.
+  let calculatedTotal;
+  if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) {
+    calculatedTotal = Math.round(discountedSubtotal + calculatedServiceTax);
+  } else {
+    calculatedTotal = Math.round(discountedSubtotal + calculatedCgst + calculatedSgst + calculatedServiceTax);
+  }
+
 
   const printBill = () => {
     // Clean up any existing print area or styles
@@ -123,6 +146,7 @@ const PrintBill = ({ table, items, institutionData, screenWidth, orderId }) => {
               <span>${totalQty}</span>
             </div>
             ${subtotalRow}
+            ${ discountAmount > 0 ? `<div class="summary-row"><span>Discount ${discountMethod === 'percentage' ? `(${discountPercentShown}%)` : '(Fixed)'}:</span><span>-₹${discountAmount.toFixed(2)}</span></div>` : '' }
             <div class="summary-row">
               <span>CGST (${cgstRate}%):</span>
               <span>₹${calculatedCgst.toFixed(2)}</span>
@@ -362,6 +386,7 @@ const PrintBill = ({ table, items, institutionData, screenWidth, orderId }) => {
           <table class="totals">
             <tr><td><b>Total Qty:</b></td><td>${totalQty}</td></tr>
             ${subtotalRow}
+            ${ discountAmount > 0 ? `<tr><td>Discount ${discountMethod === 'percentage' ? `(${discountPercentShown}%)` : '(Fixed)'}:</td><td>-₹${discountAmount.toFixed(2)}</td></tr>` : '' }
             <tr><td>CGST (${cgstRate}%):</td><td>₹${calculatedCgst.toFixed(2)}</td></tr>
             <tr><td>SGST (${sgstRate}%):</td><td>₹${calculatedSgst.toFixed(2)}</td></tr>
             ${serviceTaxRate > 0 ? `

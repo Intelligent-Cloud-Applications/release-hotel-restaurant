@@ -45,6 +45,8 @@ const OrderPanel = ({
   setShowReprintKOT,
   unpaidOrders,
   settleUnpaidOrder,
+     discountData,
+  setDiscountData,
 }) => {
   const { institutionData, setLoader } = useContext(Context);
   const [mergedItemsState, setMergedItemsState] = useState([]);
@@ -304,6 +306,8 @@ const OrderPanel = ({
             setSelectedOrderId={setSelectedOrderId}
             showReprintKOT={showReprintKOT}
             setShowReprintKOT={setShowReprintKOT}
+                 discountData={discountData}
+            setDiscountData={setDiscountData}
           />
         </>
       ) : (

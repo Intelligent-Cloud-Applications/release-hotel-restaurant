@@ -15,7 +15,7 @@ import data from '../../../../../Operation/data.json';
 
 const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBookings }) => {
   const { printerType } = data;
-  const { setLoader,addHotelService } = useContext(Context);
+  const { setLoader, addHotelService } = useContext(Context);
   const { subscribe, isConnected } = useWebSocket();
   const [showReprintKOT, setShowReprintKOT] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -24,7 +24,11 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
   const [tableOccupancy, setTableOccupancy] = useState({});
   const [billItemsByStore, setBillItemsByStore] = useState({});
   const [ordersId, setorderId] = useState({});
-  const [unpaidOrders, setUnpaidOrders] = useState([]); // State for unpaid orders
+  const [unpaidOrders, setUnpaidOrders] = useState([]);
+  
+  // DISCOUNT STATE - Moved to parent component
+  const [discountData, setDiscountData] = useState({}); // { tableId: { method: 'percentage'|'amount'|'none', value: number, amount: number } } or { tableId: { orderId: { method, value, amount } } }
+
   const totalTableNumber = institutionData?.Table?.length || 0;
   const [isAudioEnabled, setIsAudioEnabled] = useState(localStorage.getItem("audioEnabled") === "true");
   const [orderIds, setorderIds] = useState({});
@@ -39,11 +43,7 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
   const [pendingKOTData, setPendingKOTData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const takeawayCount = institutionData?.institution === 'chineseq18'
-    ? 4
-    : institutionData?.institution === 'Hang7438'
-      ? 10
-      : 2;
+  const takeawayCount = institutionData?.institution === 'chineseq18' ? 4 : institutionData?.institution === 'Hang7438' ? 10 : 2;
 
   const [tables, setTables] = useState([
     ...(institutionData?.Table || []).map(t => ({
@@ -62,16 +62,14 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
       currentBill: 0,
       orderType: "takeaway"
     })),
-    ...(institutionData?.bar_integration === "Yes" && hotelBookings
-      ? hotelBookings.map(booking => ({
-          id: `Hotel${booking.roomNumber}`,
-          name: `Hotel ${booking.roomNumber}`,
-          status: "available",
-          orders: [],
-          currentBill: 0,
-          orderType: "hotel",
-        }))
-      : []),
+    ...(institutionData?.bar_integration === "Yes" && hotelBookings ? hotelBookings.map(booking => ({
+      id: `Hotel${booking.roomNumber}`,
+      name: `Hotel ${booking.roomNumber}`,
+      status: "available",
+      orders: [],
+      currentBill: 0,
+      orderType: "hotel",
+    })) : []),
   ]);
 
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);
@@ -108,20 +106,51 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
       toast.error("Failed to fetch unpaid orders.");
     }
   };
-  // Helper function to calculate totals
-  const calculateTotals = (items) => {
+
+  // Helper function to calculate totals with discount
+  const calculateTotals = (items, discountInfo = null) => {
     const billSubtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const taxableSubtotal = items.reduce((sum, item) => sum + (item.type !== 'bar' ? item.price * item.quantity : 0), 0);
+    
     const cgstRate = institutionData?.cgst ?? 2.5;
     const sgstRate = institutionData?.sgst ?? 2.5;
     const serviceTaxRate = institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0;
-    const cgst = (taxableSubtotal * cgstRate) / 100;
-    const sgst = (taxableSubtotal * sgstRate) / 100;
-    const serviceTax = (billSubtotal * serviceTaxRate) / 100;
+
+    // Calculate discount
+    let discountAmount = 0;
+    let discountPercentage = 0;
+    
+    if (discountInfo) {
+      if (discountInfo.method === "percentage" && discountInfo.value > 0) {
+        discountPercentage = Math.min(Number(discountInfo.value), 100);
+        discountAmount = (billSubtotal * discountPercentage) / 100;
+      } else if (discountInfo.method === "amount" && discountInfo.value > 0) {
+        discountAmount = Math.min(Number(discountInfo.value), billSubtotal);
+      }
+    }
+
+    const discountedSubtotal = billSubtotal - discountAmount;
+    const discountedTaxableSubtotal = Math.max(0, taxableSubtotal - discountAmount);
+    
+    const cgst = (discountedTaxableSubtotal * cgstRate) / 100;
+    const sgst = (discountedTaxableSubtotal * sgstRate) / 100;
+    const serviceTax = (discountedSubtotal * serviceTaxRate) / 100;
+
     const finalTotal = institutionData?.cgst === 0 || institutionData?.sgst === 0
-      ? Math.round(billSubtotal)
-      : Math.round(billSubtotal + cgst + sgst + serviceTax);
-    return { billSubtotal, taxableSubtotal, cgst, sgst, serviceTax, finalTotal };
+      ? Math.round(discountedSubtotal + serviceTax)
+      : Math.round(discountedSubtotal + cgst + sgst + serviceTax);
+
+    return {
+      billSubtotal,
+      taxableSubtotal,
+      cgst,
+      sgst,
+      serviceTax,
+      finalTotal,
+      discountAmount,
+      discountPercentage,
+      discountMethod: discountInfo?.method || "none"
+    };
   };
 
   // Split Bill Modal Functions
@@ -151,9 +180,9 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
       });
 
       await API.post("main", `/admin/orders-bill/${institutionData.institution}/${tableIdStr}`, {
-        body: { 
-          name: customerDetails[tableIdStr]?.name || "", 
-          phoneNumber: customerDetails[tableIdStr]?.phone || "", 
+        body: {
+          name: customerDetails[tableIdStr]?.name || "",
+          phoneNumber: customerDetails[tableIdStr]?.phone || "",
           items: tableDataForTable.mergedItems
         },
       });
@@ -175,15 +204,17 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
       toast.warning("Please select an order ID");
       return;
     }
+
     setIsLoading(true);
     const { tableIdStr, tableDataForTable } = pendingKOTData;
     const kotnow = KOTByTable[tableIdStr] || { items: [], totalAmount: 0 };
 
     try {
       const { cgst, sgst, serviceTax } = calculateTotals(kotnow.items);
+
       await API.post("main", `/admin/split-update-items/${institutionData.institution}/${tableIdStr}/${orderId}`, {
-        body: { 
-          items: kotnow.items, 
+        body: {
+          items: kotnow.items,
           serviceTaxPercentage: institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0,
           cgstPercentage: institutionData?.cgst ?? 2.5,
           sgstPercentage: institutionData?.sgst ?? 2.5,
@@ -194,9 +225,9 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
       });
 
       await API.post("main", `/admin/orders-bill/${institutionData.institution}/${tableIdStr}`, {
-        body: { 
-          name: customerDetails[tableIdStr]?.name || "", 
-          phoneNumber: customerDetails[tableIdStr]?.phone || "", 
+        body: {
+          name: customerDetails[tableIdStr]?.name || "",
+          phoneNumber: customerDetails[tableIdStr]?.phone || "",
           items: tableDataForTable.mergedItems
         },
       });
@@ -220,11 +251,13 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
       toast.error("Web Bluetooth API is not supported in this browser.");
       return;
     }
+
     try {
       const device = await navigator.bluetooth.requestDevice({
         acceptAllDevices: true,
         optionalServices: ["000018f0-0000-1000-8000-00805f9b34fb"],
       });
+
       setDevice(device);
       localStorage.setItem("bluetoothDeviceId", device.id);
       localStorage.setItem("bluetoothDeviceName", device.name);
@@ -249,6 +282,7 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
       toast.error("Web Bluetooth API is not supported in this browser.");
       return;
     }
+
     if (device && device.gatt.connected) {
       setServer(device.gatt);
       setConnected(true);
@@ -256,6 +290,7 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
       toast.success("Restored connection to " + deviceName);
       return;
     }
+
     try {
       if (!device) {
         toast.info("Please reconnect to the printer manually.");
@@ -275,6 +310,7 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
       toast.error("No device selected.");
       return;
     }
+
     try {
       if (selectedDevice.gatt.connected) {
         setServer(selectedDevice.gatt);
@@ -283,6 +319,7 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
         toast.success("Already connected to " + selectedDevice.name);
         return;
       }
+
       const server = await selectedDevice.gatt.connect();
       setServer(server);
       setConnected(true);
@@ -297,6 +334,7 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
 
   const discoverServicesAndCharacteristics = async (server) => {
     if (!server) return;
+
     try {
       const services = await server.getPrimaryServices();
       const chars = [];
@@ -317,21 +355,25 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
       toast.error("No printer connected. Please connect first.");
       return;
     }
+
     try {
       const encoder = new TextEncoder();
       const encodedData = encoder.encode(data);
       const writeCharacteristic = characteristics.find(
         (char) => char.properties.write || char.properties.writeWithoutResponse
       );
+
       if (!writeCharacteristic) {
         toast.error("No writable characteristic found.");
         return;
       }
+
       const maxChunkSize = 512;
       for (let offset = 0; offset < encodedData.length; offset += maxChunkSize) {
         const chunk = encodedData.slice(offset, offset + maxChunkSize);
         await writeCharacteristic.writeValue(chunk);
       }
+
       toast.success("Print command sent successfully.");
     } catch (error) {
       console.error("Error sending data:", error);
@@ -347,6 +389,7 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
     setShowPrinterModal(true);
     const storedDeviceId = localStorage.getItem("bluetoothDeviceId");
     const storedDeviceName = localStorage.getItem("bluetoothDeviceName");
+
     if (storedDeviceId && storedDeviceName && !device) {
       restoreConnection(storedDeviceId, storedDeviceName);
     }
@@ -358,7 +401,7 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Modified fetchAllTableData to include unpaid orders
+  // Modified fetchAllTableData to include unpaid orders and extract discount data
   const fetchAllTableData = async () => {
     try {
       setLoader(true);
@@ -373,9 +416,46 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
       setAllTablesData(responseData);
 
       let orderData = [];
+      const newDiscountData = {};
+
       if (!Array.isArray(responseData)) {
         Object.entries(responseData).forEach(([tableId, tableInfo]) => {
           const tableOrders = tableInfo.orders || [];
+          
+          // Extract discount data from orders
+          if (tableOrders.length > 0) {
+            const tableDiscounts = {};
+            tableOrders.forEach(order => {
+              let discountMethod = "none";
+              let discountValue = 0;
+              const discountAmount = order.discountAmount || 0;
+              
+              if (discountAmount > 0) {
+                if (order.discountPercentage > 0) {
+                  discountMethod = "percentage";
+                  discountValue = order.discountPercentage;
+                } else {
+                  discountMethod = "amount";
+                  discountValue = discountAmount;
+                }
+              }
+              
+              tableDiscounts[order.orderId] = {
+                method: discountMethod,
+                value: discountValue,
+                amount: discountAmount
+              };
+            });
+            newDiscountData[tableId] = tableDiscounts;
+          } else {
+            // For tables without split orders, check if there's any discount in tableInfo
+            newDiscountData[tableId] = {
+              method: "none",
+              value: 0,
+              amount: 0
+            };
+          }
+
           if (tableOrders.length === 0) {
             orderData.push({
               tableName: tableId,
@@ -402,6 +482,9 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
         orderData = responseData;
       }
 
+      // Update discount data state
+      setDiscountData(newDiscountData);
+
       const allTableIds = [...new Set(orderData.map((order) => order.tableName))];
       const pendingOrders = orderData.filter((order) => !order.tableOccupied);
       const ordersByTable = pendingOrders.reduce((acc, order) => {
@@ -409,6 +492,7 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
         acc[order.tableName].push(order);
         return acc;
       }, {});
+
       const occupancy = orderData.reduce((acc, order) => {
         acc[order.tableName] = order.tableOccupied === true;
         return acc;
@@ -426,17 +510,24 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
         prev.map((table) => {
           const tableIdStr = String(table.id);
           if (!occupancy[tableIdStr] && !ordersByTable[tableIdStr]?.length) {
-            return { ...table, orders: [], currentBill: 0, status: "available" };
-          }
-          const tableInfo = responseData[tableIdStr];
-          if (tableInfo && tableInfo.mergedItems && tableInfo.mergedItems.length > 0) {
-            return { 
-              ...table, 
-              orders: tableInfo.mergedItems, 
-              currentBill: tableInfo.totalAmount || 0, 
-              status: "occupied" 
+            return {
+              ...table,
+              orders: [],
+              currentBill: 0,
+              status: "available"
             };
           }
+
+          const tableInfo = responseData[tableIdStr];
+          if (tableInfo && tableInfo.mergedItems && tableInfo.mergedItems.length > 0) {
+            return {
+              ...table,
+              orders: tableInfo.mergedItems,
+              currentBill: tableInfo.totalAmount || 0,
+              status: "occupied"
+            };
+          }
+
           return table;
         })
       );
@@ -458,103 +549,108 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
     }
   };
 
-// Function to handle settling an unpaid order
-// NOTE: added bookingInfo param so UI can pass selected room/booking explicitly.
-const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
-  if (!order || !paymentMethod) {
-    toast.error("Order or payment method not selected.");
-    return;
-  }
-
-  setLoader(true);
-  try {
-    const tableIdStr = String(order.tableName);
-    let booking = null;
-    if (bookingInfo && bookingInfo.bookingId) {
-      booking = hotelBookings?.find((b) => String(b.bookingId) === String(bookingInfo.bookingId)) || null;
-    } else {
-      const isHotelOrder = tableIdStr.toLowerCase().startsWith("hotel");
-      if (isHotelOrder) {
-        const roomNumber = tableIdStr.replace(/^hotel/i, "");
-        booking = hotelBookings?.find((b) => String(b.roomNumber) === String(roomNumber)) || null;
-      }
+  // Function to handle settling an unpaid order
+  const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
+    if (!order || !paymentMethod) {
+      toast.error("Order or payment method not selected.");
+      return;
     }
 
-    if (booking) {
-      const items = order.items || [];
-      const totalFoodBill = items.reduce((sum, item) => sum + (item.type !== "bar" ? item.price * item.quantity : 0), 0);
-      const totalBarBill = items.reduce((sum, item) => sum + (item.type === "bar" ? item.price * item.quantity : 0), 0);
+    setLoader(true);
+    try {
+      const tableIdStr = String(order.tableName);
+      let booking = null;
 
-      // Call addHotelService with the bookingId we resolved
-      await addHotelService(booking.bookingId, {
-        [booking.roomNumber]: {
-          [new Date().toISOString().split("T")[0]]: [
-            {
-              food_charges: totalFoodBill,
-              extra_bed_charges: 0,
-              laundry_charges: 0,
-              manual_charges: 0,
-              minibar_charges: totalBarBill,
-              order_id: order.orderId,
-            },
-          ],
-        },
-      });
-    }
-
-    await API.post(
-      "main",
-      `/admin/settle-bill-order/${institutionData.institution}/${tableIdStr}/${order.orderId}`,
-      {
-        body: {
-          paymentStatus: true,
-          paymentMode: "offline",
-          paymentMethod: paymentMethod,
-          table: false,
-        },
+      if (bookingInfo && bookingInfo.bookingId) {
+        booking = hotelBookings?.find((b) => String(b.bookingId) === String(bookingInfo.bookingId)) || null;
+      } else {
+        const isHotelOrder = tableIdStr.toLowerCase().startsWith("hotel");
+        if (isHotelOrder) {
+          const roomNumber = tableIdStr.replace(/^hotel/i, "");
+          booking = hotelBookings?.find((b) => String(b.roomNumber) === String(roomNumber)) || null;
+        }
       }
-    );
 
-    toast.success(`Order ${order.orderId} settled successfully!`);
-    await fetchAllTableData(); // Refresh data
-  } catch (error) {
-    console.error("Error settling unpaid order:", error);
-    toast.error("Failed to settle order.");
-  } finally {
-    setLoader(false);
-  }
-};
+      if (booking) {
+        const items = order.items || [];
+        const totalFoodBill = items.reduce((sum, item) => sum + (item.type !== "bar" ? item.price * item.quantity : 0), 0);
+        const totalBarBill = items.reduce((sum, item) => sum + (item.type === "bar" ? item.price * item.quantity : 0), 0);
+
+        // Call addHotelService with the bookingId we resolved
+        await addHotelService(booking.bookingId, {
+          [booking.roomNumber]: {
+            [new Date().toISOString().split("T")[0]]: [
+              {
+                food_charges: totalFoodBill,
+                extra_bed_charges: 0,
+                laundry_charges: 0,
+                manual_charges: 0,
+                minibar_charges: totalBarBill,
+                order_id: order.orderId,
+              },
+            ],
+          },
+        });
+      }
+
+      await API.post(
+        "main",
+        `/admin/settle-bill-order/${institutionData.institution}/${tableIdStr}/${order.orderId}`,
+        {
+          body: {
+            paymentStatus: true,
+            paymentMode: "offline",
+            paymentMethod: paymentMethod,
+            table: false,
+          },
+        }
+      );
+
+      toast.success(`Order ${order.orderId} settled successfully!`);
+      await fetchAllTableData(); // Refresh data
+    } catch (error) {
+      console.error("Error settling unpaid order:", error);
+      toast.error("Failed to settle order.");
+    } finally {
+      setLoader(false);
+    }
+  };
 
   const processTableData = (tableId, tableInfo) => {
     if (!tableId || !tableInfo) return;
-    
+
     const tableIdStr = String(tableId);
-    const orderId = tableInfo.orders && tableInfo.orders.length > 0 
+    const orderId = tableInfo.orders && tableInfo.orders.length > 0
       ? tableInfo.orders
-          .map(order => order.orderId)          
-          .filter(id => id !== null && id !== undefined) 
-          .join(',')                          
+          .map(order => order.orderId)
+          .filter(id => id !== null && id !== undefined)
+          .join(',')
       : null;
 
-    setorderId((prev) => ({ 
-      ...prev, 
-      [tableIdStr]: orderId  
+    setorderId((prev) => ({
+      ...prev,
+      [tableIdStr]: orderId
     }));
-    
+
     const kotItems = tableInfo.kotItems || [];
     const billItems = tableInfo.billItems || [];
     const mergedItems = tableInfo.mergedItems || [];
+    
     const { billSubtotal, taxableSubtotal, cgst, sgst, serviceTax, finalTotal } = calculateTotals(mergedItems);
+
     const phoneNumber = tableInfo.phoneNumber || "";
     const customerName = tableInfo.customerName || "";
     const kotNumber = tableInfo.kotNumber || "";
     const instruction = tableInfo.instruction || "";
 
-    setCustomerDetails((prev) => ({ 
-      ...prev, 
-      [tableIdStr]: { phone: phoneNumber, name: customerName } 
+    setCustomerDetails((prev) => ({
+      ...prev,
+      [tableIdStr]: {
+        phone: phoneNumber,
+        name: customerName
+      }
     }));
-    
+
     setBillItemsByStore((prev) => ({
       ...prev,
       [tableIdStr]: {
@@ -563,21 +659,21 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
         totalAmount: finalTotal,
       },
     }));
-    
+
     setTableData((prev) => ({
       ...prev,
-      [tableIdStr]: { 
-        kotItems, 
-        billItems, 
-        mergedItems, 
-        totalAmount: finalTotal, 
-        totalCGST: cgst.toFixed(2), 
-        totalSGST: sgst.toFixed(2), 
-        totalServiceTax: serviceTax.toFixed(2), 
-        instruction 
+      [tableIdStr]: {
+        kotItems,
+        billItems,
+        mergedItems,
+        totalAmount: finalTotal,
+        totalCGST: cgst.toFixed(2),
+        totalSGST: sgst.toFixed(2),
+        totalServiceTax: serviceTax.toFixed(2),
+        instruction
       },
     }));
-    
+
     setKOTByTable((prev) => ({
       ...prev,
       [tableIdStr]: {
@@ -587,25 +683,25 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
         kotNumber,
       },
     }));
-    
+
     setTableInstructions((prev) => ({
       ...prev,
       [tableIdStr]: instruction
     }));
-    
+
     if (String(selectedTable?.id) === tableIdStr) {
-      setCurrentKOT({ 
-        items: kotItems.map((item) => ({ ...item, name: item.name })), 
-        totalAmount: finalTotal 
+      setCurrentKOT({
+        items: kotItems.map((item) => ({ ...item, name: item.name })),
+        totalAmount: finalTotal
       });
     }
   };
-  
+
   const fetchTableData = async (tableId) => {
     if (!tableId || !institutionData?.institution) return null;
     setLoader(true);
     const tableIdStr = String(tableId);
-    
+
     try {
       if (allTablesData && allTablesData[tableIdStr]) {
         const tableInfo = allTablesData[tableIdStr];
@@ -621,46 +717,61 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
       return null;
     }
   };
-  
+
   const addItemToKOT = (tableId, item) => {
     if (!tableId) return;
+
     const tableIdStr = String(tableId);
+
     setTableData((prev) => {
-      const currentTable = prev[tableIdStr] || { 
-        kotItems: [], 
-        billItems: [], 
-        mergedItems: [], 
-        totalAmount: 0, 
-        totalCGST: "0.00", 
-        totalSGST: "0.00", 
-        totalServiceTax: "0.00" 
+      const currentTable = prev[tableIdStr] || {
+        kotItems: [],
+        billItems: [],
+        mergedItems: [],
+        totalAmount: 0,
+        totalCGST: "0.00",
+        totalSGST: "0.00",
+        totalServiceTax: "0.00"
       };
+
       const existingItem = currentTable.mergedItems.find((i) => i.itemId === item.itemId);
       const updatedMergedItems = existingItem
-        ? currentTable.mergedItems.map((i) => (i.itemId === item.itemId ? { ...i, quantity: i.quantity + 1 } : i))
+        ? currentTable.mergedItems.map((i) =>
+            i.itemId === item.itemId ? { ...i, quantity: i.quantity + 1 } : i
+          )
         : [...currentTable.mergedItems, { ...item, quantity: 1 }];
-      const updatedKotItems = updatedMergedItems.filter((item) => currentTable.billItems.every((billItem) => billItem.itemId !== item.itemId));
+
+      const updatedKotItems = updatedMergedItems.filter((item) =>
+        currentTable.billItems.every((billItem) => billItem.itemId !== item.itemId)
+      );
+
       const { billSubtotal, taxableSubtotal, cgst, sgst, serviceTax, finalTotal } = calculateTotals(updatedMergedItems);
+
       return {
         ...prev,
-        [tableIdStr]: { 
-          ...currentTable, 
-          kotItems: updatedKotItems, 
-          mergedItems: updatedMergedItems, 
-          totalAmount: finalTotal, 
-          totalCGST: cgst.toFixed(2), 
-          totalSGST: sgst.toFixed(2), 
-          totalServiceTax: serviceTax.toFixed(2) 
+        [tableIdStr]: {
+          ...currentTable,
+          kotItems: updatedKotItems,
+          mergedItems: updatedMergedItems,
+          totalAmount: finalTotal,
+          totalCGST: cgst.toFixed(2),
+          totalSGST: sgst.toFixed(2),
+          totalServiceTax: serviceTax.toFixed(2)
         },
       };
     });
+
     setKOTByTable((prev) => {
       const currentKOT = prev[tableIdStr] || { items: [], totalAmount: 0 };
       const newItems = currentKOT.items.some((i) => i.itemId === item.itemId)
-        ? currentKOT.items.map((i) => (i.itemId === item.itemId ? { ...i, quantity: i.quantity + 1 } : i))
+        ? currentKOT.items.map((i) =>
+            i.itemId === item.itemId ? { ...i, quantity: i.quantity + 1 } : i
+          )
         : [...currentKOT.items, { ...item, quantity: 1 }];
+
       const { finalTotal } = calculateTotals(newItems);
       const updatedKOT = { items: newItems, totalAmount: finalTotal };
+
       setCurrentKOT(updatedKOT);
       return { ...prev, [tableIdStr]: updatedKOT };
     });
@@ -668,38 +779,53 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
 
   const updateItemQuantity = (tableId, itemId, newQuantity) => {
     if (newQuantity < 1) return removeItemFromKOT(tableId, itemId);
+
     const tableIdStr = String(tableId);
+
     setTableData((prev) => {
-      const currentTable = prev[tableIdStr] || { 
-        kotItems: [], 
-        billItems: [], 
-        mergedItems: [], 
-        totalAmount: 0, 
-        totalCGST: "0.00", 
-        totalSGST: "0.00", 
-        totalServiceTax: "0.00" 
+      const currentTable = prev[tableIdStr] || {
+        kotItems: [],
+        billItems: [],
+        mergedItems: [],
+        totalAmount: 0,
+        totalCGST: "0.00",
+        totalSGST: "0.00",
+        totalServiceTax: "0.00"
       };
-      const updatedMergedItems = currentTable.mergedItems.map((i) => (i.itemId === itemId ? { ...i, quantity: newQuantity } : i));
-      const updatedKotItems = updatedMergedItems.filter((item) => currentTable.billItems.every((billItem) => billItem.itemId !== item.itemId));
+
+      const updatedMergedItems = currentTable.mergedItems.map((i) =>
+        i.itemId === itemId ? { ...i, quantity: newQuantity } : i
+      );
+
+      const updatedKotItems = updatedMergedItems.filter((item) =>
+        currentTable.billItems.every((billItem) => billItem.itemId !== item.itemId)
+      );
+
       const { billSubtotal, taxableSubtotal, cgst, sgst, serviceTax, finalTotal } = calculateTotals(updatedMergedItems);
+
       return {
         ...prev,
-        [tableIdStr]: { 
-          ...currentTable, 
-          kotItems: updatedKotItems, 
-          mergedItems: updatedMergedItems, 
-          totalAmount: finalTotal, 
-          totalCGST: cgst.toFixed(2), 
-          totalSGST: sgst.toFixed(2), 
-          totalServiceTax: serviceTax.toFixed(2) 
+        [tableIdStr]: {
+          ...currentTable,
+          kotItems: updatedKotItems,
+          mergedItems: updatedMergedItems,
+          totalAmount: finalTotal,
+          totalCGST: cgst.toFixed(2),
+          totalSGST: sgst.toFixed(2),
+          totalServiceTax: serviceTax.toFixed(2)
         },
       };
     });
+
     setKOTByTable((prev) => {
       const currentKOT = prev[tableIdStr] || { items: [], totalAmount: 0 };
-      const newItems = currentKOT.items.map((i) => (i.itemId === itemId ? { ...i, quantity: newQuantity } : i));
+      const newItems = currentKOT.items.map((i) =>
+        i.itemId === itemId ? { ...i, quantity: newQuantity } : i
+      );
+
       const { finalTotal } = calculateTotals(newItems);
       const updatedKOT = { items: newItems, totalAmount: finalTotal };
+
       setCurrentKOT(updatedKOT);
       return { ...prev, [tableIdStr]: updatedKOT };
     });
@@ -707,37 +833,46 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
 
   const removeItemFromKOT = (tableId, itemId) => {
     const tableIdStr = String(tableId);
+
     setTableData((prev) => {
-      const currentTable = prev[tableIdStr] || { 
-        kotItems: [], 
-        billItems: [], 
-        mergedItems: [], 
-        totalAmount: 0, 
-        totalCGST: "0.00", 
-        totalSGST: "0.00", 
-        totalServiceTax: "0.00" 
+      const currentTable = prev[tableIdStr] || {
+        kotItems: [],
+        billItems: [],
+        mergedItems: [],
+        totalAmount: 0,
+        totalCGST: "0.00",
+        totalSGST: "0.00",
+        totalServiceTax: "0.00"
       };
+
       const updatedMergedItems = currentTable.mergedItems.filter((i) => i.itemId !== itemId);
-      const updatedKotItems = updatedMergedItems.filter((item) => currentTable.billItems.every((billItem) => billItem.itemId !== item.itemId));
+      const updatedKotItems = updatedMergedItems.filter((item) =>
+        currentTable.billItems.every((billItem) => billItem.itemId !== item.itemId)
+      );
+
       const { billSubtotal, taxableSubtotal, cgst, sgst, serviceTax, finalTotal } = calculateTotals(updatedMergedItems);
+
       return {
         ...prev,
-        [tableIdStr]: { 
-          ...currentTable, 
-          kotItems: updatedKotItems, 
-          mergedItems: updatedMergedItems, 
-          totalAmount: finalTotal, 
-          totalCGST: cgst.toFixed(2), 
-          totalSGST: sgst.toFixed(2), 
-          totalServiceTax: serviceTax.toFixed(2) 
+        [tableIdStr]: {
+          ...currentTable,
+          kotItems: updatedKotItems,
+          mergedItems: updatedMergedItems,
+          totalAmount: finalTotal,
+          totalCGST: cgst.toFixed(2),
+          totalSGST: sgst.toFixed(2),
+          totalServiceTax: serviceTax.toFixed(2)
         },
       };
     });
+
     setKOTByTable((prev) => {
       const currentKOT = prev[tableIdStr] || { items: [], totalAmount: 0 };
       const newItems = currentKOT.items.filter((i) => i.itemId !== itemId);
+
       const { finalTotal } = calculateTotals(newItems);
       const updatedKOT = { items: newItems, totalAmount: finalTotal };
+
       setCurrentKOT(updatedKOT);
       return { ...prev, [tableIdStr]: updatedKOT };
     });
@@ -746,31 +881,31 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
   const saveKOT = async (selectedTable) => {
     setLoader(true);
     const tableIdStr = String(selectedTable.id);
-    const tableDataForTable = tableData[tableIdStr] || { 
-      kotItems: [], 
-      billItems: [], 
-      mergedItems: [], 
-      totalAmount: 0, 
-      totalCGST: "0.00", 
-      totalSGST: "0.00", 
-      totalServiceTax: "0.00" 
+    const tableDataForTable = tableData[tableIdStr] || {
+      kotItems: [],
+      billItems: [],
+      mergedItems: [],
+      totalAmount: 0,
+      totalCGST: "0.00",
+      totalSGST: "0.00",
+      totalServiceTax: "0.00"
     };
-    
+
     if (tableDataForTable.mergedItems.length === 0) {
       setLoader(false);
       return;
     }
-    
+
     try {
       const result = await API.get("main", `/admin/get-tabledata/${institutionData.institution}`, {});
       const responseBody = result.body ? JSON.parse(result.body) : result;
       const responseData = responseBody.data || {};
-      
       setAllTablesData(responseData);
-      
-      const hasExistingOrder = !Array.isArray(responseData) 
+
+      const hasExistingOrder = !Array.isArray(responseData)
         ? (responseData[tableIdStr] && responseData[tableIdStr].orders && responseData[tableIdStr].orders.length > 0)
         : responseData.some(order => order.tableName === tableIdStr);
+
       const { billSubtotal, taxableSubtotal, cgst, sgst, serviceTax, finalTotal } = calculateTotals(tableDataForTable.mergedItems);
 
       if (!hasExistingOrder) {
@@ -789,9 +924,11 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
             tableOccupied: true
           },
         });
-        await API.post("main", `/admin/orders-kot/${institutionData.institution}/${tableIdStr}`, { 
-          body: { items: tableDataForTable.mergedItems } 
+
+        await API.post("main", `/admin/orders-kot/${institutionData.institution}/${tableIdStr}`, {
+          body: { items: tableDataForTable.mergedItems }
         });
+
         toast.success("KOT Saved Successfully");
       } else if (tableDataForTable.splitBill) {
         setPendingKOTData({ tableIdStr, tableDataForTable });
@@ -800,25 +937,28 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
         return;
       } else {
         await API.put("main", `/admin/orders-items/${institutionData.institution}/${tableIdStr}`, {
-          body: { 
-            items: tableDataForTable.mergedItems, 
+          body: {
+            items: tableDataForTable.mergedItems,
             serviceTaxPercentage: institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0,
             cgstPercentage: institutionData?.cgst ?? 2.5,
             sgstPercentage: institutionData?.sgst ?? 2.5,
             cgst,
             sgst,
-            serviceTax 
+            serviceTax
           },
         });
+
         await API.post("main", `/admin/orders-bill/${institutionData.institution}/${tableIdStr}`, {
-          body: { 
-            name: customerDetails[tableIdStr]?.name || "", 
-            phoneNumber: customerDetails[tableIdStr]?.phone || "", 
-            items: tableDataForTable.mergedItems 
+          body: {
+            name: customerDetails[tableIdStr]?.name || "",
+            phoneNumber: customerDetails[tableIdStr]?.phone || "",
+            items: tableDataForTable.mergedItems
           },
         });
+
         toast.success("KOT Updated Successfully");
       }
+
       setLoader(false);
       fetchAllTableData();
     } catch (error) {
@@ -830,32 +970,43 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
 
   const settleBill = async () => {
     if (!selectedTable || !localBillItems.length) return;
+
     setLoader(true);
     const tableIdStr = String(selectedTable.id);
+
     try {
       const { cgst, sgst, serviceTax } = calculateTotals(localBillItems);
+
       await API.put("main", `/admin/orders-items/${institutionData.institution}/${tableIdStr}`, {
-        body: { 
-          items: localBillItems, 
+        body: {
+          items: localBillItems,
           serviceTaxPercentage: institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0,
           cgstPercentage: institutionData?.cgst ?? 2.5,
           sgstPercentage: institutionData?.sgst ?? 2.5,
           cgst,
           sgst,
-          serviceTax 
+          serviceTax
         },
       });
-      await API.post("main", `/admin/orders-bill/${institutionData.institution}/${tableIdStr}`, { 
-        body: { items: localBillItems } 
+
+      await API.post("main", `/admin/orders-bill/${institutionData.institution}/${tableIdStr}`, {
+        body: { items: localBillItems }
       });
-      setTables((prev) => prev.map((t) => (String(t.id) === tableIdStr ? { ...t, orders: [], currentBill: 0, status: "available" } : t)));
+
+      setTables((prev) =>
+        prev.map((t) =>
+          String(t.id) === tableIdStr
+            ? { ...t, orders: [], currentBill: 0, status: "available" }
+            : t
+        )
+      );
+
       setTableOccupancy((prev) => ({ ...prev, [tableIdStr]: false }));
       setLocalBillItems([]);
       setKOTByTable((prev) => ({ ...prev, [tableIdStr]: { items: [], totalAmount: 0 } }));
       setCurrentKOT({ items: [], totalAmount: 0 });
-      
+
       await fetchAllTableData();
-      
       setLoader(false);
       toast.success("Bill settled successfully!");
     } catch (error) {
@@ -867,13 +1018,13 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
 
   const getTableDataFromCache = (tableId) => {
     if (!tableId || !allTablesData) return null;
+
     const tableIdStr = String(tableId);
-    
     if (allTablesData[tableIdStr]) {
       processTableData(tableIdStr, allTablesData[tableIdStr]);
       return allTablesData[tableIdStr];
     }
-    
+
     return null;
   };
 
@@ -881,7 +1032,7 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
     if (selectedTable) {
       const tableIdStr = String(selectedTable.id);
       const currentLocalData = tableData[tableIdStr];
-      
+
       if (!currentLocalData) {
         const cachedData = getTableDataFromCache(tableIdStr);
         if (!cachedData) {
@@ -896,6 +1047,7 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
   }, [institutionData.institution]);
 
   const notificationSound = new Audio("/notification-18-270129.mp3");
+
   const enableAudio = () => {
     notificationSound.play().then(() => {
       notificationSound.pause();
@@ -924,8 +1076,10 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
         pendingSoundRef.current = false;
       }
     };
+
     window.addEventListener("click", handleInteraction);
     window.addEventListener("keydown", handleInteraction);
+
     return () => {
       window.removeEventListener("click", handleInteraction);
       window.removeEventListener("keydown", handleInteraction);
@@ -937,13 +1091,17 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
       if (message) {
         toast.info("New order received!");
         fetchAllTableData();
+
         if (isAudioEnabled && hasUserInteracted) {
-          notificationSound.play().catch((error) => console.error("Failed to play notification sound:", error));
+          notificationSound.play().catch((error) =>
+            console.error("Failed to play notification sound:", error)
+          );
         } else {
           pendingSoundRef.current = true;
         }
       }
     });
+
     return () => unsubscribe();
   }, [institutionData.institution, subscribe, isConnected, isAudioEnabled, hasUserInteracted]);
 
@@ -1010,10 +1168,11 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
 
   const OrderIdModal = () => {
     if (!pendingKOTData) return null;
+
     const { tableIdStr, tableDataForTable } = pendingKOTData;
     const orders = Array.isArray(tableDataForTable.orders) ? tableDataForTable.orders : [];
     const uniqueOrderIds = [...new Set(orders.map(order => order.orderId).filter(id => id !== null && id !== undefined))];
-    
+
     return (
       <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white p-6 rounded-lg shadow-lg relative min-w-96">
@@ -1094,13 +1253,13 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
           className="absolute top-2 right-2 text-gray-500 hover:text-gray-700"
           aria-label="Close"
         >
-          <svg 
-            className="w-6 h-6" 
-            fill="none" 
-            strokeLinecap="round" 
-            strokeLinejoin="round" 
-            strokeWidth="2" 
-            viewBox="0 0 24 24" 
+          <svg
+            className="w-6 h-6"
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
             stroke="currentColor"
           >
             <path d="M6 18L18 6M6 6l12 12"></path>
@@ -1150,22 +1309,23 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
           </button>
         </div>
       )}
+
       {screenWidth > 700 ? (
         <div className="flex h-screen bg-gray-50">
           <div className="flex-1 flex flex-col">
-            <TableGrid 
-              tables={tables} 
-              selectedTable={selectedTable} 
-              setSelectedTable={setSelectedTable} 
-              pendingOrdersByTable={pendingOrdersByTable} 
-              KOTByTable={KOTByTable} 
+            <TableGrid
+              tables={tables}
+              selectedTable={selectedTable}
+              setSelectedTable={setSelectedTable}
+              pendingOrdersByTable={pendingOrdersByTable}
+              KOTByTable={KOTByTable}
               unpaidOrders={unpaidOrders}
             />
             <div className="flex flex-1">
-              <CategoryList 
-                categories={["All", ...new Set(itemsData.map((item) => item.category))]} 
-                selectedCategory={selectedCategory} 
-                setSelectedCategory={setSelectedCategory} 
+              <CategoryList
+                categories={["All", ...new Set(itemsData.map((item) => item.category))]}
+                selectedCategory={selectedCategory}
+                setSelectedCategory={setSelectedCategory}
               />
               <MenuItems
                 itemsData={itemsData}
@@ -1196,9 +1356,33 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
             removeItemFromKOT={removeItemFromKOT}
             setLocalBillItems={setLocalBillItems}
             localBillItems={localBillItems}
-            printKOT={(table) => PrintKOT({ table, customerDetails, KOTByTable, institutionData, saveKOT, screenWidth, setActiveTab, tableData, printData, connected, tableInstructions })}
+            printKOT={(table) =>
+              PrintKOT({
+                table,
+                customerDetails,
+                KOTByTable,
+                institutionData,
+                saveKOT,
+                screenWidth,
+                setActiveTab,
+                tableData,
+                printData,
+                connected,
+                tableInstructions
+              })
+            }
             setTableOccupancy={setTableOccupancy}
-            printBill={({ table, items, orderId }) => PrintBill({ table, items, institutionData, screenWidth, orderId })}
+            printBill={({ table, items, orderId, discountMethod, discountValue }) =>
+              PrintBill({
+                table,
+                items,
+                institutionData,
+                screenWidth,
+                orderId,
+                discountMethod: discountMethod ?? "none",
+                discountValue: discountValue ?? 0,
+              })
+            }
             setShowModal={setShowModal}
             printAllItems={printAllItems}
             setPrintAllItems={setPrintAllItems}
@@ -1215,8 +1399,11 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
             printBluetooth={printData}
             setShowReprintKOT={setShowReprintKOT}
             showReprintKOT={showReprintKOT}
-            unpaidOrders={unpaidOrders} // Pass unpaid orders
-            settleUnpaidOrder={settleUnpaidOrder} // Pass settle function
+            unpaidOrders={unpaidOrders}
+            settleUnpaidOrder={settleUnpaidOrder}
+            // Pass discount props
+            discountData={discountData}
+            setDiscountData={setDiscountData}
           />
           {showModal && (
             <PaymentModal
@@ -1258,7 +1445,8 @@ const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
             removeItemFromKOT={removeItemFromKOT}
             updateItemQuantity={updateItemQuantity}
             printKOT={(table) => PrintKOT({ table, customerDetails, KOTByTable, institutionData, saveKOT, screenWidth, setActiveTab, tableData, printData, connected, tableInstructions })}
-            printBill={({ table, items, orderId }) => PrintBill({ table, items, institutionData, screenWidth, orderId })}
+            printBill={({ table, items, orderId, discountMethod, discountValue }) => PrintBill({ table, items, institutionData, screenWidth, orderId, discountMethod: discountMethod ?? "none",
+    discountValue: discountValue ?? 0, })}
             customerDetails={customerDetails}
             setCustomerDetails={setCustomerDetails}
             setShowModal={setShowModal}
