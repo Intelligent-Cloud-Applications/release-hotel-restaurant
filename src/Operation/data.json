@@ -1,0 +1,21 @@
+{
+    "institutionId": "cafe-21",
+
+    "s3BucketName": "templatecm.awsaiapp.com",
+
+    "cloudFrontId": "",
+
+    "domain": "https://templatecm.awsaiapp.com",
+
+    "printerType":"local",
+
+    "printerpaperSize":"55",
+
+    "paymentMethod":"",
+
+    "bar_integration":"Yes",
+
+    "reprintKot":"Yes",
+
+    "saveKot":"Yes"
+}

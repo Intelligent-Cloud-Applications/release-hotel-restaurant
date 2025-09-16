@@ -1,0 +1,66 @@
+{
+  "name": "cg-cafe-management",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "yarn && react-scripts start",
+    "dev": "yarn && react-scripts start",
+    "build": "set \"GENERATE_SOURCEMAP=false\" &&  react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "dependencies": {
+    "@aws-amplify/auth": "^4.3.43",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "aws-amplify": "^4.3.43",
+    "aws-sdk": "^2.1692.0",
+    "cg-cafe-management": "file:",
+    "dotenv": "^16.4.5",
+    "flowbite-react": "^0.10.1",
+    "framer-motion": "^12.4.2",
+    "howler": "^2.2.4",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.2",
+    "jspdf-autotable": "^3.8.4",
+    "lucide-react": "^0.474.0",
+    "qr-code-styling": "^1.8.4",
+    "qrcode.react": "^4.2.0",
+    "react": "^18.3.1",
+    "react-avatar-editor": "^13.0.2",
+    "react-bootstrap": "^2.10.7",
+    "react-datepicker": "^8.0.0",
+    "react-day-picker": "^9.5.1",
+    "react-document-title": "^2.0.3",
+    "react-dom": "^18.3.1",
+    "react-icons": "^5.2.1",
+    "react-image-crop": "^11.0.10",
+    "react-router-dom": "^6.24.1",
+    "react-router-hash-link": "^2.4.3",
+    "react-scripts": "^5.0.1",
+    "react-slick": "^0.30.3",
+    "react-spinners": "^0.14.1",
+    "react-toastify": "^10.0.5",
+    "recharts": "^2.15.1",
+    "slick-carousel": "^1.8.1",
+    "swiper": "^11.2.3",
+    "tesseract.js": "^6.0.0",
+    "web-bluetooth": "^0.1.2",
+    "xlsx": "^0.18.5"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.4"
+  }
+}

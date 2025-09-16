@@ -1,0 +1,305 @@
+{
+  "LightPrimaryColor": "#FFFFFF",
+  "LightSecondaryColor": "#F7F7F7",
+  "PrimaryColor": "#806735",
+  "SecondaryColor": "#FFD057",
+  "Query_Address": "123 Brew Street, Downtown City",
+  "Query_PhoneNumber": "+91 9876543210",
+  "TagLine": "Sip. Relax. Repeat.",
+  "TagLine1": "Brewing Happiness Daily",
+  "cgst": 5,
+  "companyName": "Brew & Bean Cafe",
+  "customerCount": "25k",
+  "deliverable": "Active",
+  "description": "Welcome to Brew & Bean Cafe – a cozy hub for handcrafted coffees, aromatic teas, and freshly baked delights. Perfect for catching up with friends or enjoying quiet me-time.",
+  "domainLink": "https://brewandbean.cafe",
+  "expected_open_time": "2025-04-01T08:00:00Z",
+  "gstin": "22AAAAA0000A1Z5",
+  "heroImage": "https://images.unsplash.com/photo-1509042239860-f550ce710b93?ixlib=rb-4.0.3&q=80&w=1600",
+  "institutionType": "Cafe",
+  "institutionid": "brewandbean",
+  "isDelivered": true,
+  "isFormFilled": true,
+  "logoUrl": "https://images.unsplash.com/photo-1511920170033-f8396924c348?ixlib=rb-4.0.3&q=80&w=400",
+  "mission": {
+    "image": "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?ixlib=rb-4.0.3&q=80&w=400",
+    "highlights": [
+      "Crafting authentic coffee and tea experiences.",
+      "Building cozy spaces for relaxation and conversations.",
+      "Serving freshly baked pastries and desserts."
+    ],
+    "description1": "At Brew & Bean Cafe, every sip is a story. We are dedicated to bringing you freshly brewed coffee, authentic teas, and a welcoming space to unwind.",
+    "description2": "Step inside and experience the warmth of coffee, the freshness of baked goods, and the joy of spending time with people you love."
+  },
+  "ourMission": {
+    "title": "Where Every Brew Tells a Story",
+    "description": "We aim to create memorable experiences with each cup, combining rich flavors with warm hospitality.",
+    "points": [
+      "Freshly Roasted Coffee Beans",
+      "Authentic Brewing Techniques",
+      "Sustainable Sourcing",
+      "Expert Baristas",
+      "Eco-Friendly Packaging",
+      "Delicious Snacks & Desserts"
+    ]
+  },
+  "ourMissionBg": "https://thumbs.dreamstime.com/b/friends-gather-cafe-wooden-table-hands-hold-latte-cups-art-design-people-enjoy-coffee-break-communicate-socialize-modern-384836995.jpg",
+  "payment": true,
+  "productTagline": "Freshly brewed happiness in every sip.",
+  "qrURL": "https://brewandbean.cafe",
+  "reason": "High customer love and trust",
+  "serviceTax": 0,
+  "sgst": 5,
+  "socialMediaLinks": [
+    {
+      "icon": "https://institution-utils.s3.amazonaws.com/institution-common/Assests/INSTA.png",
+      "platform": "Instagram",
+      "url": "https://www.instagram.com/brewandbean/"
+    },
+    {
+      "platform": "Facebook",
+      "url": "https://facebook.com/brewandbean"
+    }
+  ],
+  "status": "Active",
+  "store_id": "CAFEBEAN123",
+  "tagLine1": "Brewing Happiness Daily",
+  "tagLine2": "Good Coffee. Good Vibes. Good Company.",
+  "items": [
+    {
+      "category": "DESI CHAI (Small/Medium)",
+      "currency": "INR",
+      "description": "Strong ginger-infused tea",
+      "imageUrl": "",
+      "institution": "brewandbean",
+      "itemName": "Adrak Chai",
+      "outOfStock": false,
+      "price": 20,
+      "updatedAt": "2025-03-01T10:00:00.000Z",
+      "veg": true,
+      "itemId": "10001"
+    },
+    {
+      "category": "DESI CHAI (Small/Medium)",
+      "currency": "INR",
+      "description": "Refreshing rose-flavored chai",
+      "imageUrl": "",
+      "institution": "brewandbean",
+      "itemName": "Rose Chai",
+      "outOfStock": false,
+      "price": 25,
+      "updatedAt": "2025-03-01T10:05:00.000Z",
+      "veg": true,
+      "itemId": "10002"
+    },
+    {
+      "category": "DESI CHAI (Small/Medium)",
+      "currency": "INR",
+      "description": "Rich chocolate-infused chai",
+      "imageUrl": "",
+      "institution": "brewandbean",
+      "itemName": "Chocolate Chai",
+      "outOfStock": false,
+      "price": 30,
+      "updatedAt": "2025-03-01T10:10:00.000Z",
+      "veg": true,
+      "itemId": "10003"
+    },
+    {
+      "category": "DESI CHAI (Small/Medium)",
+      "currency": "INR",
+      "description": "Fragrant cardamom chai",
+      "imageUrl": "",
+      "institution": "brewandbean",
+      "itemName": "Elaichi Chai",
+      "outOfStock": false,
+      "price": 25,
+      "updatedAt": "2025-03-01T10:15:00.000Z",
+      "veg": true,
+      "itemId": "10004"
+    },
+    {
+      "category": "DESI CHAI (Small/Medium)",
+      "currency": "INR",
+      "description": "Special masala chai with spices",
+      "imageUrl": "https://images.unsplash.com/photo-1617196033664-fd07fcb35c50?ixlib=rb-4.0.3&q=80&w=800",
+      "institution": "brewandbean",
+      "itemName": "Masala Chai",
+      "outOfStock": false,
+      "price": 30,
+      "updatedAt": "2025-03-01T10:20:00.000Z",
+      "veg": true,
+      "itemId": "10005"
+    },
+    {
+      "category": "THE SHAKE MARKET",
+      "currency": "INR",
+      "description": "Thick chocolate shake topped with cream",
+      "imageUrl": "",
+      "institution": "brewandbean",
+      "itemName": "Chocolate Shake",
+      "outOfStock": false,
+      "price": 150,
+      "updatedAt": "2025-03-01T10:25:00.000Z",
+      "veg": true,
+      "itemId": "20001"
+    },
+    {
+      "category": "THE SHAKE MARKET",
+      "currency": "INR",
+      "description": "Fresh strawberry shake",
+      "imageUrl": "",
+      "institution": "brewandbean",
+      "itemName": "Strawberry Shake",
+      "outOfStock": false,
+      "price": 160,
+      "updatedAt": "2025-03-01T10:30:00.000Z",
+      "veg": true,
+      "itemId": "20002"
+    },
+    {
+      "category": "THE SHAKE MARKET",
+      "currency": "INR",
+      "description": "Classic vanilla shake",
+      "imageUrl": "",
+      "institution": "brewandbean",
+      "itemName": "Vanilla Shake",
+      "outOfStock": false,
+      "price": 140,
+      "updatedAt": "2025-03-01T10:35:00.000Z",
+      "veg": true,
+      "itemId": "20003"
+    },
+    {
+      "category": "THE SHAKE MARKET",
+      "currency": "INR",
+      "description": "Refreshing mango shake",
+      "imageUrl": "",
+      "institution": "brewandbean",
+      "itemName": "Mango Shake",
+      "outOfStock": false,
+      "price": 170,
+      "updatedAt": "2025-03-01T10:40:00.000Z",
+      "veg": true,
+      "itemId": "20004"
+    },
+    {
+      "category": "THE SHAKE MARKET",
+      "currency": "INR",
+      "description": "Oreo-crushed shake with whipped cream",
+      "imageUrl": "https://images.unsplash.com/photo-1626808642875-0aa545482dfb?ixlib=rb-4.0.3&q=80&w=800",
+      "institution": "brewandbean",
+      "itemName": "Oreo Shake",
+      "outOfStock": false,
+      "price": 180,
+      "updatedAt": "2025-03-01T10:45:00.000Z",
+      "veg": true,
+      "itemId": "20005"
+    },
+    {
+      "category": "MOCKTAILS",
+      "currency": "INR",
+      "description": "Refreshing mint mojito",
+      "imageUrl": "",
+      "institution": "brewandbean",
+      "itemName": "Virgin Mojito",
+      "outOfStock": false,
+      "price": 120,
+      "updatedAt": "2025-03-01T10:50:00.000Z",
+      "veg": true,
+      "itemId": "30001"
+    },
+    {
+      "category": "MOCKTAILS",
+      "currency": "INR",
+      "description": "Cool blue lagoon mocktail",
+      "imageUrl": "",
+      "institution": "brewandbean",
+      "itemName": "Blue Lagoon",
+      "outOfStock": false,
+      "price": 140,
+      "updatedAt": "2025-03-01T10:55:00.000Z",
+      "veg": true,
+      "itemId": "30002"
+    },
+    {
+      "category": "MOCKTAILS",
+      "currency": "INR",
+      "description": "Green apple punch with soda",
+      "imageUrl": "",
+      "institution": "brewandbean",
+      "itemName": "Green Apple Punch",
+      "outOfStock": false,
+      "price": 135,
+      "updatedAt": "2025-03-01T11:00:00.000Z",
+      "veg": true,
+      "itemId": "30003"
+    },
+    {
+      "category": "MOCKTAILS",
+      "currency": "INR",
+      "description": "Cranberry fizz mocktail",
+      "imageUrl": "",
+      "institution": "brewandbean",
+      "itemName": "Cranberry Fizz",
+      "outOfStock": false,
+      "price": 150,
+      "updatedAt": "2025-03-01T11:05:00.000Z",
+      "veg": true,
+      "itemId": "30004"
+    },
+    {
+      "category": "MOCKTAILS",
+      "currency": "INR",
+      "description": "Peach iced tea served chilled",
+      "imageUrl": "https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?ixlib=rb-4.0.3&q=80&w=800",
+      "institution": "brewandbean",
+      "itemName": "Peach Iced Tea",
+      "outOfStock": false,
+      "price": 130,
+      "updatedAt": "2025-03-01T11:10:00.000Z",
+      "veg": true,
+      "itemId": "30005"
+    }
+  ],
+  "testimonials": [
+     {
+      "name": "Food Blogger",
+      "rating": 5,
+      "image": "https://randomuser.me/api/portraits/men/33.jpg",
+      "text": "Loved the croissants! Fresh, flaky, and buttery – pairs perfectly with coffee."
+    },
+
+    {
+      "name": "Frequent Visitor",
+      "rating": 5,
+      "image": "https://randomuser.me/api/portraits/women/68.jpg",
+      "text": "Great ambiance and friendly staff. My go-to cafe for work and chill."
+    },
+    {
+      "name": "Coffee Enthusiast",
+      "rating": 5,
+      "image": "https://randomuser.me/api/portraits/women/44.jpg",
+      "text": "The cappuccino here is divine! Smooth, rich, and absolutely satisfying."
+    }
+
+  ],
+  "updatedAt": 1744094344388,
+  "usefulLinks": [
+    {
+      "title": "Our Blog",
+      "style": {
+        "color": "white",
+        "textDecoration": "none"
+      },
+      "url": "https://brewandbean.cafe/blog"
+    }
+  ],
+  "videoUrl": "https://www.youtube.com/embed/1g8hoF3p1Kw",
+  "visitUs": {
+    "title": "Visit Us",
+    "locationMap": "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3153.8354345093196!2d-122.42177808468143!3d37.77492977975913!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x8085817c0a8c3abf%3A0x2e3d3ffb5a0bb3c!2sCafe%20Downtown!5e0!3m2!1sen!2sus!4v1677838186694!5m2!1sen!2sus",
+    "description": "Come visit us in the heart of the city. Open daily from 8:00 AM – 10:00 PM."
+  },
+  "index": "0"
+}

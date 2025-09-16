@@ -1,0 +1,111 @@
+{
+    "institutionid": "bhuk2323",
+    "index": "0",
+    "batch_additems_lastupdate": 1740568515,
+    "batch_additems_status": "Successful",
+    "batch_additems_updatedby": "us-east-1:d6b67830-ed5e-cb4b-5c38-032cbc27164f",
+    "cgst": 2.5,
+    "companyName": "Bhukkad",
+    "description": "Experience culinary excellence at Bhukkad. Indulge in a diverse menu featuring both local and international cuisines, served in an elegant atmosphere. Perfect for casual dining and special occasions!",
+    "domainLink": "https://Bhukkad.awsaiapp.com/",
+    "heroImage": "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=2070&auto=format&fit=crop",
+    "institutionType": "Restaurant",
+    "isDelivered": true,
+    "isFormFilled": true,
+    "LightPrimaryColor": "#F8F9FA",
+    "LightSecondaryColor": "#F4F5F6",
+    "logoUrl": "https://images.unsplash.com/photo-1544148103-0773bf10d330?q=80&w=2070&auto=format&fit=crop",
+    "mission": {
+        "description1": "At Bhukkad, we are dedicated to creating extraordinary dining experiences through innovative cuisine and impeccable service. Our chefs combine traditional recipes with modern techniques to bring you dishes that delight and inspire.",
+        "description2": "Step into our elegant dining space where every meal is crafted with passion and served with attention to detail, making your dining experience truly memorable.",
+        "highlights": [
+            "Innovative cuisine with local ingredients",
+            "Elegant dining atmosphere",
+            "Expert culinary team"
+        ],
+        "image": "https://images.unsplash.com/photo-1581349485608-9469926a8e5e?q=80&w=1964&auto=format&fit=crop"
+    },
+    "ourMission": {
+        "description": "Creating memorable dining experiences through exceptional food, service, and ambiance.",
+        "points": [
+            "Fresh, Local Ingredients",
+            "Expert Culinary Team",
+            "Sustainable Practices",
+            "Innovative Menu",
+            "Exceptional Service"
+        ],
+        "title": "Crafting Culinary Excellence"
+    },
+    "ourMissionBg": "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?q=80&w=2070&auto=format&fit=crop",
+    "payment": false,
+    "PrimaryColor": "#D4AF37",
+    "productTagline": "Where every dish tells a story and every meal becomes a memory.",
+    "qrURL": "https://Bhukkad.awsaiapp.com",
+    "Query_Address": "Your Restaurant Address Here",
+    "Query_PhoneNumber": "Your Phone Number Here",
+    "SecondaryColor": "#C17817",
+    "serviceTax": 0,
+    "sgst": 2.5,
+    "socialMediaLinks": [
+        {
+            "icon": "https://institution-utils.s3.amazonaws.com/institution-common/Assests/INSTA.png",
+            "platform": "Instagram",
+            "url": "https://www.instagram.com/Bhukkad/"
+        }
+    ],
+    "Table": [
+        {
+            "qrImage": "https://institution-utils.s3.us-east-1.amazonaws.com/public/Bhukkad/qr-pages/1.html",
+            "tableNo": "1"
+        },
+        {
+            "qrImage": "https://institution-utils.s3.us-east-1.amazonaws.com/public/Bhukkad/qr-pages/2.html",
+            "tableNo": "2"
+        },
+        {
+            "qrImage": "https://institution-utils.s3.us-east-1.amazonaws.com/public/Bhukkad/qr-pages/3.html",
+            "tableNo": "3"
+        },
+        {
+            "qrImage": "https://institution-utils.s3.us-east-1.amazonaws.com/public/Bhukkad/qr-pages/4.html",
+            "tableNo": "4"
+        }
+    ],
+    "tagLine1": "Crafting Culinary Excellence",
+    "tagLine2": "Where flavors meet sophistication, creating unforgettable dining experiences.",
+    "testimonials": [
+        {
+            "image": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=2070&auto=format&fit=crop",
+            "name": "John Smith",
+            "rating": 5,
+            "text": "The culinary artistry at Bhukkad is outstanding. Every dish is a masterpiece of flavors and presentation!"
+        },
+        {
+            "image": "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=2070&auto=format&fit=crop",
+            "name": "Sarah Johnson",
+            "rating": 5,
+            "text": "The ambiance and service are as exceptional as the food. A perfect spot for special occasions!"
+        },
+        {
+            "image": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=2070&auto=format&fit=crop",
+            "name": "Michael Chen",
+            "rating": 5,
+            "text": "From appetizers to desserts, every course was perfectly executed. The chef's tasting menu is a must-try!"
+        }
+    ],
+    "usefulLinks": [
+        {
+            "style": {
+                "color": "white",
+                "textDecoration": "none"
+            },
+            "title": "Awsaiapp",
+            "url": "http://awsaiapp.com/"
+        }
+    ],
+    "visitUs": {
+        "locationMap": "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3751.695336786853!2d83.15535357555908!3d19.895082581485624!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3a24e9a61c928851%3A0xfb5b9ba6b7140ab6!2sKalahandi%20Snooker%20Cafe!5e0!3m2!1sen!2sin!4v1742133168952!5m2!1sen!2sin"
+    }
+}
+
+
