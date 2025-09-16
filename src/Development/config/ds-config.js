@@ -28,7 +28,7 @@ export const dsDev = {
         endpoints: [
             {
                 name: 'main',
-                endpoint: 'https://7irwe2hmkj.execute-api.us-east-2.amazonaws.com/dev',
+                endpoint: 'https://ppf65ueuea.execute-api.us-east-2.amazonaws.com/dev',
                 region: 'us-east-2',
             }
         ]

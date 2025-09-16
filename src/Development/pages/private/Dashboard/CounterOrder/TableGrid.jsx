@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from "react";
 import { Context } from "../../../../Context";
 
-const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTable, KOTByTable }) => {
+const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTable, KOTByTable, unpaidOrders }) => {
   const { institutionData } = useContext(Context);
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);
   const [activeTab, setActiveTab] = useState("Table");
@@ -35,11 +35,11 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
     const pendingOrders = pendingOrdersByTable[table.id] || [];
     const pendingCount = pendingOrders.length;
     const kotItemsForTable = KOTByTable && KOTByTable[table.id] || [];
-
     const unprintedKOTItems = kotItemsForTable.items
       ? kotItemsForTable.items.filter((item) => item && !item.isPrinted)
       : [];
     const unprintedCount = unprintedKOTItems.length || 0;
+    const hasUnpaidOrders = unpaidOrders.some(order => String(order.tableName) === String(table.id));
 
     const getTableName = (table) => {
       if (String(table.id).toLowerCase().startsWith("takeaway")) return table.name;
@@ -55,7 +55,9 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
         key={table.id}
         onClick={() => setSelectedTable(table)}
         className={`p-2 rounded-lg border transition-all relative h-20 ${
-          pendingCount > 0
+          hasUnpaidOrders
+            ? "bg-red-600 text-white border-red-700"
+            : pendingCount > 0
             ? "bg-yellow-600 text-white border-yellow-700"
             : selectedTable?.id === table.id
             ? "bg-blue-600 text-white border-blue-700"
@@ -76,9 +78,9 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
             <p className="text-[10px] opacity-90">Selected Items: {unprintedCount}</p>
           </div>
         )}
-        {pendingCount > 0 && (
+        {(pendingCount > 0 || hasUnpaidOrders) && (
           <div className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
-            {pendingCount}
+            {pendingCount + (hasUnpaidOrders ? 1 : 0)}
           </div>
         )}
       </button>
@@ -89,11 +91,11 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
     const pendingOrders = pendingOrdersByTable[table.id] || [];
     const pendingCount = pendingOrders.length;
     const kotItemsForTable = KOTByTable && KOTByTable[table.id] || [];
-
     const unprintedKOTItems = kotItemsForTable.items
       ? kotItemsForTable.items.filter((item) => item && !item.isPrinted)
       : [];
     const unprintedCount = unprintedKOTItems.length || 0;
+    const hasUnpaidOrders = unpaidOrders.some(order => String(order.tableName) === String(table.id));
 
     const getTableName = (table) => {
       if (String(table.id).toLowerCase().startsWith("takeaway")) return table.name;
@@ -108,7 +110,9 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
         key={table.id}
         onClick={() => setSelectedTable(table)}
         className={`p-3 rounded-lg border transition-all flex flex-col justify-between relative ${
-          pendingCount > 0
+          hasUnpaidOrders
+            ? "bg-red-600 text-white border-red-700"
+            : pendingCount > 0
             ? "bg-yellow-600 text-white border-yellow-700"
             : selectedTable?.id === table.id
             ? "bg-blue-600 text-white border-blue-700"
@@ -129,9 +133,9 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
             <p className="text-[10px] opacity-90">Selected Items: {unprintedCount}</p>
           </div>
         )}
-        {pendingCount > 0 && (
+        {(pendingCount > 0 || hasUnpaidOrders) && (
           <div className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center">
-            {pendingCount}
+            {pendingCount + (hasUnpaidOrders ? 1 : 0)}
           </div>
         )}
       </button>

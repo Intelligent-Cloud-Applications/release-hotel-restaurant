@@ -13,11 +13,12 @@ const Provider = ({ children }) => {
   const [userData, setUserData] = useState({});
   const [institutionData, setInstitutionData] = useState(initialInstitutionData);
   const [items, setItems] = useState([]);
+  const [staffData, setStaffData] = useState([]); 
   const [loader, setLoader] = useState(false);
   const [auth, setAuth] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false);
-  const [hotelBookings, setHotelBookings] = useState([]); 
+  const [hotelBookings, setHotelBookings] = useState([]);
 
   const saveToCache = (key, data) => {
     try {
@@ -176,6 +177,40 @@ const Provider = ({ children }) => {
     }
   };
 
+  const fetchStaffData = async (isBackgroundRefresh = false) => {
+    try {
+      if (!isBackgroundRefresh) {
+        setLoader(true);
+      }
+
+      const cachedStaffData = checkCache("cafeStaffData");
+      if (cachedStaffData) {
+        setStaffData(cachedStaffData);
+        return true;
+      }
+
+      const response = await API.get(
+        "main",
+        `/admin/staff-list/${institutionData.institution}`
+      );
+      setStaffData(response);
+      saveToCache("cafeStaffData", response);
+      setLastUpdated(new Date());
+      return true;
+    } catch (e) {
+      console.log("Error fetching staff data:", e);
+      const cached = checkCache("cafeStaffData");
+      if (cached) {
+        setStaffData(cached);
+      }
+      return false;
+    } finally {
+      if (!isBackgroundRefresh) {
+        setLoader(false);
+      }
+    }
+  };
+
   const refreshData = async (isBackgroundRefresh = false) => {
     if (isBackgroundRefresh) {
       setIsBackgroundRefreshing(true);
@@ -187,10 +222,11 @@ const Provider = ({ children }) => {
       `${isBackgroundRefresh ? "Background" : "Foreground"} refresh started`
     );
 
- await Promise.all([
+    await Promise.all([
       fetchInstitutionData(true),
       fetchItems(true),
       fetchUserData(true),
+      fetchStaffData(true), 
     ]);
 
     if (isBackgroundRefresh) {
@@ -210,12 +246,13 @@ const Provider = ({ children }) => {
       localStorage.removeItem("cafeInstitutionData");
       localStorage.removeItem("cafeItems");
       localStorage.removeItem("cafeUserData");
+      localStorage.removeItem("cafeStaffData"); 
       localStorage.removeItem("hotelBookings");
       console.log("Cache cleared");
       refreshData(false);
       return true;
     } catch (error) {
-      console.error("Error clearing cache:", error);
+      console.error("Error clearing Davenport:", error);
       return false;
     }
   };
@@ -244,8 +281,8 @@ const Provider = ({ children }) => {
     }
   };
 
-  const checkIfReady = (institutionDataLoaded, itemsLoaded) => {
-    return institutionDataLoaded && itemsLoaded;
+  const checkIfReady = (institutionDataLoaded, itemsLoaded, staffDataLoaded) => {
+    return institutionDataLoaded && itemsLoaded && staffDataLoaded;
   };
 
   useEffect(() => {
@@ -254,6 +291,7 @@ const Provider = ({ children }) => {
 
       let institutionDataLoaded = false;
       let itemsLoaded = false;
+      let staffDataLoaded = false;
 
       const cachedInstitutionData = checkCache("cafeInstitutionData");
       if (cachedInstitutionData) {
@@ -270,6 +308,12 @@ const Provider = ({ children }) => {
         itemsLoaded = true;
       }
 
+      const cachedStaffData = checkCache("cafeStaffData");
+      if (cachedStaffData) {
+        setStaffData(cachedStaffData);
+        staffDataLoaded = true;
+      }
+
       const cachedUserData = checkCache("cafeUserData");
       if (cachedUserData) {
         setUserData(cachedUserData);
@@ -281,7 +325,7 @@ const Provider = ({ children }) => {
         setHotelBookings(cachedHotelBookings);
       }
 
-      if (checkIfReady(institutionDataLoaded, itemsLoaded)) {
+      if (checkIfReady(institutionDataLoaded, itemsLoaded, staffDataLoaded)) {
         setLoader(false);
         setReady(true);
         setTimeout(() => {
@@ -321,6 +365,20 @@ const Provider = ({ children }) => {
           }
         }
 
+        if (!staffDataLoaded) {
+          try {
+            const response = await API.get(
+              "main",
+              `/admin/staff-list/${institutionData.institution}`
+            );
+            setStaffData(response);
+            saveToCache("cafeStaffData", response);
+            staffDataLoaded = true;
+          } catch (e) {
+            console.log("Error fetching staff data:", e);
+          }
+        }
+
         try {
           await Auth.currentAuthenticatedUser();
           const userData = await API.get(
@@ -337,7 +395,7 @@ const Provider = ({ children }) => {
 
         setLoader(false);
         setReady(true);
-         const response = await API.get(
+const response = await API.get(
               "main",
               `/any/cafe-detail/${institutionData.institution}?index=${institutionData.index}`
             );
@@ -374,6 +432,9 @@ const Provider = ({ children }) => {
         setInstitutionData,
         items,
         setItems,
+        staffData, 
+        setStaffData,
+        fetchStaffData, 
         loader,
         setLoader,
         ready,

@@ -12,9 +12,10 @@ import PrintKOT from "./PrintKOT";
 import PrintBill from "./PrintBill";
 import { Context } from "../../../../Context";
 import data from '../../../../../Operation/data.json';
-const RestaurantPOS = ({ itemsData = [], institutionData, userData,hotelBookings }) => {
+
+const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBookings }) => {
   const { printerType } = data;
-  const { setLoader } = useContext(Context);
+  const { setLoader,addHotelService } = useContext(Context);
   const { subscribe, isConnected } = useWebSocket();
   const [showReprintKOT, setShowReprintKOT] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -23,6 +24,7 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData,hotelBookings
   const [tableOccupancy, setTableOccupancy] = useState({});
   const [billItemsByStore, setBillItemsByStore] = useState({});
   const [ordersId, setorderId] = useState({});
+  const [unpaidOrders, setUnpaidOrders] = useState([]); // State for unpaid orders
   const totalTableNumber = institutionData?.Table?.length || 0;
   const [isAudioEnabled, setIsAudioEnabled] = useState(localStorage.getItem("audioEnabled") === "true");
   const [orderIds, setorderIds] = useState({});
@@ -92,6 +94,20 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData,hotelBookings
   const [connected, setConnected] = useState(false);
   const [characteristics, setCharacteristics] = useState([]);
 
+  // Fetch unpaid orders
+  const fetchUnpaidOrders = async () => {
+    try {
+      setLoader(true);
+      const result = await API.get("main", `/admin/unpaid-orders/${institutionData.institution}`);
+      const responseBody = result.body ? JSON.parse(result.body) : result;
+      setUnpaidOrders(responseBody.orders || []);
+      setLoader(false);
+    } catch (error) {
+      console.error("Error fetching unpaid orders:", error);
+      setLoader(false);
+      toast.error("Failed to fetch unpaid orders.");
+    }
+  };
   // Helper function to calculate totals
   const calculateTotals = (items) => {
     const billSubtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -342,22 +358,24 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData,hotelBookings
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // Modified fetchAllTableData to include unpaid orders
   const fetchAllTableData = async () => {
     try {
       setLoader(true);
-      const result = await API.get("main", `/admin/get-tabledata/${institutionData.institution}`, {});
-      
-      const responseBody = result.body ? JSON.parse(result.body) : result;
+      const [tableResult, unpaidResult] = await Promise.all([
+        API.get("main", `/admin/get-tabledata/${institutionData.institution}`, {}),
+        API.get("main", `/admin/unpaid-orders/${institutionData.institution}`)
+      ]);
+
+      // Process table data
+      const responseBody = tableResult.body ? JSON.parse(tableResult.body) : tableResult;
       const responseData = responseBody.data || {};
-      
       setAllTablesData(responseData);
-      
+
       let orderData = [];
-      
       if (!Array.isArray(responseData)) {
         Object.entries(responseData).forEach(([tableId, tableInfo]) => {
           const tableOrders = tableInfo.orders || [];
-          
           if (tableOrders.length === 0) {
             orderData.push({
               tableName: tableId,
@@ -380,10 +398,10 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData,hotelBookings
             });
           }
         });
-      } else { 
+      } else {
         orderData = responseData;
       }
-       
+
       const allTableIds = [...new Set(orderData.map((order) => order.tableName))];
       const pendingOrders = orderData.filter((order) => !order.tableOccupied);
       const ordersByTable = pendingOrders.reduce((acc, order) => {
@@ -395,16 +413,15 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData,hotelBookings
         acc[order.tableName] = order.tableOccupied === true;
         return acc;
       }, {});
-      
+
       const tableDataMap = {};
-      
       if (!Array.isArray(responseData)) {
         Object.entries(responseData).forEach(([tableId, tableInfo]) => {
           processTableData(tableId, tableInfo);
           tableDataMap[tableId] = tableInfo;
         });
       }
-      
+
       setTables((prev) =>
         prev.map((table) => {
           const tableIdStr = String(table.id);
@@ -423,19 +440,81 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData,hotelBookings
           return table;
         })
       );
-      
-      console.log("Pendings Orders", tableDataMap);
+
       setPendingOrders(pendingOrders);
       setPendingOrdersByTable(ordersByTable);
       setTableOccupancy(occupancy);
       setTableData(tableDataMap);
+
+      // Process unpaid orders
+      const unpaidResponseBody = unpaidResult.body ? JSON.parse(unpaidResult.body) : unpaidResult;
+      setUnpaidOrders(unpaidResponseBody.orders || []);
+
       setLoader(false);
     } catch (error) {
-      console.error("Error fetching table data:", error);
+      console.error("Error fetching table data or unpaid orders:", error);
       setLoader(false);
+      toast.error("Failed to fetch data.");
     }
   };
 
+  // Function to handle settling an unpaid order
+  const settleUnpaidOrder = async (order, paymentMethod) => {
+    if (!order || !paymentMethod) {
+      toast.error("Order or payment method not selected.");
+      return;
+    }
+
+    setLoader(true);
+    try {
+      const tableIdStr = String(order.tableName);
+      const isHotelOrder = tableIdStr.toLowerCase().startsWith("hotel");
+      const roomNumber = isHotelOrder ? tableIdStr.replace(/^hotel/i, "") : null;
+      const booking = isHotelOrder ? hotelBookings.find(b => b.roomNumber === roomNumber) : null;
+
+      if (isHotelOrder && booking) {
+        const items = order.items || [];
+        const totalFoodBill = items.reduce((sum, item) => sum + (item.type !== "bar" ? item.price * item.quantity : 0), 0);
+        const totalBarBill = items.reduce((sum, item) => sum + (item.type === "bar" ? item.price * item.quantity : 0), 0);
+
+        await addHotelService(booking.bookingId, {
+          [booking.roomNumber]: {
+            [new Date().toISOString().split("T")[0]]: [
+              {
+                food_charges: totalFoodBill,
+                extra_bed_charges: 0,
+                laundry_charges: 0,
+                manual_charges: 0,
+                minibar_charges: totalBarBill,
+                order_id: order.orderId,
+              },
+            ],
+          },
+        });
+      }
+
+      await API.post(
+        "main",
+        `/admin/settle-bill-order/${institutionData.institution}/${tableIdStr}/${order.orderId}`,
+        {
+          body: {
+            paymentStatus: true,
+            paymentMode: "offline",
+            paymentMethod: paymentMethod,
+            table:false
+          },
+        }
+      );
+
+      toast.success(`Order ${order.orderId} settled successfully!`);
+      await fetchAllTableData(); // Refresh data
+    } catch (error) {
+      console.error("Error settling unpaid order:", error);
+      toast.error("Failed to settle order.");
+    } finally {
+      setLoader(false);
+    }
+  };
   const processTableData = (tableId, tableInfo) => {
     if (!tableId || !tableInfo) return;
     
@@ -1070,6 +1149,7 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData,hotelBookings
               setSelectedTable={setSelectedTable} 
               pendingOrdersByTable={pendingOrdersByTable} 
               KOTByTable={KOTByTable} 
+              unpaidOrders={unpaidOrders}
             />
             <div className="flex flex-1">
               <CategoryList 
@@ -1125,6 +1205,8 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData,hotelBookings
             printBluetooth={printData}
             setShowReprintKOT={setShowReprintKOT}
             showReprintKOT={showReprintKOT}
+            unpaidOrders={unpaidOrders} // Pass unpaid orders
+            settleUnpaidOrder={settleUnpaidOrder} // Pass settle function
           />
           {showModal && (
             <PaymentModal
@@ -1189,6 +1271,8 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData,hotelBookings
             printBluetooth={printData}
             setShowReprintKOT={setShowReprintKOT}
             showReprintKOT={showReprintKOT}
+            unpaidOrders={unpaidOrders} // Pass unpaid orders
+            settleUnpaidOrder={settleUnpaidOrder} // Pass settle function
           />
           {showModal && (
             <PaymentModal
