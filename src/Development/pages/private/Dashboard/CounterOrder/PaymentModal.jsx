@@ -19,77 +19,144 @@ const PaymentModal = ({
   localBillItems,
   orderId,
   customerDetails,
+  // New: receive discountData from parent
+  discountData,
+  setDiscountData,
 }) => {
-  // Common state
   const { setLoader, hotelBookings, addHotelService } = useContext(Context);
   const tableIdStr = String(selectedTable?.id || "");
   const [totalBillAmount, setTotalBillAmount] = useState(0);
-  
-  // State for single payment method
+
+  // Payment method state
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
   const [booking, setBooking] = useState(null);
   const [extractedOrderIds, setExtractedOrderIds] = useState([]);
-  
-  // State for partial payment method
+
+  // Partial payment amounts
   const [cashAmount, setCashAmount] = useState(null);
   const [cardAmount, setCardAmount] = useState(null);
   const [qrAmount, setQrAmount] = useState(null);
   const [roomAmount, setRoomAmount] = useState(null);
-  
+
   const paymentMethods = ["QR", "Cash", "Card"];
   const isPartialPayment = institutionData.paymentMethod === "partial";
 
-  // Calculate total bill amount
-  useEffect(() => {
-    const subtotal = localBillItems.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    );
+  // ---------- Discount helper (reads discountData prop similar to OrderContent) ----------
+  const getDiscountInfo = () => {
+    if (!selectedTable) return { method: "none", value: 0, amount: 0 };
 
-    const serviceTaxPercentage =
-      institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0;
-    const cgstPercentage =
-      institutionData?.cgst !== undefined ? institutionData.cgst : 2.5;
-    const sgstPercentage =
-      institutionData?.sgst !== undefined ? institutionData.sgst : 2.5;
+    const tid = String(selectedTable.id);
+    const tableDiscountData = (discountData && discountData[tid]) || null;
 
-    const totalTaxPercentage =
-      serviceTaxPercentage + cgstPercentage + sgstPercentage;
+    if (!tableDiscountData) return { method: "none", value: 0, amount: 0 };
 
-    const taxAmount = (subtotal * totalTaxPercentage) / 100;
-    const totalWithTax = Math.round(subtotal + taxAmount);
-
-    setTotalBillAmount(totalWithTax);
-  }, [localBillItems, institutionData]);
-
-  // Extract order IDs for single payment method
-  useEffect(() => {
-    if (isPartialPayment || !selectedTable || !orderId) {
-      return;
+    // If orderId provided (split-bill scenario), prefer order-specific discount
+    if (orderId && typeof tableDiscountData === "object" && tableDiscountData[orderId]) {
+      return tableDiscountData[orderId];
     }
 
+    // If tableDiscountData is an object keyed by orderIds (no method property) pick first order discount if present
+    if (typeof tableDiscountData === "object" && !tableDiscountData.method) {
+      const firstKey = Object.keys(tableDiscountData)[0];
+      if (firstKey) {
+        return tableDiscountData[firstKey] || { method: "none", value: 0, amount: 0 };
+      }
+    }
+
+    // Otherwise assume it's a direct discount object
+    return tableDiscountData;
+  };
+
+  // ---------- Totals calculation (mirrors OrderContent.calculateTotals) ----------
+  const calculateTotals = (items, discountInfoOverride = null) => {
+    const itemsArr = items || [];
+    const billSubtotal = itemsArr.reduce((sum, item) => {
+      const price = Number(item.price) || 0;
+      const qty = Number(item.quantity) || 0;
+      return sum + price * qty;
+    }, 0);
+
+    const taxableSubtotal = itemsArr.reduce((sum, item) => {
+      const price = Number(item.price) || 0;
+      const qty = Number(item.quantity) || 0;
+      return sum + (item.type !== "bar" ? price * qty : 0);
+    }, 0);
+
+    const cgstRate = institutionData?.cgst ?? 2.5;
+    const sgstRate = institutionData?.sgst ?? 2.5;
+    const serviceTaxRate =
+      institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0;
+
+    const di = discountInfoOverride || getDiscountInfo() || { method: "none", value: 0, amount: 0 };
+
+    let discountAmount = 0;
+    let discountPercentage = 0;
+
+    if (di.method === "percentage" && di.value > 0) {
+      discountPercentage = Math.min(Number(di.value), 100);
+      discountAmount = (billSubtotal * discountPercentage) / 100;
+    } else if (di.method === "amount" && di.value > 0) {
+      discountAmount = Math.min(Number(di.value), billSubtotal);
+    } else if (di.amount) {
+      discountAmount = Number(di.amount) || 0;
+    }
+
+    const discountedSubtotal = Math.max(0, billSubtotal - discountAmount);
+    const discountedTaxableSubtotal = Math.max(0, taxableSubtotal - discountAmount);
+
+    const cgst = (discountedTaxableSubtotal * cgstRate) / 100;
+    const sgst = (discountedTaxableSubtotal * sgstRate) / 100;
+    const serviceTax = (discountedSubtotal * serviceTaxRate) / 100;
+
+    const finalTotal =
+      institutionData?.cgst === 0 || institutionData?.sgst === 0
+        ? Math.round(discountedSubtotal + serviceTax)
+        : Math.round(discountedSubtotal + cgst + sgst + serviceTax);
+
+    return {
+      billSubtotal,
+      taxableSubtotal,
+      cgst,
+      sgst,
+      serviceTax,
+      finalTotal,
+      serviceTaxRate,
+      discountAmount,
+      discountPercentage,
+      discountMethod: di.method,
+    };
+  };
+
+  // compute total whenever items, institution or discount changes
+  useEffect(() => {
+    const totals = calculateTotals(localBillItems || []);
+    setTotalBillAmount(totals.finalTotal);
+  }, [localBillItems, institutionData, discountData, orderId]);
+
+  // ---------- Extract order IDs (same as before) ----------
+  useEffect(() => {
+    if (isPartialPayment || !selectedTable || !orderId) return;
+
     if (typeof orderId === "string" || typeof orderId === "number") {
-      setExtractedOrderIds([orderId]);
+      setExtractedOrderIds([String(orderId)]);
       return;
     }
 
     if (Array.isArray(orderId)) {
-      setExtractedOrderIds(orderId);
+      setExtractedOrderIds(orderId.map((id) => String(id)));
       return;
     }
 
     if (typeof orderId === "object" && orderId !== null) {
       if (orderId.orders && typeof orderId.orders === "object") {
-        const orderIdsForTable = Object.keys(orderId.orders);
-        setExtractedOrderIds(orderIdsForTable);
+        setExtractedOrderIds(Object.keys(orderId.orders));
       } else {
-        const keys = Object.keys(orderId);
-        setExtractedOrderIds(keys);
+        setExtractedOrderIds(Object.keys(orderId));
       }
     }
   }, [selectedTable, orderId, isPartialPayment]);
 
-  // Auto-select room for Hotel tables
+  // ---------- Hotel auto-select ----------
   useEffect(() => {
     if (
       institutionData.integration === "HOTEL" &&
@@ -99,18 +166,16 @@ const PaymentModal = ({
       const matchingBooking = hotelBookings.find(
         (b) => String(b.roomNumber) === roomNumber
       );
-      if (matchingBooking) {
-        setBooking(matchingBooking);
-      } else {
-        setBooking(null); // Reset if no matching room is found
-      }
+      setBooking(matchingBooking || null);
     }
   }, [tableIdStr, hotelBookings, institutionData.integration]);
 
-  // Common bill saving function
+  // ---------- saveBill includes discount + computed tax fields ----------
   const saveBill = async () => {
     setLoader(true);
     try {
+      const totals = calculateTotals(localBillItems || []);
+
       await API.put(
         "main",
         `/admin/orders-items/${institutionData.institution}/${tableIdStr}`,
@@ -121,10 +186,20 @@ const PaymentModal = ({
               institutionData?.serviceTax !== undefined
                 ? institutionData.serviceTax
                 : 0,
-            cgstPercentage:
-              institutionData?.cgst !== undefined ? institutionData.cgst : 2.5,
-            sgstPercentage:
-              institutionData?.sgst !== undefined ? institutionData.sgst : 2.5,
+            cgstPercentage: institutionData?.cgst ?? 2.5,
+            sgstPercentage: institutionData?.sgst ?? 2.5,
+            // discount & computed tax fields
+            discountMethod: totals.discountMethod,
+            discountValue:
+              totals.discountMethod === "percentage"
+                ? totals.discountPercentage
+                : totals.discountAmount,
+            discountPercentage: totals.discountPercentage,
+            discountAmount: totals.discountAmount,
+            cgst: totals.cgst,
+            sgst: totals.sgst,
+            serviceTax: totals.serviceTax,
+            finalTotal: totals.finalTotal,
           },
         }
       );
@@ -146,19 +221,17 @@ const PaymentModal = ({
     }
   };
 
-  // Validate amount input for partial payment
+  // ---------- Input validation ----------
   const validateAmountInput = (value, setAmount) => {
     const numValue = value === null || value === "" ? null : Number(value);
-    
-    if (numValue !== null && numValue < 0) {
+    if (numValue !== null && (isNaN(numValue) || numValue < 0)) {
       toast.error("Payment amount cannot be negative");
       return null;
     }
-
     setAmount(numValue);
   };
 
-  // Handle single payment method
+  // ---------- Single payment handling ----------
   const handleSinglePayment = async () => {
     setLoader(true);
 
@@ -171,26 +244,24 @@ const PaymentModal = ({
     try {
       await saveBill();
 
-      // Create bill link with extracted order IDs
       let billLink = "";
       let selectedOrderId = "";
-       selectedOrderId = extractedOrderIds[0].split(",")[0];
       if (extractedOrderIds.length > 0) {
         selectedOrderId = extractedOrderIds[0].split(",")[0];
         billLink = `https://bhukkadrestrocafe.awsaiapp.com/receipt?orderIds=${selectedOrderId}`;
       }
 
-      // Override bill link for manas25 institution
       if (institutionData.institution === "manas25") {
-        selectedOrderId = extractedOrderIds[0].split(",")[0];        billLink = `https://manasrestaurant.tekkzy.com/receipt?orderIds=${selectedOrderId}`;
+        selectedOrderId = extractedOrderIds[0].split(",")[0];
+        billLink = `https://manasrestaurant.tekkzy.com/receipt?orderIds=${selectedOrderId}`;
       }
 
-      // Only send message if phone number exists and we have a bill link
       const customerPhone = customerDetails[selectedTable?.id]?.phone;
       if (
         customerPhone &&
         billLink &&
-        (institutionData.institution === "bhuk2323" || institutionData.institution === "manas25")
+        (institutionData.institution === "bhuk2323" ||
+          institutionData.institution === "manas25")
       ) {
         try {
           await API.post(
@@ -224,15 +295,16 @@ const PaymentModal = ({
         }
       );
 
-      // Handle hotel room billing
+      // Hotel room charges
       if (selectedPaymentMethod === "ROOM") {
         let totalFoodBill = localBillItems
-  .filter(item => item.type !== "bar")
-  .reduce((total, item) => total + item.price * item.quantity, 0);
+          .filter((item) => item.type !== "bar")
+          .reduce((total, item) => total + item.price * item.quantity, 0);
 
-let totalBarBill = localBillItems
-  .filter(item => item.type === "bar")
-  .reduce((total, item) => total + item.price * item.quantity, 0);
+        let totalBarBill = localBillItems
+          .filter((item) => item.type === "bar")
+          .reduce((total, item) => total + item.price * item.quantity, 0);
+
         await addHotelService(booking?.bookingId, {
           [booking.roomNumber]: {
             [new Date().toISOString().split("T")[0]]: [
@@ -251,67 +323,58 @@ let totalBarBill = localBillItems
 
       await completePayment();
     } catch (error) {
-  console.error("Payment Error:", error);
+      console.error("Payment Error:", error);
 
-  let errorMessage = "Failed to process payment.";
+      let errorMessage = "Failed to process payment.";
 
-  if (error?.response?.data) {
-    const apiError = error.response.data;
-    // Append backend message + error details
-    if (apiError.message) errorMessage += ` - ${apiError.message}`;
-    if (apiError.error) errorMessage += `: ${apiError.error}`;
-  }
+      if (error?.response?.data) {
+        const apiError = error.response.data;
+        if (apiError.message) errorMessage += ` - ${apiError.message}`;
+        if (apiError.error) errorMessage += `: ${apiError.error}`;
+      }
 
-  toast.error(errorMessage);
-  setLoader(false);
-}
-
+      toast.error(errorMessage);
+      setLoader(false);
+    }
   };
 
-  // Handle partial payment method
+  // ---------- Partial payment handling ----------
   const handlePartialPayment = async () => {
     const cashAmountFinal = cashAmount || 0;
     const cardAmountFinal = cardAmount || 0;
     const qrAmountFinal = qrAmount || 0;
     const roomAmountFinal = roomAmount || 0;
     const totalPaid = cashAmountFinal + cardAmountFinal + qrAmountFinal + roomAmountFinal;
-    
+
     if (totalPaid !== totalBillAmount) {
       toast.error(`Total paid (₹${totalPaid}) must equal bill amount (₹${totalBillAmount})`);
       return;
     }
 
-    const paymentMethods = [];
-    if (cashAmountFinal > 0) {
-      paymentMethods.push({ method: "Cash", amount: cashAmountFinal });
-    }
-    if (cardAmountFinal > 0) {
-      paymentMethods.push({ method: "Card", amount: cardAmountFinal });
-    }
-    if (qrAmountFinal > 0) {
-      paymentMethods.push({ method: "QR", amount: qrAmountFinal });
-    }
-    if (roomAmountFinal > 0) {
-      paymentMethods.push({ method: "ROOM", amount: roomAmountFinal });
-    }
+    const paymentMethodsPayload = [];
+    if (cashAmountFinal > 0) paymentMethodsPayload.push({ method: "Cash", amount: cashAmountFinal });
+    if (cardAmountFinal > 0) paymentMethodsPayload.push({ method: "Card", amount: cardAmountFinal });
+    if (qrAmountFinal > 0) paymentMethodsPayload.push({ method: "QR", amount: qrAmountFinal });
+    if (roomAmountFinal > 0) paymentMethodsPayload.push({ method: "ROOM", amount: roomAmountFinal });
 
     setLoader(true);
-    
+
     try {
       await saveBill();
 
-     let selectedOrderId = "";
+      let selectedOrderId = "";
       if (extractedOrderIds.length > 0) {
         selectedOrderId = extractedOrderIds[0].split(",")[0];
       }
-      const totalFoodBill = localBillItems
-  .filter(item => item.type !== "bar")
-  .reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-const totalBarBill = localBillItems
-  .filter(item => item.type === "bar")
-  .reduce((sum, item) => sum + item.price * item.quantity, 0);
-      // Handle hotel room billing if room amount is present
+      const totalFoodBill = localBillItems
+        .filter((item) => item.type !== "bar")
+        .reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+      const totalBarBill = localBillItems
+        .filter((item) => item.type === "bar")
+        .reduce((sum, item) => sum + item.price * item.quantity, 0);
+
       if (roomAmountFinal > 0) {
         await addHotelService(booking?.bookingId, {
           [booking.roomNumber]: {
@@ -328,7 +391,7 @@ const totalBarBill = localBillItems
           },
         });
       }
-      
+
       await API.post(
         "main",
         `/admin/partial-settle-bill/${institutionData.institution}/${tableIdStr}`,
@@ -336,7 +399,7 @@ const totalBarBill = localBillItems
           body: {
             paymentStatus: true,
             paymentMode: "offline",
-            paymentMethods: paymentMethods,
+            paymentMethods: paymentMethodsPayload,
             status: "delivered",
           },
         }
@@ -344,29 +407,26 @@ const totalBarBill = localBillItems
 
       await completePayment();
     } catch (error) {
-  console.error("Payment Error:", error);
+      console.error("Payment Error:", error);
 
-  let errorMessage = "Failed to process payment.";
+      let errorMessage = "Failed to process payment.";
 
-  if (error?.response?.data) {
-    const apiError = error.response.data;
-    // Append backend message + error details
-    if (apiError.message) errorMessage += ` - ${apiError.message}`;
-    if (apiError.error) errorMessage += `: ${apiError.error}`;
-  }
+      if (error?.response?.data) {
+        const apiError = error.response.data;
+        if (apiError.message) errorMessage += ` - ${apiError.message}`;
+        if (apiError.error) errorMessage += `: ${apiError.error}`;
+      }
 
-  toast.error(errorMessage);
-  setLoader(false);
-}
-
+      toast.error(errorMessage);
+      setLoader(false);
+    }
   };
 
-  // Common completion logic
+  // ---------- Completion ----------
   const completePayment = async () => {
     onClose();
     setLoader(false);
 
-    // Clean up local storage
     let kotData = JSON.parse(localStorage.getItem("kotOrders") || "{}");
     if (kotData && kotData.kotTables) {
       delete kotData.kotTables[tableIdStr];
@@ -388,10 +448,11 @@ const totalBarBill = localBillItems
     toast.success("Payment Successful!");
   };
 
-  // Calculate remaining amount for partial payment
-  const remainingAmount = totalBillAmount -
+  const remainingAmount =
+    totalBillAmount -
     ((cashAmount || 0) + (cardAmount || 0) + (qrAmount || 0) + (roomAmount || 0));
 
+  // ---------- Render ----------
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
       <div className="bg-white rounded-xl shadow-2xl p-6 w-96">
@@ -399,7 +460,6 @@ const totalBarBill = localBillItems
           {isPartialPayment ? "Split Payment" : "Settle Bill"}
         </h2>
 
-        {/* Bill Summary */}
         <div className="mb-4 text-center">
           <p className="text-gray-600">
             Table: <strong>{selectedTable?.id}</strong>
@@ -411,12 +471,9 @@ const totalBarBill = localBillItems
           )}
         </div>
 
-        {/* Conditional UI based on payment method */}
         {isPartialPayment ? (
-          // Partial Payment UI
           <div className="space-y-4">
             <div className={`grid gap-2 ${institutionData.integration === "HOTEL" ? 'grid-cols-2' : 'grid-cols-3'}`}>
-              {/* Cash Payment */}
               <div className="flex flex-col">
                 <label className="text-gray-700 text-sm mb-1">Cash</label>
                 <input
@@ -428,7 +485,6 @@ const totalBarBill = localBillItems
                 />
               </div>
 
-              {/* Card Payment */}
               <div className="flex flex-col">
                 <label className="text-gray-700 text-sm mb-1">Card</label>
                 <input
@@ -440,7 +496,6 @@ const totalBarBill = localBillItems
                 />
               </div>
 
-              {/* QR Payment */}
               <div className="flex flex-col">
                 <label className="text-gray-700 text-sm mb-1">QR</label>
                 <input
@@ -452,7 +507,6 @@ const totalBarBill = localBillItems
                 />
               </div>
 
-              {/* Room Payment - Only show if hotel integration */}
               {institutionData.integration === "HOTEL" && (
                 <div className="flex flex-col">
                   <label className="text-gray-700 text-sm mb-1">Room</label>
@@ -467,7 +521,6 @@ const totalBarBill = localBillItems
               )}
             </div>
 
-            {/* Hotel Room Selection - Only show if room amount is entered */}
             {institutionData.integration === "HOTEL" && roomAmount > 0 && (
               <div className="flex flex-row gap-2 my-2">
                 <h3 className="text-sm font-semibold">Select Room:</h3>
@@ -475,31 +528,27 @@ const totalBarBill = localBillItems
                   className="border rounded-md p-2 w-full"
                   value={booking?.bookingId || ""}
                   onChange={(e) =>
-                    setBooking(
-                      hotelBookings.find((b) => b.bookingId === e.target.value)
-                    )
+                    setBooking(hotelBookings.find((b) => b.bookingId === e.target.value))
                   }
                 >
                   <option value="" disabled>
                     Select a room
                   </option>
-                  {hotelBookings.map((booking) => (
-                    <option key={booking.bookingId} value={booking.bookingId}>
-                      {booking.roomNumber}
+                  {hotelBookings.map((b) => (
+                    <option key={b.bookingId} value={b.bookingId}>
+                      {b.roomNumber}
                     </option>
                   ))}
                 </select>
               </div>
             )}
 
-            {/* Hotel Bill Note - Only show if room amount is entered */}
             {institutionData.integration === "HOTEL" && roomAmount > 0 && (
               <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-3 py-2 rounded-md mt-3 text-sm">
                 <strong>Note:</strong> Room charges will be collected during hotel checkout.
               </div>
             )}
 
-            {/* Remaining Amount Indicator */}
             <div className="text-center mt-2">
               <p className={`font-semibold ${remainingAmount === 0 ? 'text-green-600' : 'text-red-500'}`}>
                 Remaining: ₹{remainingAmount}
@@ -507,7 +556,6 @@ const totalBarBill = localBillItems
             </div>
           </div>
         ) : (
-          // Single Payment Method UI
           <div>
             <h3 className="font-semibold mb-3 text-gray-700">
               Choose Payment Method:
@@ -541,7 +589,6 @@ const totalBarBill = localBillItems
               )}
             </div>
 
-            {/* Hotel Room Selection */}
             {selectedPaymentMethod === "ROOM" && (
               <div className="flex flex-row gap-2 my-2">
                 <h3 className="text-sm font-semibold">Select Room:</h3>
@@ -549,24 +596,21 @@ const totalBarBill = localBillItems
                   className="border rounded-md p-2 w-full"
                   value={booking?.bookingId || ""}
                   onChange={(e) =>
-                    setBooking(
-                      hotelBookings.find((b) => b.bookingId === e.target.value)
-                    )
+                    setBooking(hotelBookings.find((b) => b.bookingId === e.target.value))
                   }
                 >
                   <option value="" disabled>
                     Select a room
                   </option>
-                  {hotelBookings.map((booking) => (
-                    <option key={booking.bookingId} value={booking.bookingId}>
-                      {booking.roomNumber}
+                  {hotelBookings.map((b) => (
+                    <option key={b.bookingId} value={b.bookingId}>
+                      {b.roomNumber}
                     </option>
                   ))}
                 </select>
               </div>
             )}
 
-            {/* Hotel Bill Note */}
             {selectedPaymentMethod === "ROOM" && (
               <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-3 py-2 rounded-md mt-3 text-sm">
                 <strong>Note:</strong> Payment will be collected during hotel checkout.
@@ -575,7 +619,6 @@ const totalBarBill = localBillItems
           </div>
         )}
 
-        {/* Action Buttons */}
         <div className={`flex justify-between mt-6 ${isPartialPayment ? 'space-x-4' : ''}`}>
           <button
             onClick={onClose}

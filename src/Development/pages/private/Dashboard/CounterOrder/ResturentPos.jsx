@@ -1420,6 +1420,8 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
               setTableOccupancy={setTableOccupancy}
               orderId={ordersId[String(selectedTable?.id)]}
               customerDetails={customerDetails}
+              discountData={discountData} 
+    setDiscountData={setDiscountData}
             />
           )}
         </div>
