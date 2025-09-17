@@ -11,6 +11,7 @@ import KOT from "./kot";
 import { RiBillLine } from "react-icons/ri";
 const Orders = () => {
   const { institution } = useContext(Context).institutionData;
+    const { institutionData } = useContext(Context);
   const [orders, setOrders] = useState([]);
   const { userData } = useContext(Context);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -91,9 +92,10 @@ const Orders = () => {
     }
     try {
       setLoader(true);
+      const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
       const result = await API.get(
         "main",
-        `/admin/list-orders/${institution}`,
+        `/admin/list-orders/${institution}?type=${type}`,
         {}
       );
       console.log("Fetched orders:", result);

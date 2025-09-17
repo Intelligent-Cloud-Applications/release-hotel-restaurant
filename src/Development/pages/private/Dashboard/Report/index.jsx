@@ -1057,9 +1057,11 @@ const Report = () => {
           setAllOrders([]);
           return;
         }
+        const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
+
         const [stockResponse, orderResponse] = await Promise.all([
           API.get("main", `/admin/stock-list-items/${institution}`),
-          API.get("main", `/admin/list-orders/${institution}`, {}),
+          API.get("main", `/admin/list-orders/${institution}?type=${type}`, {}),
         ]);
         setStocks(stockResponse || []);
         const paidOrders = (orderResponse || []).filter((order) => order.paymentStatus === true);

@@ -218,7 +218,8 @@ const StockManagement = () => {
     const fetchOrders = async () => {
       if (!institution) return;
       try {
-        const result = await API.get("main", `/admin/list-orders/${institution}`, {});
+        const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
+        const result = await API.get("main", `/admin/list-orders/${institution}?type=${type}`, {});
         const paidOrders = (result || []).filter((order) => order.paymentStatus === true);
         setAllOrders(paidOrders);
       } catch (error) {

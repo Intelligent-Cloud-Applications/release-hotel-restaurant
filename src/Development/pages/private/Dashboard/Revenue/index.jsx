@@ -82,6 +82,7 @@ const CustomDropdown = ({ options, value, onChange, label }) => (
 const RevenueDashboard = () => {
   const [data, setData] = useState([]);
   const { institution } = useContext(Context).institutionData;
+    const { institutionData } = useContext(Context);
   const { userData } = useContext(Context);
   const [timeFrame, setTimeFrame] = useState("today");
   const [selectedDate, setSelectedDate] = useState("");
@@ -96,9 +97,11 @@ const RevenueDashboard = () => {
       const fetchData = async () => {
     setLoading(true);
     try {
+      const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
+
       const result = await API.get(
         "main",
-        `/admin/list-orders/${institution}`,
+        `/admin/list-orders/${institution}?type=${type}`,
         {}
       );
       const filteredData = result.filter(
