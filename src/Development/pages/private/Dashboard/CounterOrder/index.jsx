@@ -14,7 +14,7 @@ const CounterOrder = () => {
   } = useContext(Context);
   const [itemsData, setItemsData] = useState([]);
   const [hotelBooking, setHotelBooking] = useState([]);
-  const [isLoading, setIsLoading] = useState(true); 
+  const [isLoading, setIsLoading] = useState(true);
 
   const fetchHotelBookings = async () => {
     console.log('fetchHotelBookings called with integration:', institutionData?.integration);
@@ -33,7 +33,7 @@ const CounterOrder = () => {
       );
 
       if (!response.list || response.list.length === 0) {
-        console.warn('No hotel bookings found for institutionId=HOTEL001');
+        console.warn('No hotel bookings found for institutionId');
         setHotelBookings([]);
         setHotelBooking([]);
         // toast.warn('No active hotel bookings found.');
@@ -59,24 +59,38 @@ const CounterOrder = () => {
     }
   };
 
-  const fetchItems = async () => {
-    try {
-      setLoader(true);
-      const items = await API.get(
-        'main',
-        `/any/list-items/${institutionData.institution}`,
-        {}
-      );
-      const availableItems = items.filter((item) => item.outOfStock !== true);
-      setItemsData(availableItems);
-      console.log('Items fetched:', availableItems);
-    } catch (e) {
-      console.error('Error fetching items:', e);
-      toast.error('Failed to fetch menu items. Please try again.');
-    } finally {
-      setLoader(false);
+const fetchItems = async () => {
+  try {
+    setLoader(true);
+    const items = await API.get(
+      'main',
+      `/any/list-items/${institutionData.institution}`,
+      {}
+    );
+    
+    // Filter items based on bar_integration and category
+    let filteredItems = items.filter((item) => item.outOfStock !== true);
+    
+    if (institutionData?.bar_integration !== 'Yes') {
+      filteredItems = filteredItems.filter((item) => {
+        // If category is 'beverage' (case-insensitive), always include it
+        if (item.category?.toLowerCase() === 'beverage') {
+          return true;
+        }
+        // For other categories, only include 'cafe' type items
+        return item.type === 'cafe';
+      });
     }
-  };
+    
+    setItemsData(filteredItems);
+    console.log('Filtered items fetched:', filteredItems);
+  } catch (e) {
+    console.error('Error fetching items:', e);
+    toast.error('Failed to fetch menu items. Please try again.');
+  } finally {
+    setLoader(false);
+  }
+};
 
   useEffect(() => {
     console.log('useEffect triggered with institutionData:', institutionData);
@@ -98,7 +112,7 @@ const CounterOrder = () => {
     };
 
     fetchData();
-  }, [institutionData?.institution, institutionData?.integration, setHotelBookings, setLoader]);
+  }, [institutionData?.institution, institutionData?.integration, institutionData?.bar_integration, setHotelBookings, setLoader]);
 
   // Optional: Periodic refresh for hotel bookings
   useEffect(() => {
@@ -117,7 +131,7 @@ const CounterOrder = () => {
   }
 
   if (isLoading) {
-    return <div>Loading...</div>; // Show loading indicator
+    return <div>Loading...</div>;
   }
 
   console.log('Passing hotelBooking to RestaurantPOS:', hotelBooking);
