@@ -60,12 +60,17 @@ export const dsProd = {
         endpoints: [
             {
                 name: 'main',
-                endpoint: 'https://ilqbk6cpwl.execute-api.us-east-1.amazonaws.com/prod',
+                endpoint: 'https://uab10747yb.execute-api.us-east-1.amazonaws.com/prod',
                 region: 'us-east-1',
             },
             {
                 name: 'hotelHouseKeeping',
                 endpoint: 'https://aj3jjl9pkb.execute-api.us-east-1.amazonaws.com/prod',
+                region: 'us-east-1',
+            },
+            {
+                name: 'frontdesk',
+                endpoint: 'https://g4csktc3fj.execute-api.us-east-1.amazonaws.com/prod',
                 region: 'us-east-1',
             },
         ]
