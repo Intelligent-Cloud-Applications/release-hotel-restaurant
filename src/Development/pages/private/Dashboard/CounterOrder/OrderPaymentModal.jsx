@@ -112,7 +112,7 @@ const OrderPaymentModal = ({
     setLoader(true);
     setError(null);
     try {
-      const inst = institutionData?.institution || institutionData?.institutionId ;
+      const inst = institutionData?.institution || institutionData?.institutionId;
       const resp = await API.post("frontdesk", "/company", {
         body: { ...payload, institutionId: inst },
       });
@@ -154,12 +154,15 @@ const OrderPaymentModal = ({
   };
 
   // ---------- Update Company Credit ----------
-  const updateCompanyCredit = async (companyId, amount, name) => {
+  const updateCompanyCredit = async (companyId, amount, name, orderId) => {
     try {
+      const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
       const creditData = {
         amount: Number(amount),
         date: new Date().toISOString().split("T")[0],
         name: name || "Unknown",
+        type: type,
+        orderId: orderId,
       };
       await API.patch("frontdesk", `/company`, {
         body: {
@@ -174,6 +177,44 @@ const OrderPaymentModal = ({
       toast.error("Failed to update company credit");
       throw error;
     }
+  };
+
+  // ---------- Calculate Totals ----------
+  const calculateTotals = (items) => {
+    if (!items || !Array.isArray(items)) {
+      return {
+        subtotal: 0,
+        cgst: 0,
+        sgst: 0,
+        serviceTax: 0,
+        totalWithTax: 0,
+      };
+    }
+
+    const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+    const serviceTaxPercentage =
+      institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0;
+    const cgstPercentage = institutionData?.cgst !== undefined ? institutionData.cgst : 2.5;
+    const sgstPercentage = institutionData?.sgst !== undefined ? institutionData.sgst : 2.5;
+
+    const taxableSubtotal = items
+      .filter((item) => item.type !== "bar")
+      .reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+    const cgst = (taxableSubtotal * cgstPercentage) / 100;
+    const sgst = (taxableSubtotal * sgstPercentage) / 100;
+    const serviceTax = (subtotal * serviceTaxPercentage) / 100;
+
+    const totalWithTax = Math.round(subtotal + cgst + sgst + serviceTax);
+
+    return {
+      subtotal,
+      cgst,
+      sgst,
+      serviceTax,
+      totalWithTax,
+    };
   };
 
   // Fetch companies only when BTC is selected
@@ -206,25 +247,8 @@ const OrderPaymentModal = ({
   useEffect(() => {
     if (!matchedOrder) return;
 
-    const subtotal = matchedOrder.items.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    );
-
-    const serviceTaxPercentage =
-      institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0;
-    const cgstPercentage =
-      institutionData?.cgst !== undefined ? institutionData.cgst : 2.5;
-    const sgstPercentage =
-      institutionData?.sgst !== undefined ? institutionData.sgst : 2.5;
-
-    const totalTaxPercentage =
-      serviceTaxPercentage + cgstPercentage + sgstPercentage;
-
-    const taxAmount = (subtotal * totalTaxPercentage) / 100;
-    const totalWithTax = Math.round(subtotal + taxAmount);
-
-    setTotalBillAmount(totalWithTax);
+    const totals = calculateTotals(matchedOrder.items);
+    setTotalBillAmount(totals.totalWithTax);
   }, [matchedOrder, institutionData]);
 
   // Validate amount input for partial payment
@@ -300,7 +324,7 @@ const OrderPaymentModal = ({
           payerName,
         };
         // Update company credit for BTC payment
-        await updateCompanyCredit(orderSource, totalBillAmount, payerName);
+        await updateCompanyCredit(orderSource, totalBillAmount, payerName, selectedOrderId);
       }
 
       // Handle hotel room billing
@@ -313,6 +337,9 @@ const OrderPaymentModal = ({
           .filter((item) => item.type === "bar")
           .reduce((total, item) => total + item.price * item.quantity, 0);
 
+        const totals = calculateTotals(matchedOrder.items);
+        const totalFoodBillWithGST = totalFoodBill + totals.cgst + totals.sgst;
+
         if (!booking?.bookingId) {
           toast.error("Please select a room for hotel billing.");
           setLoader(false);
@@ -323,7 +350,7 @@ const OrderPaymentModal = ({
           [booking.roomNumber]: {
             [new Date().toISOString().split("T")[0]]: [
               {
-                food_charges: totalFoodBill,
+                food_charges: totalFoodBillWithGST,
                 extra_bed_charges: 0,
                 laundry_charges: 0,
                 manual_charges: 0,
@@ -350,7 +377,6 @@ const OrderPaymentModal = ({
       let errorMessage = "Failed to process payment.";
 
       if (error?.response?.data) {
-
         const apiError = error.response.data;
         if (apiError.message) errorMessage += ` - ${apiError.message}`;
         if (apiError.error) errorMessage += `: ${apiError.error}`;
@@ -444,7 +470,7 @@ const OrderPaymentModal = ({
           payerName,
         },
       });
-      await updateCompanyCredit(orderSource, btcAmountFinal, payerName);
+      await updateCompanyCredit(orderSource, btcAmountFinal, payerName, selectedOrderId);
     }
 
     setLoader(true);
@@ -464,11 +490,13 @@ const OrderPaymentModal = ({
           setLoader(false);
           return;
         }
+        const totals = calculateTotals(matchedOrder.items);
+        const totalFoodBillWithGST = totalFoodBill + totals.cgst + totals.sgst;
         await addHotelService(booking.bookingId, {
           [booking.roomNumber]: {
             [new Date().toISOString().split("T")[0]]: [
               {
-                food_charges: totalFoodBill,
+                food_charges: totalFoodBillWithGST,
                 extra_bed_charges: 0,
                 laundry_charges: 0,
                 manual_charges: 0,

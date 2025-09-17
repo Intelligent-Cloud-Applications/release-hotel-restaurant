@@ -149,31 +149,33 @@ const PaymentModal = ({
     }
   };
 
-  // ---------- Update Company Credit ----------
-  const updateCompanyCredit = async (companyId, amount, name) => {
-    try {
-      const creditData = {
-  date: {
-    amount: Number(amount),
-    name: name || "Unknown",
-    createdOn: new Date().toISOString().split("T")[0],
-  },
-};
+const updateCompanyCredit = async (companyId, amount, name, orderId) => {
+  try {
+    const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
+    const creditData = {
+      date: {
+        amount: Number(amount),
+        name: name || "Unknown",
+        createdOn: new Date().toISOString().split("T")[0],
+        type: type, // Add type
+        orderId: orderId, // Add orderId
+      },
+    };
 
-      await API.patch("frontdesk", `/company`, {
-        body: {
-          credit: creditData,
-          institutionId: institutionData.institutionId,
-          company_id: companyId,
-        },
-      });
-      toast.success("Company credit updated successfully");
-    } catch (error) {
-      console.error("updateCompanyCredit error:", error);
-      toast.error("Failed to update company credit");
-      throw error;
-    }
-  };
+    await API.patch("frontdesk", `/company`, {
+      body: {
+        credit: creditData,
+        institutionId: institutionData.institutionId,
+        company_id: companyId,
+      },
+    });
+    toast.success("Company credit updated successfully");
+  } catch (error) {
+    console.error("updateCompanyCredit error:", error);
+    toast.error("Failed to update company credit");
+    throw error;
+  }
+};
 
   // Fetch companies only when BTC is selected
   useEffect(() => {
@@ -417,7 +419,7 @@ const PaymentModal = ({
           orderSource,
           payerName,
         };
-        await updateCompanyCredit(orderSource, totalBillAmount, payerName);
+        await updateCompanyCredit(orderSource, totalBillAmount, payerName, selectedOrderId);
       }
       if (selectedPaymentMethod === "ROOM") {
         let totalFoodBill = localBillItems
@@ -426,20 +428,22 @@ const PaymentModal = ({
         let totalBarBill = localBillItems
           .filter((item) => item.type === "bar")
           .reduce((total, item) => total + item.price * item.quantity, 0);
-        await addHotelService(booking?.bookingId, {
-          [booking.roomNumber]: {
-            [new Date().toISOString().split("T")[0]]: [
-              {
-                food_charges: totalFoodBill,
-                extra_bed_charges: 0,
-                laundry_charges: 0,
-                manual_charges: 0,
-                minibar_charges: totalBarBill,
-                order_id: selectedOrderId,
-              },
-            ],
-          },
-        });
+        const totals = calculateTotals(localBillItems || []);
+const totalFoodBillWithGST = totalFoodBill + totals.cgst + totals.sgst;
+await addHotelService(booking?.bookingId, {
+  [booking.roomNumber]: {
+    [new Date().toISOString().split("T")[0]]: [
+      {
+        food_charges: totalFoodBillWithGST, // Include GST
+        extra_bed_charges: 0,
+        laundry_charges: 0,
+        manual_charges: 0,
+        minibar_charges: totalBarBill, // Bar items remain unchanged
+        order_id: selectedOrderId,
+      },
+    ],
+  },
+});
       }
       await completePayment();
     } catch (error) {
@@ -525,7 +529,7 @@ const PaymentModal = ({
           payerName,
         },
       });
-      await updateCompanyCredit(orderSource, btcAmountFinal, payerName);
+      await updateCompanyCredit(orderSource, btcAmountFinal, payerName, selectedOrderId);
     }
 
     setLoader(true);
@@ -542,20 +546,22 @@ const PaymentModal = ({
         .filter((item) => item.type === "bar")
         .reduce((sum, item) => sum + item.price * item.quantity, 0);
       if (roomAmountFinal > 0) {
-        await addHotelService(booking?.bookingId, {
-          [booking.roomNumber]: {
-            [new Date().toISOString().split("T")[0]]: [
-              {
-                food_charges: totalFoodBill,
-                extra_bed_charges: 0,
-                laundry_charges: 0,
-                manual_charges: 0,
-                minibar_charges: totalBarBill,
-                order_id: selectedOrderId,
-              },
-            ],
-          },
-        });
+        const totals = calculateTotals(localBillItems || []);
+const totalFoodBillWithGST = totalFoodBill + totals.cgst + totals.sgst;
+await addHotelService(booking?.bookingId, {
+  [booking.roomNumber]: {
+    [new Date().toISOString().split("T")[0]]: [
+      {
+        food_charges: totalFoodBillWithGST, // Include GST
+        extra_bed_charges: 0,
+        laundry_charges: 0,
+        manual_charges: 0,
+        minibar_charges: totalBarBill, // Bar items remain unchanged
+        order_id: selectedOrderId,
+      },
+    ],
+  },
+});
       }
       await API.post("main", `/admin/partial-settle-bill/${institutionData.institution}/${tableIdStr}`, {
         body: {
