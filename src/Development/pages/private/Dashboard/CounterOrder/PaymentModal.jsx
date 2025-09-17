@@ -214,6 +214,7 @@ const PaymentModal = ({
             sgst: totals.sgst,
             serviceTax: totals.serviceTax,
             finalTotal: totals.finalTotal,
+            type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
           },
         }
       );
@@ -224,6 +225,7 @@ const PaymentModal = ({
         {
           body: {
             items: localBillItems,
+            type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
           },
         }
       );
@@ -310,6 +312,7 @@ const PaymentModal = ({
       // prepare settle payload. include btc tx id and orderSource/payerName if BTC selected
       const settleBody = {
         paymentStatus: true,
+        type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
         paymentMode: "offline",
         paymentMethod: selectedPaymentMethod,
         status: "delivered",
@@ -392,6 +395,7 @@ const PaymentModal = ({
         `/admin/settle-bill/${institutionData.institution}/${tableIdStr}`,
         {
           body: {
+            type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
             paymentStatus: true,
             paymentMode: "offline",
             paymentMethod: "Free",

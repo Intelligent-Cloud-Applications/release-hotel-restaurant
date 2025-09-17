@@ -626,6 +626,7 @@ const OrderContent = ({
       const body = {
         staffName: selectedStaff,
         orderId: splitBillMode ? selectedOrderId : null,
+        type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
       };
 
       await API.post("main", endpoint, { body });
@@ -711,6 +712,7 @@ const OrderContent = ({
           cgst,
           sgst,
           serviceTax,
+          type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
         },
       });
 
@@ -725,7 +727,7 @@ const OrderContent = ({
         : `/admin/orders-bill/${institutionData.institution}/${tableIdStr}`;
 
       await API.post("main", billEndpoint, {
-        body: { items },
+        body: { items,type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe" },
       });
 
       setLoader(false);
@@ -874,6 +876,7 @@ const OrderContent = ({
             cgst,
             sgst,
             serviceTax,
+            type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
           },
         }
       );

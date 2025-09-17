@@ -138,6 +138,7 @@ const OrderPaymentModal = ({
         paymentStatus: true,
         paymentMode: "offline",
         paymentMethod: selectedPaymentMethod,
+        type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
       };
 
       if (selectedPaymentMethod === "BTC") {
@@ -223,6 +224,7 @@ const OrderPaymentModal = ({
         {
           body: {
             paymentStatus: true,
+            type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
             paymentMode: "offline",
             paymentMethod: "Free",
             status: "delivered",
@@ -335,6 +337,7 @@ const OrderPaymentModal = ({
             paymentMode: "offline",
             paymentMethods: paymentMethodsArray,
             status: "delivered",
+            type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
           },
         }
       );

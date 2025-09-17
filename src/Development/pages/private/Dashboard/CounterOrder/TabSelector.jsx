@@ -57,6 +57,7 @@ const TabSelector = ({
           body: {
             sourceTable: String(selectedTable.id),
             destinationTable: destinationTable,
+            type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
           },
         }
       );
@@ -97,6 +98,7 @@ const TabSelector = ({
           body: {
             tableName: String(selectedTable.id),
             institution: institutionData.institution,
+            type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
           },
         }
       );
