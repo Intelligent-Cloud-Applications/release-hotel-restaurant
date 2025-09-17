@@ -111,8 +111,9 @@ const AdjustmentModal = ({
                         </>
                       ) : (
                         <>
-                          <option value="l">l</option>
-                          <option value="ml">ml</option>
+                          <option value="l">L</option>
+                          <option value="ml">ML</option>
+                          <option value="btl">BTL</option>
                         </>
                       )}
                     </select>
@@ -465,6 +466,14 @@ const StockManagement = () => {
               adjustedAmount = adj.amount * 1000;
               adjustedUnit = "ml";
             } else if (adjustedUnit === "ml") {
+              adjustedUnit = "ml";
+            } else if (adjustedUnit === "btl") {
+              const stock = stocks.find(s => s.stockId === adj.stockId);
+              if (!stock) {
+                throw new Error(`Stock not found for ID: ${adj.stockId}`);
+              }
+              const oneBottleMl = parseVolumeToMl(stock.oneBottleVolume || "1000 ml");
+              adjustedAmount = adj.amount * oneBottleMl;
               adjustedUnit = "ml";
             } else {
               throw new Error(`Invalid unit for bar: ${adj.unit}`);
