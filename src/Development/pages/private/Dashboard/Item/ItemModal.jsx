@@ -14,6 +14,7 @@ import { X } from "lucide-react";
 import { toast } from "react-toastify";
 import { MdDeleteForever } from "react-icons/md";
 import { MdAddToPhotos } from "react-icons/md";
+import { StockInput } from "../../../../common/Inputs/DropDownInput";
 
 const ItemModal = ({
   showModal,
@@ -28,7 +29,7 @@ const ItemModal = ({
   setItemData,
   itemData = {},
   institutionData,
-  items
+  items,
 }) => {
   const [descriptionError, setDescriptionError] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -65,7 +66,9 @@ const ItemModal = ({
     if (isEditMode && currentItem) {
       let materials = currentItem.materials || [];
       if (currentItem.type === "bar" && materials.length === 0) {
-        materials = [{ stockName: "", stockId: "", quantity: "0 ml", unit: "ml" }];
+        materials = [
+          { stockName: "", stockId: "", quantity: "0 ml", unit: "ml" },
+        ];
       } else {
         materials = materials.map((mat) => ({
           stockName: mat.stockName || "",
@@ -138,7 +141,9 @@ const ItemModal = ({
         if (!prevData.materials || prevData.materials.length === 0) {
           return {
             ...prevData,
-            materials: [{ stockName: "", stockId: "", quantity: "0 ml", unit: "ml" }],
+            materials: [
+              { stockName: "", stockId: "", quantity: "0 ml", unit: "ml" },
+            ],
           };
         }
         return prevData;
@@ -157,7 +162,8 @@ const ItemModal = ({
         if (value === "bar") {
           newMaterials = [{ stockName: "", quantity: "0 ml", unit: "ml" }];
         } else if (value === "cafe") {
-          newMaterials = prevData.materials.length > 0 ? prevData.materials : [];
+          newMaterials =
+            prevData.materials.length > 0 ? prevData.materials : [];
         }
         return {
           ...prevData,
@@ -206,7 +212,9 @@ const ItemModal = ({
         const fileExtension = file.name.split(".").pop().toLowerCase();
 
         if (!allowedExtensions.includes(fileExtension)) {
-          throw new Error("Invalid file format. Only PNG, JPG, JPEG, and SVG are allowed.");
+          throw new Error(
+            "Invalid file format. Only PNG, JPG, JPEG, and SVG are allowed."
+          );
         }
 
         if (file.size > 5 * 1024 * 1024) {
@@ -234,7 +242,9 @@ const ItemModal = ({
       }
     } catch (error) {
       console.error("Error processing image:", error);
-      setImageError(error.message || "Error processing image. Please try again.");
+      setImageError(
+        error.message || "Error processing image. Please try again."
+      );
       setItemData((prev) => ({ ...prev, imageUrl: null }));
       setImagePreview(null);
     } finally {
@@ -249,7 +259,10 @@ const ItemModal = ({
 
   const handleBarSizeChange = (sizeType, field, value) => {
     setBarSizes((prev) => {
-      if (field === "volume" && (sizeType === "large" || sizeType === "small")) {
+      if (
+        field === "volume" &&
+        (sizeType === "large" || sizeType === "small")
+      ) {
         return prev;
       }
       return {
@@ -272,8 +285,14 @@ const ItemModal = ({
     if (itemData.type === "bar") {
       if (isEditMode && currentItem) {
         const hasMaterial =
-          !!(itemData.materials?.[0]?.stockName && itemData.materials?.[0]?.stockId) ||
-          !!(currentItem.materials?.[0]?.stockName && currentItem.materials?.[0]?.stockId);
+          !!(
+            itemData.materials?.[0]?.stockName &&
+            itemData.materials?.[0]?.stockId
+          ) ||
+          !!(
+            currentItem.materials?.[0]?.stockName &&
+            currentItem.materials?.[0]?.stockId
+          );
 
         const existingSizesHavePrice = Boolean(
           currentItem?.barSizes &&
@@ -288,7 +307,8 @@ const ItemModal = ({
 
         const fallbackSinglePrice = parseFloat(currentItem?.price) > 0;
 
-        const hasValidSize = existingSizesHavePrice || localSizesHavePrice || fallbackSinglePrice;
+        const hasValidSize =
+          existingSizesHavePrice || localSizesHavePrice || fallbackSinglePrice;
 
         return Boolean(baseValidation && hasMaterial && hasValidSize);
       }
@@ -297,7 +317,9 @@ const ItemModal = ({
         const s = barSizes[k];
         return s && parseFloat(s.price) > 0;
       });
-      const hasMaterial = !!(itemData.materials?.[0]?.stockName && itemData.materials?.[0]?.stockId);
+      const hasMaterial = !!(
+        itemData.materials?.[0]?.stockName && itemData.materials?.[0]?.stockId
+      );
       return Boolean(baseValidation && hasValidSize && hasMaterial);
     } else {
       return Boolean(baseValidation && itemData.price > 0);
@@ -321,7 +343,10 @@ const ItemModal = ({
     }
 
     if (itemData.type === "bar") {
-      if (!itemData.materials?.[0]?.stockName || !itemData.materials?.[0]?.stockId) {
+      if (
+        !itemData.materials?.[0]?.stockName ||
+        !itemData.materials?.[0]?.stockId
+      ) {
         toast.info("Please select a valid stock material for bar item");
         return false;
       }
@@ -330,7 +355,9 @@ const ItemModal = ({
         return s && parseFloat(s.price) > 0;
       });
       if (validSizes.length === 0 && !isEditMode) {
-        toast.info("Please configure at least one size (bottle, large, or small) with price");
+        toast.info(
+          "Please configure at least one size (bottle, large, or small) with price"
+        );
         return false;
       }
     } else {
@@ -348,7 +375,7 @@ const ItemModal = ({
       if (fromUnit === "g") return value;
       if (fromUnit === "l") return value * 1000;
       if (fromUnit === "ml") return value;
-      if (fromUnit === "piece") return value; 
+      if (fromUnit === "piece") return value;
       return value;
     } else {
       if (fromUnit === "l") return value * 1000;
@@ -366,20 +393,23 @@ const ItemModal = ({
     return `${sanitizeNameBase(base)} (${niceType} - ${vol} ${unit})`;
   };
 
- 
   const handleSubmit = async () => {
     if (!validateForm()) return;
 
     // Check for duplicate item name
     if (!isEditMode) {
-      const sanitizedItemName = sanitizeNameBase(itemData.itemName).toLowerCase();
+      const sanitizedItemName = sanitizeNameBase(
+        itemData.itemName
+      ).toLowerCase();
       const isDuplicate = items.some(
         (item) =>
           sanitizeNameBase(item.itemName).toLowerCase() === sanitizedItemName &&
           (!isEditMode || item.itemId !== currentItem?.itemId)
       );
       if (isDuplicate) {
-        toast.error("An item with this name already exists. Please use a different name.");
+        toast.error(
+          "An item with this name already exists. Please use a different name."
+        );
         return;
       }
     }
@@ -392,15 +422,25 @@ const ItemModal = ({
           const sizeKeys = Object.keys(bs).filter((k) => k !== "unit");
           const sizeType = sizeKeys.length > 0 ? sizeKeys[0] : "bottle";
 
-          const materialQty = (itemData.materials && itemData.materials[0] && itemData.materials[0].quantity) || "0 ml";
+          const materialQty =
+            (itemData.materials &&
+              itemData.materials[0] &&
+              itemData.materials[0].quantity) ||
+            "0 ml";
           const [volStr, unit] = materialQty.split(" ");
           const vol = volStr || (bs[sizeType] && bs[sizeType].volume) || "0";
-          const price = currentItem.price || (bs[sizeType] && bs[sizeType].price) || 0;
+          const price =
+            currentItem.price || (bs[sizeType] && bs[sizeType].price) || 0;
 
           const sizeItemData = {
             ...itemData,
             itemId: currentItem.itemId || currentItem.id || null,
-            itemName: buildSizedName(itemData.itemName || currentItem.itemName, sizeType, vol, unit || barSizes.unit),
+            itemName: buildSizedName(
+              itemData.itemName || currentItem.itemName,
+              sizeType,
+              vol,
+              unit || barSizes.unit
+            ),
             price: parseFloat(price),
             materials: itemData.materials.map((mat) => ({
               ...mat,
@@ -415,15 +455,20 @@ const ItemModal = ({
 
           await handleSave(sizeItemData);
         } else {
-          const validSizes = Object.entries(barSizes).filter(([key, size]) => (key === "unit") ? false : parseFloat(size.price) > 0);
+          const validSizes = Object.entries(barSizes).filter(([key, size]) =>
+            key === "unit" ? false : parseFloat(size.price) > 0
+          );
 
           for (const [sizeType, sizeData] of validSizes) {
-            const vol = (sizeData.volume || "").toString().replace(/[^0-9.]/g, "") || "0";
+            const vol =
+              (sizeData.volume || "").toString().replace(/[^0-9.]/g, "") || "0";
             const quantityString = `${vol} ${barSizes.unit}`;
 
             const sizeItemData = {
               ...itemData,
-              itemName: `${itemData.itemName} (${sizeType.charAt(0).toUpperCase() + sizeType.slice(1)} - ${vol} ${barSizes.unit})`,
+              itemName: `${itemData.itemName} (${
+                sizeType.charAt(0).toUpperCase() + sizeType.slice(1)
+              } - ${vol} ${barSizes.unit})`,
               price: parseFloat(sizeData.price),
               materials: itemData.materials.map((mat) => ({
                 ...mat,
@@ -477,7 +522,8 @@ const ItemModal = ({
       <div className="mb-4 p-4 border border-gray-200 rounded-lg">
         <Label value="Size Configuration *" className="mb-2 font-medium" />
         <p className="text-sm text-gray-600 mb-3">
-          Presets: Large = 60 ml, Small = 30 ml. Bottle volume is editable. Only fill prices.
+          Presets: Large = 60 ml, Small = 30 ml. Bottle volume is editable. Only
+          fill prices.
         </p>
 
         <div className="mb-3">
@@ -486,7 +532,13 @@ const ItemModal = ({
             <TextInput
               placeholder="Volume (numeric)"
               value={barSizes.bottle.volume}
-              onChange={(e) => handleBarSizeChange("bottle", "volume", e.target.value.replace(/[^0-9.]/g, ""))}
+              onChange={(e) =>
+                handleBarSizeChange(
+                  "bottle",
+                  "volume",
+                  e.target.value.replace(/[^0-9.]/g, "")
+                )
+              }
               disabled={isSubmitting}
             />
             <TextInput placeholder="Unit" value={barSizes.unit} disabled />
@@ -494,7 +546,9 @@ const ItemModal = ({
               type="number"
               placeholder="Price (INR)"
               value={barSizes.bottle.price}
-              onChange={(e) => handleBarSizeChange("bottle", "price", e.target.value)}
+              onChange={(e) =>
+                handleBarSizeChange("bottle", "price", e.target.value)
+              }
               disabled={isSubmitting}
             />
           </div>
@@ -509,7 +563,9 @@ const ItemModal = ({
               type="number"
               placeholder="Price (INR)"
               value={barSizes.large.price}
-              onChange={(e) => handleBarSizeChange("large", "price", e.target.value)}
+              onChange={(e) =>
+                handleBarSizeChange("large", "price", e.target.value)
+              }
               disabled={isSubmitting}
             />
           </div>
@@ -524,7 +580,9 @@ const ItemModal = ({
               type="number"
               placeholder="Price (INR)"
               value={barSizes.small.price}
-              onChange={(e) => handleBarSizeChange("small", "price", e.target.value)}
+              onChange={(e) =>
+                handleBarSizeChange("small", "price", e.target.value)
+              }
               disabled={isSubmitting}
             />
           </div>
@@ -535,9 +593,15 @@ const ItemModal = ({
 
   const renderMaterialsSection = () => {
     if (itemData.type === "bar") {
-      const material = itemData.materials && itemData.materials.length > 0
-        ? itemData.materials[0]
-        : { stockName: "", stockId: "", quantity: `0 ${barSizes.unit}`, unit: barSizes.unit };
+      const material =
+        itemData.materials && itemData.materials.length > 0
+          ? itemData.materials[0]
+          : {
+              stockName: "",
+              stockId: "",
+              quantity: `0 ${barSizes.unit}`,
+              unit: barSizes.unit,
+            };
 
       const qtyParts = (material.quantity || `0 ${barSizes.unit}`).split(" ");
       const qtyNumber = qtyParts[0] || "0";
@@ -546,86 +610,120 @@ const ItemModal = ({
       return (
         <div className="mb-4">
           <Label value="Select Stock Material *" className="mb-1" />
-          <Select
-            value={material.stockName}
-            onChange={(e) => {
-              const selectedStock = stocks.find((stock) => stock.stockName === e.target.value);
-              const updatedMaterials = [{
-                ...material,
-                stockName: e.target.value,
-                stockId: selectedStock ? selectedStock.stockId : "",
-              }];
-              setItemData((prevData) => ({ ...prevData, materials: updatedMaterials }));
+          <StockInput
+            stocks={stocks.filter((stock) => stock.type === "bar")}
+            value={material.stockId}
+            onChange={(selectedStockId) => {
+              const selectedStock = stocks.find(
+                (stock) => stock.stockId === selectedStockId
+              );
+              const updatedMaterials = [
+                {
+                  ...material,
+                  stockName: selectedStock ? selectedStock.stockName : "",
+                  stockId: selectedStockId,
+                },
+              ];
+              setItemData((prevData) => ({
+                ...prevData,
+                materials: updatedMaterials,
+              }));
             }}
+            filterType="bar"
             className="w-full"
             disabled={isSubmitting}
-          >
-            <option value="">Select Stock</option>
-            {stocks
-              .filter((stock) => stock.type === "bar")
-              .map((stock) => (
-                <option key={stock.stockId} value={stock.stockName}>
-                  {stock.stockName}
-                </option>
-              ))}
-          </Select>
+            placeholder="Type to search bar stocks..."
+          />
 
           {isEditMode ? (
             <div className="mt-2 grid grid-cols-3 gap-2 items-center">
               <TextInput
                 type="number"
                 placeholder="Volume"
-                value={
-                  (() => {
-                    const q =
-                      (itemData.materials && itemData.materials[0] && itemData.materials[0].quantity) ||
-                      (currentItem && currentItem.materials && currentItem.materials[0] && currentItem.materials[0].quantity) ||
-                      `${barSizes.large.volume || "60"} ${barSizes.unit}`;
-                    return q.split(" ")[0] || "0";
-                  })()
-                }
+                value={(() => {
+                  const q =
+                    (itemData.materials &&
+                      itemData.materials[0] &&
+                      itemData.materials[0].quantity) ||
+                    (currentItem &&
+                      currentItem.materials &&
+                      currentItem.materials[0] &&
+                      currentItem.materials[0].quantity) ||
+                    `${barSizes.large.volume || "60"} ${barSizes.unit}`;
+                  return q.split(" ")[0] || "0";
+                })()}
                 onChange={(e) => {
                   let value = e.target.value;
-                  if (value === "" || isNaN(Number(value)) || Number(value) < 0) value = "0";
+                  if (value === "" || isNaN(Number(value)) || Number(value) < 0)
+                    value = "0";
                   const currentUnit =
-                    (itemData.materials && itemData.materials[0] && itemData.materials[0].quantity && itemData.materials[0].quantity.split(" ")[1]) ||
-                    (currentItem && currentItem.materials && currentItem.materials[0] && currentItem.materials[0].quantity && currentItem.materials[0].quantity.split(" ")[1]) ||
+                    (itemData.materials &&
+                      itemData.materials[0] &&
+                      itemData.materials[0].quantity &&
+                      itemData.materials[0].quantity.split(" ")[1]) ||
+                    (currentItem &&
+                      currentItem.materials &&
+                      currentItem.materials[0] &&
+                      currentItem.materials[0].quantity &&
+                      currentItem.materials[0].quantity.split(" ")[1]) ||
                     barSizes.unit;
-                  const updatedMaterials = [{
-                    ...(itemData.materials?.[0] || {}),
-                    quantity: `${value} ${currentUnit}`,
-                  }];
-                  setItemData((prevData) => ({ ...prevData, materials: updatedMaterials }));
+                  const updatedMaterials = [
+                    {
+                      ...(itemData.materials?.[0] || {}),
+                      quantity: `${value} ${currentUnit}`,
+                    },
+                  ];
+                  setItemData((prevData) => ({
+                    ...prevData,
+                    materials: updatedMaterials,
+                  }));
                 }}
                 disabled={isSubmitting}
               />
               <Select
-                value={
-                  (() => {
-                    const q =
-                      (itemData.materials && itemData.materials[0] && itemData.materials[0].quantity) ||
-                      (currentItem && currentItem.materials && currentItem.materials[0] && currentItem.materials[0].quantity) ||
-                      `${barSizes.large.volume || "60"} ${barSizes.unit}`;
-                    return q.split(" ")[1] || barSizes.unit;
-                  })()
-                }
+                value={(() => {
+                  const q =
+                    (itemData.materials &&
+                      itemData.materials[0] &&
+                      itemData.materials[0].quantity) ||
+                    (currentItem &&
+                      currentItem.materials &&
+                      currentItem.materials[0] &&
+                      currentItem.materials[0].quantity) ||
+                    `${barSizes.large.volume || "60"} ${barSizes.unit}`;
+                  return q.split(" ")[1] || barSizes.unit;
+                })()}
                 onChange={(e) => {
-                  const currentQuantity = (itemData.materials && itemData.materials[0] && itemData.materials[0].quantity && itemData.materials[0].quantity.split(" ")[0]) ||
-                                         (currentItem && currentItem.materials && currentItem.materials[0] && currentItem.materials[0].quantity && currentItem.materials[0].quantity.split(" ")[0]) ||
-                                         (barSizes.large.volume || "60");
-                  const updatedMaterials = [{
-                    ...(itemData.materials?.[0] || {}),
-                    quantity: `${currentQuantity} ${e.target.value}`,
-                  }];
-                  setItemData((prevData) => ({ ...prevData, materials: updatedMaterials }));
+                  const currentQuantity =
+                    (itemData.materials &&
+                      itemData.materials[0] &&
+                      itemData.materials[0].quantity &&
+                      itemData.materials[0].quantity.split(" ")[0]) ||
+                    (currentItem &&
+                      currentItem.materials &&
+                      currentItem.materials[0] &&
+                      currentItem.materials[0].quantity &&
+                      currentItem.materials[0].quantity.split(" ")[0]) ||
+                    barSizes.large.volume ||
+                    "60";
+                  const updatedMaterials = [
+                    {
+                      ...(itemData.materials?.[0] || {}),
+                      quantity: `${currentQuantity} ${e.target.value}`,
+                    },
+                  ];
+                  setItemData((prevData) => ({
+                    ...prevData,
+                    materials: updatedMaterials,
+                  }));
                 }}
-                disabled={isSubmitting}
-              >
+                disabled={isSubmitting}>
                 <option value="ml">ml</option>
                 <option value="l">l</option>
               </Select>
               <div className="text-sm text-gray-500">
-                Unit is <strong>{barSizes.unit}</strong>. This quantity will be used to update the size when saving in edit mode.
+                Unit is <strong>{barSizes.unit}</strong>. This quantity will be
+                used to update the size when saving in edit mode.
               </div>
             </div>
           ) : null}
@@ -639,57 +737,73 @@ const ItemModal = ({
             <button
               type="button"
               onClick={() => {
-                const updatedMaterials = [...(itemData.materials || []), { stockName: "", stockId: "", quantity: "0 kg", unit: "kg" }];
-                setItemData((prevData) => ({ ...prevData, materials: updatedMaterials }));
+                const updatedMaterials = [
+                  ...(itemData.materials || []),
+                  { stockName: "", stockId: "", quantity: "0 kg", unit: "kg" },
+                ];
+                setItemData((prevData) => ({
+                  ...prevData,
+                  materials: updatedMaterials,
+                }));
               }}
               className="text-primaryColor hover:text-primaryColor/90"
-              disabled={isSubmitting}
-            >
+              disabled={isSubmitting}>
               <MdAddToPhotos className="inline mr-1 mb-1 w-4 h-4" />
             </button>
           </div>
           {itemData.materials &&
             itemData.materials.map((material, index) => (
               <div key={index} className="flex items-center gap-4 mb-2">
-                <Select
-                  value={material.stockName}
-                  onChange={(e) => {
-                    const selectedStock = stocks.find((stock) => stock.stockName === e.target.value);
+                <StockInput
+                  stocks={stocks.filter((stock) => stock.type === "cafe")}
+                  value={material.stockId}
+                  onChange={(selectedStockId) => {
+                    const selectedStock = stocks.find(
+                      (stock) => stock.stockId === selectedStockId
+                    );
                     const updatedMaterials = [...itemData.materials];
                     updatedMaterials[index] = {
                       ...updatedMaterials[index],
-                      stockName: e.target.value,
-                      stockId: selectedStock ? selectedStock.stockId : "",
+                      stockName: selectedStock ? selectedStock.stockName : "",
+                      stockId: selectedStockId,
                     };
-                    setItemData((prevData) => ({ ...prevData, materials: updatedMaterials }));
+                    setItemData((prevData) => ({
+                      ...prevData,
+                      materials: updatedMaterials,
+                    }));
                   }}
+                  filterType="cafe"
                   className="flex-1"
                   disabled={isSubmitting}
-                >
-                  <option value="">Select Stock</option>
-                  {stocks
-                    .filter((stock) => stock.type === "cafe")
-                    .map((stock) => (
-                      <option key={stock.stockId} value={stock.stockName}>
-                        {stock.stockName}
-                      </option>
-                    ))}
-                </Select>
+                  placeholder="Type to search cafe stocks..."
+                />
                 <TextInput
                   type="number"
                   placeholder="Quantity"
                   value={
-                    isNaN(Number(material.quantity.split(" ")[0])) || material.quantity.split(" ")[0] === "" ? "0" : material.quantity.split(" ")[0]
+                    isNaN(Number(material.quantity.split(" ")[0])) ||
+                    material.quantity.split(" ")[0] === ""
+                      ? "0"
+                      : material.quantity.split(" ")[0]
                   }
                   onChange={(e) => {
                     let value = e.target.value;
-                    if (value === "" || isNaN(Number(value)) || Number(value) < 0) {
+                    if (
+                      value === "" ||
+                      isNaN(Number(value)) ||
+                      Number(value) < 0
+                    ) {
                       value = "0";
                     }
                     const currentUnit = material.quantity.split(" ")[1] || "kg";
                     const updatedMaterials = [...itemData.materials];
-                    updatedMaterials[index].quantity = `${value} ${currentUnit}`;
-                    setItemData((prevData) => ({ ...prevData, materials: updatedMaterials }));
+                    updatedMaterials[
+                      index
+                    ].quantity = `${value} ${currentUnit}`;
+                    setItemData((prevData) => ({
+                      ...prevData,
+                      materials: updatedMaterials,
+                    }));
                   }}
                   className="flex-1"
                   disabled={isSubmitting}
@@ -697,29 +811,38 @@ const ItemModal = ({
                 <Select
                   value={material.quantity.split(" ")[1] || "kg"}
                   onChange={(e) => {
-                    const currentQuantity = material.quantity.split(" ")[0] || "0";
+                    const currentQuantity =
+                      material.quantity.split(" ")[0] || "0";
                     const updatedMaterials = [...itemData.materials];
-                    updatedMaterials[index].quantity = `${currentQuantity} ${e.target.value}`;
-                    setItemData((prevData) => ({ ...prevData, materials: updatedMaterials }));
+                    updatedMaterials[
+                      index
+                    ].quantity = `${currentQuantity} ${e.target.value}`;
+                    setItemData((prevData) => ({
+                      ...prevData,
+                      materials: updatedMaterials,
+                    }));
                   }}
                   className="flex-1"
-                  disabled={isSubmitting}
-                >
+                  disabled={isSubmitting}>
                   <option value="kg">kg</option>
                   <option value="g">g</option>
                   <option value="l">l</option>
                   <option value="ml">ml</option>
-                  <option value="piece">piece</option> 
+                  <option value="piece">piece</option>
                 </Select>
                 <button
                   type="button"
                   onClick={() => {
-                    const updatedMaterials = itemData.materials.filter((_, i) => i !== index);
-                    setItemData((prevData) => ({ ...prevData, materials: updatedMaterials }));
+                    const updatedMaterials = itemData.materials.filter(
+                      (_, i) => i !== index
+                    );
+                    setItemData((prevData) => ({
+                      ...prevData,
+                      materials: updatedMaterials,
+                    }));
                   }}
                   className="text-red-500 hover:text-red-700"
-                  disabled={isSubmitting}
-                >
+                  disabled={isSubmitting}>
                   <MdDeleteForever className="w-5 h-5" />
                 </button>
               </div>
@@ -730,13 +853,27 @@ const ItemModal = ({
   };
 
   return (
-    <Modal show={showModal} size="lg" onClose={closeModal} popup dismissible={!isSubmitting}>
+    <Modal
+      show={showModal}
+      size="lg"
+      onClose={closeModal}
+      popup
+      dismissible={!isSubmitting}>
       <div className="relative">
-        <button onClick={closeModal} disabled={isSubmitting} className={`absolute right-4 top-4 text-gray-500 ${isSubmitting ? "opacity-50 cursor-not-allowed" : "hover:text-gray-700"}`}>
+        <button
+          onClick={closeModal}
+          disabled={isSubmitting}
+          className={`absolute right-4 top-4 text-gray-500 ${
+            isSubmitting
+              ? "opacity-50 cursor-not-allowed"
+              : "hover:text-gray-700"
+          }`}>
           <X size={24} />
         </button>
         <div className="flex flex-row justify-center">
-          <h2 className="text-xl font-semibold mt-6">{isEditMode ? "Edit Item" : "Add Item"}</h2>
+          <h2 className="text-xl font-semibold mt-6">
+            {isEditMode ? "Edit Item" : "Add Item"}
+          </h2>
         </div>
       </div>
 
@@ -745,7 +882,12 @@ const ItemModal = ({
           {institutionData?.bar_integration === "Yes" && (
             <div className="mb-4">
               <Label htmlFor="type" value="Type *" className="mb-1" />
-              <Select id="type" name="type" value={itemData.type || "cafe"} onChange={handleInputChange} disabled={isSubmitting}>
+              <Select
+                id="type"
+                name="type"
+                value={itemData.type || "cafe"}
+                onChange={handleInputChange}
+                disabled={isSubmitting}>
                 <option value="cafe">Cafe</option>
                 <option value="bar">Bar</option>
               </Select>
@@ -760,7 +902,9 @@ const ItemModal = ({
               placeholder="Enter the item name"
               value={itemData.itemName || ""}
               onChange={(e) => {
-                const value = e.target.value.replace(/[^a-zA-Z0-9\s]/g, "").slice(0, 100);
+                const value = e.target.value
+                  .replace(/[^a-zA-Z0-9\s]/g, "")
+                  .slice(0, 100);
                 handleInputChange({ target: { name: "itemName", value } });
               }}
               required
@@ -773,25 +917,61 @@ const ItemModal = ({
           {renderBarSizesSection()}
 
           <div className="mb-4">
-            <Label htmlFor="description" value="Description (Optional)" className="mb-1" />
-            <Textarea id="description" name="description" placeholder="Enter item description" value={itemData.description || ""} onChange={handleInputChange} rows={3} disabled={isSubmitting} />
+            <Label
+              htmlFor="description"
+              value="Description (Optional)"
+              className="mb-1"
+            />
+            <Textarea
+              id="description"
+              name="description"
+              placeholder="Enter item description"
+              value={itemData.description || ""}
+              onChange={handleInputChange}
+              rows={3}
+              disabled={isSubmitting}
+            />
           </div>
 
           <div className="mb-4">
-            <Label htmlFor="itemImage" value="Item Image (Optional)" className="mb-1" />
-            <FileInput id="itemImage" accept="image/*" onChange={handleImageChange} helperText="Maximum file size: 5MB" disabled={uploading || isSubmitting} />
+            <Label
+              htmlFor="itemImage"
+              value="Item Image (Optional)"
+              className="mb-1"
+            />
+            <FileInput
+              id="itemImage"
+              accept="image/*"
+              onChange={handleImageChange}
+              helperText="Maximum file size: 5MB"
+              disabled={uploading || isSubmitting}
+            />
             {uploading && (
               <div className="flex items-center mt-2 text-sm text-blue-600">
                 <Spinner size="sm" className="mr-2" />
                 Uploading image...
               </div>
             )}
-            {imageError && <p className="text-red-500 text-sm mt-1">{imageError}</p>}
+            {imageError && (
+              <p className="text-red-500 text-sm mt-1">{imageError}</p>
+            )}
             {imagePreview && (
               <div className="mt-2 flex items-end gap-2">
-                <img src={imagePreview} alt="Item preview" className="w-32 h-32 object-cover rounded-lg border border-gray-200" />
+                <img
+                  src={imagePreview}
+                  alt="Item preview"
+                  className="w-32 h-32 object-cover rounded-lg border border-gray-200"
+                />
                 {!isSubmitting && (
-                  <button onClick={() => { setImagePreview(null); setItemData((prev) => ({ ...prev, imageUrl: null })); }} className="text-red-500 text-sm mb-2 hover:underline focus:outline-none" type="button">Remove image</button>
+                  <button
+                    onClick={() => {
+                      setImagePreview(null);
+                      setItemData((prev) => ({ ...prev, imageUrl: null }));
+                    }}
+                    className="text-red-500 text-sm mb-2 hover:underline focus:outline-none"
+                    type="button">
+                    Remove image
+                  </button>
                 )}
               </div>
             )}
@@ -800,8 +980,21 @@ const ItemModal = ({
           <div className="grid grid-cols-1 gap-4">
             {itemData.type === "cafe" && (
               <div>
-                <Label htmlFor="price" value="Price * (in INR)" className="mb-1" />
-                <TextInput id="price" name="price" type="number" value={itemData.price || ""} onChange={handleInputChange} required disabled={isSubmitting} className="w-full" />
+                <Label
+                  htmlFor="price"
+                  value="Price * (in INR)"
+                  className="mb-1"
+                />
+                <TextInput
+                  id="price"
+                  name="price"
+                  type="number"
+                  value={itemData.price || ""}
+                  onChange={handleInputChange}
+                  required
+                  disabled={isSubmitting}
+                  className="w-full"
+                />
               </div>
             )}
 
@@ -810,12 +1003,36 @@ const ItemModal = ({
                 <Label value="Food Type *" className="mb-1" />
                 <div className="flex gap-4 mt-2">
                   <div className="flex items-center">
-                    <input type="radio" id="foodTypeVeg" name="foodType" checked={selectedFoodType === "veg"} onChange={() => handleFoodTypeChange("veg")} className="mr-2" disabled={isSubmitting} />
-                    <Label htmlFor="foodTypeVeg" className="text-green-600 font-medium">Veg</Label>
+                    <input
+                      type="radio"
+                      id="foodTypeVeg"
+                      name="foodType"
+                      checked={selectedFoodType === "veg"}
+                      onChange={() => handleFoodTypeChange("veg")}
+                      className="mr-2"
+                      disabled={isSubmitting}
+                    />
+                    <Label
+                      htmlFor="foodTypeVeg"
+                      className="text-green-600 font-medium">
+                      Veg
+                    </Label>
                   </div>
                   <div className="flex items-center">
-                    <input type="radio" id="foodTypeNonVeg" name="foodType" checked={selectedFoodType === "non-veg"} onChange={() => handleFoodTypeChange("non-veg")} className="mr-2" disabled={isSubmitting} />
-                    <Label htmlFor="foodTypeNonVeg" className="text-red-600 font-medium">Non-veg</Label>
+                    <input
+                      type="radio"
+                      id="foodTypeNonVeg"
+                      name="foodType"
+                      checked={selectedFoodType === "non-veg"}
+                      onChange={() => handleFoodTypeChange("non-veg")}
+                      className="mr-2"
+                      disabled={isSubmitting}
+                    />
+                    <Label
+                      htmlFor="foodTypeNonVeg"
+                      className="text-red-600 font-medium">
+                      Non-veg
+                    </Label>
                   </div>
                 </div>
               </div>
@@ -826,9 +1043,26 @@ const ItemModal = ({
             {!isOtherSelected && (
               <div>
                 <Label htmlFor="category" value="Category *" className="mb-1" />
-                <Select id="category" name="category" value={itemData.category || ""} onChange={handleCategoryChange} disabled={isSubmitting}>
-                  {!isEditMode && <option value="Select" disabled>Select</option>}
-                  {categories.length > 0 ? (categories.map((category, index) => (<option key={index} value={category}>{category}</option>))) : (<option disabled>Loading categories...</option>)}
+                <Select
+                  id="category"
+                  name="category"
+                  value={itemData.category || ""}
+                  onChange={handleCategoryChange}
+                  disabled={isSubmitting}>
+                  {!isEditMode && (
+                    <option value="Select" disabled>
+                      Select
+                    </option>
+                  )}
+                  {categories.length > 0 ? (
+                    categories.map((category, index) => (
+                      <option key={index} value={category}>
+                        {category}
+                      </option>
+                    ))
+                  ) : (
+                    <option disabled>Loading categories...</option>
+                  )}
                   <option value="Other">Other</option>
                 </Select>
               </div>
@@ -836,16 +1070,45 @@ const ItemModal = ({
 
             {isOtherSelected && (
               <div>
-                <Label htmlFor="customCategory" value="Custom Category *" className="mb-1" />
-                <TextInput id="customCategory" name="category" placeholder="Enter custom category" value={itemData.category || ""} onChange={handleInputChange} required disabled={isSubmitting} />
+                <Label
+                  htmlFor="customCategory"
+                  value="Custom Category *"
+                  className="mb-1"
+                />
+                <TextInput
+                  id="customCategory"
+                  name="category"
+                  placeholder="Enter custom category"
+                  value={itemData.category || ""}
+                  onChange={handleInputChange}
+                  required
+                  disabled={isSubmitting}
+                />
               </div>
             )}
           </div>
         </div>
 
         <div className="flex flex-row justify-center items-center mt-6">
-          <Button onClick={handleSubmit} className={`w-full sm:w-auto ${isFormValid() ? "bg-primaryColor hover:bg-primaryColor/90" : "bg-gray-400"}`} disabled={descriptionError || uploading || isSubmitting || !isFormValid()}>
-            {isSubmitting ? (isEditMode ? "Saving..." : "Creating Items...") : isEditMode ? "Save Changes" : (itemData.type === "bar" ? "Create Bar Items" : "Add Item")}
+          <Button
+            onClick={handleSubmit}
+            className={`w-full sm:w-auto ${
+              isFormValid()
+                ? "bg-primaryColor hover:bg-primaryColor/90"
+                : "bg-gray-400"
+            }`}
+            disabled={
+              descriptionError || uploading || isSubmitting || !isFormValid()
+            }>
+            {isSubmitting
+              ? isEditMode
+                ? "Saving..."
+                : "Creating Items..."
+              : isEditMode
+              ? "Save Changes"
+              : itemData.type === "bar"
+              ? "Create Bar Items"
+              : "Add Item"}
           </Button>
         </div>
       </Modal.Body>
