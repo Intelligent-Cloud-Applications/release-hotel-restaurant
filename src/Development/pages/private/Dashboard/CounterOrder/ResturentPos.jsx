@@ -45,32 +45,59 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
 
   const takeawayCount = institutionData?.institution === 'chineseq18' ? 4 : institutionData?.institution === 'Hang7438' ? 10 : 2;
 
-  const [tables, setTables] = useState([
-    ...(institutionData?.Table || []).map(t => ({
-      id: t.tableNo,
-      name: `Table ${t.tableNo}`,
-      status: "available",
-      orders: [],
-      currentBill: 0,
-      orderType: "dineIn",
-    })),
-    ...Array(takeawayCount).fill().map((_, i) => ({
-      id: `takeaway${i + 1}`,
-      name: `Takeaway ${i + 1}`,
-      status: "available",
-      orders: [],
-      currentBill: 0,
-      orderType: "takeaway"
-    })),
-    ...(institutionData?.bar_integration === "Yes" && hotelBookings ? hotelBookings.map(booking => ({
-      id: `Hotel${booking.roomNumber}`,
-      name: `Hotel ${booking.roomNumber}`,
-      status: "available",
-      orders: [],
-      currentBill: 0,
-      orderType: "hotel",
-    })) : []),
-  ]);
+const [tables, setTables] = useState([
+  // Restaurant tables
+  ...(institutionData?.Table || []).map(t => ({
+    id: t.tableNo,
+    name: `Table ${t.tableNo}`,
+    status: "available",
+    orders: [],
+    currentBill: 0,
+    orderType: "dineIn",
+  })),
+
+  // Takeaway counters
+  ...Array(takeawayCount).fill(null).map((_, i) => ({
+    id: `takeaway${i + 1}`,
+    name: `Takeaway ${i + 1}`,
+    status: "available",
+    orders: [],
+    currentBill: 0,
+    orderType: "takeaway",
+  })),
+
+  // Hotel rooms (only if bar integration is enabled)
+  ...(institutionData?.bar_integration === "Yes" && hotelBookings
+    ? hotelBookings.map(booking => ({
+        id: `Hotel${booking.roomNumber}`,
+        name: `Hotel ${booking.roomNumber}`,
+        status: "available",
+        orders: [],
+        currentBill: 0,
+        orderType: "hotel",
+      }))
+    : []
+  ),
+
+  // Management rooms
+  {
+    id: "Management444",
+    name: "MNG 444",
+    status: "available",
+    orders: [],
+    currentBill: 0,
+    orderType: "management",
+  },
+  {
+    id: "Management555",
+    name: "MNG 555",
+    status: "available",
+    orders: [],
+    currentBill: 0,
+    orderType: "management",
+  },
+]);
+
 
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);
   const [selectedTable, setSelectedTable] = useState(null);

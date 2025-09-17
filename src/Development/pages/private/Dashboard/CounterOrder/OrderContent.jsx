@@ -74,7 +74,7 @@ const OrderContent = ({
 }) => {
   const { printerType, printerpaperSize } = data;
   const { staffData, fetchStaffData, setLoader, hotelBookings } = useContext(Context);
-  
+   const screenWidth = window.innerWidth;
   const [orderRoomSelection, setOrderRoomSelection] = useState({});
   const [showOrderPaymentModal, setShowOrderPaymentModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);

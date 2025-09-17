@@ -38,8 +38,22 @@ const PaymentModal = ({
   const [qrAmount, setQrAmount] = useState(null);
   const [roomAmount, setRoomAmount] = useState(null);
 
-  const paymentMethods = ["QR", "Cash", "Card"];
+  // Management-specific / BTC payer fields (for 444 and 555 and BTC)
+  const [orderSource, setOrderSource] = useState("");
+  const [payerName, setPayerName] = useState("");
+
+  // Extended payment methods (added BTC)
+  const paymentMethods = ["QR", "Cash", "Card", "BTC"];
   const isPartialPayment = institutionData.paymentMethod === "partial";
+
+  // Detect special management institutions
+  const isManagementSpecial = (() => {
+    const inst = String(institutionData?.institution || "").trim();
+    const name = String(institutionData?.companyName || "").toLowerCase();
+    if (inst === "444" || inst === "555") return true;
+    if (String(selectedTable?.id || "").includes("Management444") || String(selectedTable?.id || "").includes("Management555")) return true;
+    return false;
+  })();
 
   // ---------- Discount helper (reads discountData prop similar to OrderContent) ----------
   const getDiscountInfo = () => {
@@ -241,6 +255,17 @@ const PaymentModal = ({
       return;
     }
 
+    // If BTC selected, require btcAmount === totalBillAmount and tx id
+    if (selectedPaymentMethod === "BTC") {
+   
+      if (!orderSource) {
+        toast.error("Please select Order Source for BTC payment.");
+        setLoader(false);
+        return;
+      }
+      // payerName can be optional but allow empty
+    }
+
     try {
       await saveBill();
 
@@ -282,16 +307,26 @@ const PaymentModal = ({
         }
       }
 
+      // prepare settle payload. include btc tx id and orderSource/payerName if BTC selected
+      const settleBody = {
+        paymentStatus: true,
+        paymentMode: "offline",
+        paymentMethod: selectedPaymentMethod,
+        status: "delivered",
+      };
+
+      if (selectedPaymentMethod === "BTC") {
+        settleBody.meta = {
+          orderSource,
+          payerName,
+        };
+      }
+
       await API.post(
         "main",
         `/admin/settle-bill/${institutionData.institution}/${tableIdStr}`,
         {
-          body: {
-            paymentStatus: true,
-            paymentMode: "offline",
-            paymentMethod: selectedPaymentMethod,
-            status: "delivered",
-          },
+          body: settleBody,
         }
       );
 
@@ -338,13 +373,60 @@ const PaymentModal = ({
     }
   };
 
+  // ---------- Management (444/555) direct-free settle ----------
+  const handleManagementFreeSettle = async () => {
+    // orderSource and payerName are required-ish: validate lightly
+    if (!orderSource) {
+      toast.error("Please select Order Source.");
+      return;
+    }
+    // payerName optional but set empty string allowed
+
+    setLoader(true);
+    try {
+      await saveBill();
+
+      // include orderSource and payerName in the settle request body
+      await API.post(
+        "main",
+        `/admin/settle-bill/${institutionData.institution}/${tableIdStr}`,
+        {
+          body: {
+            paymentStatus: true,
+            paymentMode: "offline",
+            paymentMethod: "Free",
+            status: "delivered",
+            meta: {
+              orderSource,
+              payerName,
+            },
+          },
+        }
+      );
+
+      // No hotel-room-add needed because Free payment is not room charge
+      await completePayment();
+    } catch (error) {
+      console.error("Management Free Payment Error:", error);
+      let errorMessage = "Failed to process management free payment.";
+      if (error?.response?.data) {
+        const apiError = error.response.data;
+        if (apiError.message) errorMessage += ` - ${apiError.message}`;
+        if (apiError.error) errorMessage += `: ${apiError.error}`;
+      }
+      toast.error(errorMessage);
+      setLoader(false);
+    }
+  };
+
   // ---------- Partial payment handling ----------
   const handlePartialPayment = async () => {
     const cashAmountFinal = cashAmount || 0;
     const cardAmountFinal = cardAmount || 0;
     const qrAmountFinal = qrAmount || 0;
     const roomAmountFinal = roomAmount || 0;
-    const totalPaid = cashAmountFinal + cardAmountFinal + qrAmountFinal + roomAmountFinal;
+
+    const totalPaid = cashAmountFinal + cardAmountFinal + qrAmountFinal + roomAmountFinal + btcAmountFinal;
 
     if (totalPaid !== totalBillAmount) {
       toast.error(`Total paid (₹${totalPaid}) must equal bill amount (₹${totalBillAmount})`);
@@ -356,6 +438,14 @@ const PaymentModal = ({
     if (cardAmountFinal > 0) paymentMethodsPayload.push({ method: "Card", amount: cardAmountFinal });
     if (qrAmountFinal > 0) paymentMethodsPayload.push({ method: "QR", amount: qrAmountFinal });
     if (roomAmountFinal > 0) paymentMethodsPayload.push({ method: "ROOM", amount: roomAmountFinal });
+    if (btcAmountFinal > 0) paymentMethodsPayload.push({
+      method: "BTC",
+      amount: totalBillAmount,
+      meta: {
+        orderSource,
+        payerName,
+      }
+    });
 
     setLoader(true);
 
@@ -450,7 +540,7 @@ const PaymentModal = ({
 
   const remainingAmount =
     totalBillAmount -
-    ((cashAmount || 0) + (cardAmount || 0) + (qrAmount || 0) + (roomAmount || 0));
+    ((cashAmount || 0) + (cardAmount || 0) + (qrAmount || 0) + (roomAmount || 0) );
 
   // ---------- Render ----------
   return (
@@ -519,6 +609,34 @@ const PaymentModal = ({
                   />
                 </div>
               )}
+
+              {/* BTC field for partial payments */}
+              <div className="flex flex-col">
+                <label className="text-gray-700 text-sm mb-1">BTC</label>
+                
+
+                {/* Order Source & Name for BTC partial */}
+                <div className="mt-2">
+                  <label className="text-gray-700 text-sm mb-1">Order Source</label>
+                  <select
+                    className="border rounded-md p-2 w-full"
+                    value={orderSource}
+                    onChange={(e) => setOrderSource(e.target.value)}
+                  >
+                    <option>Md sir</option>
+                    <option>Staff</option>
+                    <option>Police Station</option>
+                    <option>Food Dep.</option>
+                  </select>
+                  <input
+                    type="text"
+                    value={payerName}
+                    onChange={(e) => setPayerName(e.target.value)}
+                    className="w-full p-2 border rounded-md mt-2"
+                    placeholder="Name (employee / payer)"
+                  />
+                </div>
+              </div>
             </div>
 
             {institutionData.integration === "HOTEL" && roomAmount > 0 && (
@@ -557,63 +675,146 @@ const PaymentModal = ({
           </div>
         ) : (
           <div>
-            <h3 className="font-semibold mb-3 text-gray-700">
-              Choose Payment Method:
-            </h3>
-            <div className="grid grid-cols-3 gap-3">
-              {paymentMethods.map((method) => (
-                <button
-                  key={method}
-                  className={`p-3 rounded-md font-semibold border ${
-                    selectedPaymentMethod === method
-                      ? "bg-green-500 text-white"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-                  onClick={() => setSelectedPaymentMethod(method)}
-                >
-                  {method}
-                </button>
-              ))}
+            {/* If special management institution -> show the orderSource/name popup and direct-free settle */}
+            {isManagementSpecial ? (
+              <div className="space-y-3">
+                <h3 className="font-semibold mb-1 text-gray-700">Management Settlement</h3>
 
-              {institutionData.integration === "HOTEL" && (
-                <button
-                  className={`p-3 rounded-md font-semibold border ${
-                    selectedPaymentMethod === "ROOM"
-                      ? "bg-green-500 text-white"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-                  onClick={() => setSelectedPaymentMethod("ROOM")}
-                >
-                  HOTEL BILL
-                </button>
-              )}
-            </div>
+                <div className="mt-2">
+  <label className="text-gray-700 text-sm mb-1">Order Source</label>
+  {["","Md sir", "Staff", "Police Station", "Food Dep."].includes(orderSource) ? (
+    <select
+      className="border rounded-md p-2 w-full"
+      value={orderSource}
+      onChange={(e) => setOrderSource(e.target.value)}
+    >
+      <option value="Md sir">Md sir</option>
+      <option value="Staff">Staff</option>
+      <option value="Police Station">Police Station</option>
+      <option value="Food Dep.">Food Dep.</option>
+      <option value="">Other</option>
+    </select>
+  ) : (
+    <input
+      type="text"
+      value={orderSource}
+      onChange={(e) => setOrderSource(e.target.value)}
+      className="w-full p-2 border rounded-md"
+      placeholder="Enter custom order source"
+    />
+  )}
+</div>
 
-            {selectedPaymentMethod === "ROOM" && (
-              <div className="flex flex-row gap-2 my-2">
-                <h3 className="text-sm font-semibold">Select Room:</h3>
-                <select
-                  className="border rounded-md p-2 w-full"
-                  value={booking?.bookingId || ""}
-                  onChange={(e) =>
-                    setBooking(hotelBookings.find((b) => b.bookingId === e.target.value))
-                  }
-                >
-                  <option value="" disabled>
-                    Select a room
-                  </option>
-                  {hotelBookings.map((b) => (
-                    <option key={b.bookingId} value={b.bookingId}>
-                      {b.roomNumber}
-                    </option>
-                  ))}
-                </select>
+
+                <div className="flex flex-col">
+                  <label className="text-gray-700 text-sm mb-1">Name</label>
+                  <input
+                    type="text"
+                    value={payerName}
+                    onChange={(e) => setPayerName(e.target.value)}
+                    className="w-full p-2 border rounded-md"
+                    placeholder="Enter name (optional)"
+                  />
+                </div>
+
+                <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-3 py-2 rounded-md mt-2 text-sm">
+                  This will settle the bill as <strong>Free</strong> for management.
+                </div>
               </div>
-            )}
+            ) : (
+              <div>
+                <h3 className="font-semibold mb-3 text-gray-700">
+                  Choose Payment Method:
+                </h3>
+                <div className="grid grid-cols-4 gap-3">
+                  {paymentMethods.map((method) => (
+                    <button
+                      key={method}
+                      className={`p-3 rounded-md font-semibold border ${
+                        selectedPaymentMethod === method
+                          ? "bg-green-500 text-white"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
+                      onClick={() => setSelectedPaymentMethod(method)}
+                    >
+                      {method}
+                    </button>
+                  ))}
 
-            {selectedPaymentMethod === "ROOM" && (
-              <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-3 py-2 rounded-md mt-3 text-sm">
-                <strong>Note:</strong> Payment will be collected during hotel checkout.
+                  {institutionData.integration === "HOTEL" && (
+                    <button
+                      className={`p-3 rounded-md font-semibold border ${
+                        selectedPaymentMethod === "ROOM"
+                          ? "bg-green-500 text-white"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
+                      onClick={() => setSelectedPaymentMethod("ROOM")}
+                    >
+                      HOTEL BILL
+                    </button>
+                  )}
+                </div>
+
+                {/* BTC input for single-pay */}
+                {selectedPaymentMethod === "BTC" && (
+                  <div className="mt-3 space-y-2">
+                   
+                    
+
+                    {/* Order Source & Name for single BTC */}
+                    <div className="mt-2">
+  <label className="text-gray-700 text-sm mb-1">Order Source</label>
+  <input
+    type="text"
+    value={orderSource}
+    onChange={(e) => setOrderSource(e.target.value)}
+    className="w-full p-2 border rounded-md"
+    placeholder="Order Source"
+  />
+
+  <input
+    type="text"
+    value={payerName}
+    onChange={(e) => setPayerName(e.target.value)}
+    className="w-full p-2 border rounded-md mt-2"
+    placeholder="Name (employee / payer)"
+  />
+</div>
+
+
+                    <div className="text-xs text-gray-600">
+                      Make sure the BTC amount (in ₹) matches the bill. Tx ID and Order Source are required for BTC.
+                    </div>
+                  </div>
+                )}
+
+                {selectedPaymentMethod === "ROOM" && (
+                  <div className="flex flex-row gap-2 my-2">
+                    <h3 className="text-sm font-semibold">Select Room:</h3>
+                    <select
+                      className="border rounded-md p-2 w-full"
+                      value={booking?.bookingId || ""}
+                      onChange={(e) =>
+                        setBooking(hotelBookings.find((b) => b.bookingId === e.target.value))
+                      }
+                    >
+                      <option value="" disabled>
+                        Select a room
+                      </option>
+                      {hotelBookings.map((b) => (
+                        <option key={b.bookingId} value={b.bookingId}>
+                          {b.roomNumber}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {selectedPaymentMethod === "ROOM" && (
+                  <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-3 py-2 rounded-md mt-3 text-sm">
+                    <strong>Note:</strong> Payment will be collected during hotel checkout.
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -630,19 +831,30 @@ const PaymentModal = ({
           >
             Cancel
           </button>
-          <button
-            onClick={isPartialPayment ? handlePartialPayment : handleSinglePayment}
-            disabled={isPartialPayment ? remainingAmount !== 0 : false}
-            className={`px-4 py-2 rounded-md text-white ${
-              isPartialPayment
-                ? remainingAmount === 0 
-                  ? 'flex-1 bg-green-600 hover:bg-green-700' 
-                  : 'flex-1 bg-gray-400 text-gray-600 cursor-not-allowed'
-                : 'bg-green-700'
-            }`}
-          >
-            Confirm Payment
-          </button>
+
+          {/* Confirm button: changes behavior for management special */}
+          {isManagementSpecial ? (
+            <button
+              onClick={handleManagementFreeSettle}
+              className="px-4 py-2 rounded-md text-white bg-green-700 hover:bg-green-800"
+            >
+              Confirm Free Settlement
+            </button>
+          ) : (
+            <button
+              onClick={isPartialPayment ? handlePartialPayment : handleSinglePayment}
+              disabled={isPartialPayment ? remainingAmount !== 0 : false}
+              className={`px-4 py-2 rounded-md text-white ${
+                isPartialPayment
+                  ? remainingAmount === 0 
+                    ? 'flex-1 bg-green-600 hover:bg-green-700' 
+                    : 'flex-1 bg-gray-400 text-gray-600 cursor-not-allowed'
+                  : 'bg-green-700'
+              }`}
+            >
+              Confirm Payment
+            </button>
+          )}
         </div>
       </div>
     </div>

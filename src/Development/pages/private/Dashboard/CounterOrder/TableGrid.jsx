@@ -14,7 +14,12 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
 
   const getFilteredTables = () => {
     if (institutionData?.integration !== "HOTEL") {
-      return tables;
+      return tables.filter(
+        (table) =>
+          String(table.name).toLowerCase().startsWith("table") ||
+          String(table.id).toLowerCase().startsWith("takeaway") ||
+          String(table.orderType).toLowerCase() === "management"
+      );
     }
 
     if (activeTab === "Table") {
@@ -25,6 +30,8 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
       );
     } else if (activeTab === "Hotel") {
       return tables.filter((table) => String(table.id).toLowerCase().startsWith("hotel"));
+    } else if (activeTab === "Management") {
+      return tables.filter((table) => String(table.orderType).toLowerCase() === "management");
     }
     return tables;
   };
@@ -46,6 +53,9 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
       if (String(table.id).toLowerCase().startsWith("hotel")) {
         const hotelId = String(table.id).replace(/^hotel/i, "");
         return `Hotel ${hotelId}`;
+      }
+      if (String(table.orderType).toLowerCase() === "management") {
+        return table.name; // Use the name directly for management rooms
       }
       return `Table ${table.id}`;
     };
@@ -102,6 +112,9 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
       if (String(table.id).toLowerCase().startsWith("hotel")) {
         return `Hotel ${table.id.replace(/^hotel/i, "")}`;
       }
+      if (String(table.orderType).toLowerCase() === "management") {
+        return table.name;
+      }
       return `Table ${table.id}`;
     };
 
@@ -143,8 +156,6 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
   };
 
   const renderVerticalTabs = () => {
-    if (institutionData?.integration !== "HOTEL") return null;
-
     return (
       <div className="flex flex-col w-16 bg-gray-50 border-r">
         <button
@@ -157,15 +168,27 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
         >
           Table
         </button>
+        {institutionData?.integration === "HOTEL" && (
+          <button
+            onClick={() => setActiveTab("Hotel")}
+            className={`p-2 text-xs font-medium border-b transition-all ${
+              activeTab === "Hotel"
+                ? "bg-blue-600 text-white border-blue-700"
+                : "bg-white text-gray-700 hover:bg-gray-100 border-gray-200"
+            }`}
+          >
+            Hotel
+          </button>
+        )}
         <button
-          onClick={() => setActiveTab("Hotel")}
+          onClick={() => setActiveTab("Management")}
           className={`p-2 text-xs font-medium border-b transition-all ${
-            activeTab === "Hotel"
+            activeTab === "Management"
               ? "bg-blue-600 text-white border-blue-700"
               : "bg-white text-gray-700 hover:bg-gray-100 border-gray-200"
           }`}
         >
-          Hotel
+          Mng.
         </button>
       </div>
     );
