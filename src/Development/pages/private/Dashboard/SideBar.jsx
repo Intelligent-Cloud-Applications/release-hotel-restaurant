@@ -17,10 +17,10 @@ const routes = [
   { path: 'counterorder', label: '', icon: TbToolsKitchen3, allowedUserTypes: ['admin'] },
   { path: 'orders', label: '', icon: MdFastfood, allowedUserTypes: ['member', 'chef', 'waiter'] },
   // { path: 'pendingorders', label: '', icon: MdOutlinePendingActions, allowedUserTypes: ['admin', 'waiter'] },
-  { path: 'addstaff', label: '', icon: IoMdPersonAdd, allowedUserTypes: ['admin'] },
+  { path: 'addstaff', label: '', icon: IoMdPersonAdd, allowedUserTypes: ['admin'], requiresOwnerRole: true },
   { path: 'item', label: '', icon: MdOutlineProductionQuantityLimits, allowedUserTypes: ['admin', 'chef'] },
   { path: 'stockmanagement', label: '', icon: MdInventory2, allowedUserTypes: ['admin'] },
-  { path: 'qrmanage', label: '', icon: MdQrCodeScanner, allowedUserTypes: ['admin'] },
+  { path: 'qrmanage', label: '', icon: MdQrCodeScanner, allowedUserTypes: ['admin'], requiresOwnerRole: true },
   { path: 'revenue', label: '', icon: RiMoneyRupeeCircleFill, allowedUserTypes: ['admin'] },
   { path: 'orderhistory', label: '', icon: RiBillLine, allowedUserTypes: ['admin'] },
   { path: 'report', label: '', icon: TbReportSearch, allowedUserTypes: ['admin'] },
@@ -36,8 +36,20 @@ const SideBar = () => {
   const [totalOrdersCount, setTotalOrdersCount] = useState(0);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const userType = userData?.userType;
+  const role = userData?.role;
   const { institution } = institutionData;
   const location = useLocation();
+
+  // Helper function to check if route should be displayed
+  const shouldDisplayRoute = (route) => {
+    const hasUserType = route.allowedUserTypes.includes(userType);
+    // Only check role for routes that specifically require owner role
+    // For other routes, just check user type
+    if (route.requiresOwnerRole) {
+      return hasUserType && role === 'owner';
+    }
+    return hasUserType;
+  };
 
   // Fullscreen Toggle
   const toggleFullScreen = () => {
@@ -101,7 +113,7 @@ const SideBar = () => {
         <Sidebar.Items>
           <Sidebar.ItemGroup>
             {routes.map((item, index) => (
-              item.allowedUserTypes.includes(userType) && (
+              shouldDisplayRoute(item) && (
                 <Link
                   key={index}
                   to={`/dashboard/${item.path}`}
@@ -148,7 +160,7 @@ const SideBar = () => {
       <div className="lg:hidden fixed bottom-0 left-0 w-full bg-white z-10 shadow-md">
         <div className="flex justify-around py-2">
           {routes.map((item, index) => (
-            item.allowedUserTypes.includes(userType) && (
+            shouldDisplayRoute(item) && (
               <Link
                 key={index}
                 to={`/dashboard/${item.path}`}
