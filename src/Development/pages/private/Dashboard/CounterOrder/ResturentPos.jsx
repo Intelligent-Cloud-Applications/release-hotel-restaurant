@@ -123,7 +123,8 @@ const [tables, setTables] = useState([
   const fetchUnpaidOrders = async () => {
     try {
       setLoader(true);
-      const result = await API.get("main", `/admin/unpaid-orders/${institutionData.institution}`);
+      const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
+      const result = await API.get("main", `/admin/unpaid-orders/${institutionData.institution}?type=${type}`);
       const responseBody = result.body ? JSON.parse(result.body) : result;
       setUnpaidOrders(responseBody.orders || []);
       setLoader(false);
@@ -192,6 +193,7 @@ const [tables, setTables] = useState([
 
       await API.post("main", `/any/create-order/${institutionData.institution}`, {
         body: {
+          type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
           name: customerDetails[tableIdStr]?.name || "",
           phoneNumber: customerDetails[tableIdStr]?.phone || "",
           tableName: tableIdStr,
@@ -210,7 +212,8 @@ const [tables, setTables] = useState([
         body: {
           name: customerDetails[tableIdStr]?.name || "",
           phoneNumber: customerDetails[tableIdStr]?.phone || "",
-          items: tableDataForTable.mergedItems
+          items: tableDataForTable.mergedItems,
+          type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
         },
       });
 
@@ -247,7 +250,8 @@ const [tables, setTables] = useState([
           sgstPercentage: institutionData?.sgst ?? 2.5,
           cgst,
           sgst,
-          serviceTax
+          serviceTax,
+          type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
         },
       });
 
@@ -255,7 +259,8 @@ const [tables, setTables] = useState([
         body: {
           name: customerDetails[tableIdStr]?.name || "",
           phoneNumber: customerDetails[tableIdStr]?.phone || "",
-          items: tableDataForTable.mergedItems
+          items: tableDataForTable.mergedItems,
+          type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
         },
       });
 
@@ -432,9 +437,11 @@ const [tables, setTables] = useState([
   const fetchAllTableData = async () => {
     try {
       setLoader(true);
+      const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
+
       const [tableResult, unpaidResult] = await Promise.all([
-        API.get("main", `/admin/get-tabledata/${institutionData.institution}`, {}),
-        API.get("main", `/admin/unpaid-orders/${institutionData.institution}`)
+        API.get("main", `/admin/get-tabledata/${institutionData.institution}?type=${type}`, {}),
+        API.get("main", `/admin/unpaid-orders/${institutionData.institution}?type=${type}`)
       ]);
 
       // Process table data
@@ -629,6 +636,7 @@ const [tables, setTables] = useState([
             paymentMode: "offline",
             paymentMethod: paymentMethod,
             table: false,
+            type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
           },
         }
       );
@@ -924,7 +932,9 @@ const [tables, setTables] = useState([
     }
 
     try {
-      const result = await API.get("main", `/admin/get-tabledata/${institutionData.institution}`, {});
+      const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
+
+      const result = await API.get("main", `/admin/get-tabledata/${institutionData.institution}?type=${type}`, {});
       const responseBody = result.body ? JSON.parse(result.body) : result;
       const responseData = responseBody.data || {};
       setAllTablesData(responseData);
@@ -948,12 +958,13 @@ const [tables, setTables] = useState([
             sgst,
             serviceTax,
             ...(userData && { orderBy: userData.cognitoId }),
-            tableOccupied: true
+            tableOccupied: true,
+            type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
           },
         });
 
         await API.post("main", `/admin/orders-kot/${institutionData.institution}/${tableIdStr}`, {
-          body: { items: tableDataForTable.mergedItems }
+          body: { items: tableDataForTable.mergedItems,type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe", }
         });
 
         toast.success("KOT Saved Successfully");
@@ -971,7 +982,8 @@ const [tables, setTables] = useState([
             sgstPercentage: institutionData?.sgst ?? 2.5,
             cgst,
             sgst,
-            serviceTax
+            serviceTax,
+            type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
           },
         });
 
@@ -979,7 +991,8 @@ const [tables, setTables] = useState([
           body: {
             name: customerDetails[tableIdStr]?.name || "",
             phoneNumber: customerDetails[tableIdStr]?.phone || "",
-            items: tableDataForTable.mergedItems
+            items: tableDataForTable.mergedItems,
+            type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
           },
         });
 
@@ -1012,12 +1025,13 @@ const [tables, setTables] = useState([
           sgstPercentage: institutionData?.sgst ?? 2.5,
           cgst,
           sgst,
-          serviceTax
+          serviceTax,
+          type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
         },
       });
 
       await API.post("main", `/admin/orders-bill/${institutionData.institution}/${tableIdStr}`, {
-        body: { items: localBillItems }
+        body: { items: localBillItems,type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe", }
       });
 
       setTables((prev) =>

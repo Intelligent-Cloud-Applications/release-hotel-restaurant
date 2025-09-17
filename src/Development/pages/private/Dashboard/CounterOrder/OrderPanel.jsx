@@ -136,7 +136,7 @@ const OrderPanel = ({
       const newSplitBillMode = !splitBillMode;
 
       await API.put("main", `/admin/split-bill/${institutionData.institution}/${tableIdStr}`, {
-        body: { splitBill: newSplitBillMode },
+        body: { splitBill: newSplitBillMode,type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe", },
       });
       await fetchPendingOrders();
       setSplitBillMode(newSplitBillMode);
@@ -174,7 +174,7 @@ const OrderPanel = ({
     setIsAccepting(true);
     try {
       const response = await API.post("main", `/admin/accept-order/${institutionData.institution}`, {
-        body: { tableName: String(selectedTable.id), institution: institutionData.institution },
+        body: { tableName: String(selectedTable.id), institution: institutionData.institution,type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe", },
       });
 
       await fetchTableData(selectedTable.id);
@@ -199,6 +199,7 @@ const OrderPanel = ({
         body: {
           tableName: String(selectedTable.id),
           institution: institutionData.institution,
+          type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
         },
       });
 
