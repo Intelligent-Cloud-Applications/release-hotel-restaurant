@@ -19,7 +19,7 @@ const Stafflist = () => {
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);
-  
+
   useEffect(() => {
     const handleResize = () => setScreenWidth(window.innerWidth);
     window.addEventListener("resize", handleResize);
@@ -27,7 +27,7 @@ const Stafflist = () => {
   }, []);
 
   const head = ["Name", "Email", "Phone Number", "User Type", "Actions"];
-  
+
   if (userData?.userType !== 'admin') {
     return <Error message="Access Denied: Admins Only" />;
   }
@@ -53,9 +53,13 @@ const Stafflist = () => {
   const handleFilterChange = (event) => {
     const userType = event.target.value;
     setSelectedUserType(userType);
-    
+
     if (userType) {
-      setFilteredData(staffData.filter((staff) => staff.userType === userType));
+      setFilteredData(
+        staffData.filter((staff) => 
+          userType === "owner" ? staff.role === "owner" : staff.userType === userType
+        )
+      );
     } else {
       setFilteredData(staffData);
     }
@@ -63,7 +67,6 @@ const Stafflist = () => {
 
   const handleDelete = async (cognitoId) => {
     try {
-   
       const updatedStaffData = staffData.filter((staff) => staff.cognitoId !== cognitoId);
       const updatedFilteredData = filteredData.filter((staff) => staff.cognitoId !== cognitoId);
       
@@ -75,7 +78,6 @@ const Stafflist = () => {
     } catch (error) {
       console.error("Error deleting staff member:", error);
       toast.error("Failed to delete staff member");
-  
       fetchData();
     }
   };
@@ -95,11 +97,11 @@ const Stafflist = () => {
     
     try {
       if (selectedStaff) {
-    
         const tempStaff = { 
           ...selectedStaff,
           userName: formData.name,
-          userType: formData.userType
+          userType: formData.userType,
+          role: formData.role || undefined
         };
         const updatedStaffData = staffData.map((staff) =>
           staff.cognitoId === selectedStaff.cognitoId ? tempStaff : staff
@@ -107,7 +109,9 @@ const Stafflist = () => {
         
         setStaffData(updatedStaffData);
         
-        if (selectedUserType === "" || selectedUserType === tempStaff.userType) {
+        if (selectedUserType === "" || 
+            selectedUserType === tempStaff.userType || 
+            (selectedUserType === "owner" && tempStaff.role === "owner")) {
           setFilteredData(filteredData.map((staff) =>
             staff.cognitoId === selectedStaff.cognitoId ? tempStaff : staff
           ));
@@ -117,33 +121,33 @@ const Stafflist = () => {
           ));
         }
         
-      
         await API.put("main", `/admin/update-staff/${institution}/${selectedStaff.cognitoId}`, {
           body: {
             name: formData.name,
             userType: formData.userType,
             email: selectedStaff.emailId,
-            phoneNumber: selectedStaff.phoneNumber
+            phoneNumber: selectedStaff.phoneNumber,
+            ...(formData?.role ? { role: formData.role } : {}),
           }
         });
         
         toast.success("Staff member updated successfully");
       } else {
-        
         const tempId = `temp-${Date.now()}`;
-  
         const tempStaff = {
           cognitoId: tempId,
           userName: formData.name,
           emailId: formData.email,
           phoneNumber: formData.phoneNumber,
-          userType: formData.userType
+          userType: formData.userType,
+          role: formData.role || undefined
         };
         
- 
         setStaffData(prevData => [...prevData, tempStaff]);
         
-        if (selectedUserType === "" || selectedUserType === tempStaff.userType) {
+        if (selectedUserType === "" || 
+            selectedUserType === tempStaff.userType || 
+            (selectedUserType === "owner" && tempStaff.role === "owner")) {
           setFilteredData(prevData => [...prevData, tempStaff]);
         }
         
@@ -154,21 +158,25 @@ const Stafflist = () => {
             email: formData.email,
             phoneNumber: formData.phoneNumber,
             country: formData.country || "india",
-            userType: formData.userType
+            userType: formData.userType,
+            ...(formData?.role ? { role: formData.role } : {})
           }
         });
         
         const actualStaff = {
           ...response,
           userName: response.name || formData.name,
-          emailId: response.email || formData.email
+          emailId: response.email || formData.email,
+          role: formData.role || undefined
         };
         
         setStaffData(prevData => prevData.map(staff => 
           staff.cognitoId === tempId ? actualStaff : staff
         ));
         
-        if (selectedUserType === "" || selectedUserType === actualStaff.userType) {
+        if (selectedUserType === "" || 
+            selectedUserType === actualStaff.userType || 
+            (selectedUserType === "owner" && actualStaff.role === "owner")) {
           setFilteredData(prevData => prevData.map(staff => 
             staff.cognitoId === tempId ? actualStaff : staff
           ));
@@ -181,7 +189,6 @@ const Stafflist = () => {
     } catch (error) {
       console.error("Error handling staff:", error);
       toast.error(error.message || "Failed to process staff data");
-     
       fetchData();
     } finally {
       setIsLoading(false);
@@ -205,6 +212,7 @@ const Stafflist = () => {
             <option value="chef">Chef</option>
             <option value="waiter">Waiter</option>
             <option value="admin">Admin</option>
+            <option value="owner">Owner</option>
             <option value="member">Member</option>
           </select>
         </div>
@@ -218,13 +226,13 @@ const Stafflist = () => {
       </div>
 
       {loading ? (
-           <div className="flex flex-col items-center justify-center p-12">
-           <div className="relative">
-             <div className="w-16 h-16 border-4 border-gray-300 border-t-primaryColor rounded-full animate-spin"></div>
-             <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-xl font-bold">👨‍🍳</div>
-         </div>
-         <p className="mt-4 text-primaryColor font-medium">Loading staff members...</p>
-       </div>
+        <div className="flex flex-col items-center justify-center p-12">
+          <div className="relative">
+            <div className="w-16 h-16 border-4 border-gray-300 border-t-primaryColor rounded-full animate-spin"></div>
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-xl font-bold">👨‍🍳</div>
+          </div>
+          <p className="mt-4 text-primaryColor font-medium">Loading staff members...</p>
+        </div>
       ) : (
         <>
           {screenWidth > 1025 ? (
@@ -234,7 +242,7 @@ const Stafflist = () => {
                 staff.userName,
                 staff.emailId,
                 staff.phoneNumber,
-                staff.userType,
+                staff.role === "owner" ? "Owner" : staff.userType, // Display "Owner" if role is owner
                 <div className="flex space-x-2">
                   <Button onClick={() => handleOpenModal(staff)} className="bg-primaryColor">
                     <FaEdit />
@@ -266,12 +274,12 @@ const Stafflist = () => {
                       <span className="block text-sm font-medium">User Type:</span>
                       <span
                         className={`inline-block px-3 py-1 rounded-full text-sm font-bold ${
-                          staff.userType === 'admin'
+                          staff.role === "owner" || staff.userType === 'admin'
                             ? 'bg-blue-600 text-white'
                             : 'bg-green-600 text-white'
                         }`}
                       >
-                        {staff.userType}
+                        {staff.role === "owner" ? "Owner" : staff.userType} {/* Display "Owner" if role is owner */}
                       </span>
                     </div>
                 

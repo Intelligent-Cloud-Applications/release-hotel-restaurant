@@ -21,12 +21,15 @@ const TabSelector = ({
   KOTByTable,
 }) => {
   const hasItems = localBillItems.length > 0;
-  const { institutionData } = useContext(Context);
+  const { institutionData, userData } = useContext(Context);
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [destinationTable, setDestinationTable] = useState("");
   const [availableTables, setAvailableTables] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+
+  // Check if user can cancel orders (admin with owner role)
+  const canCancelOrders = userData?.userType === 'admin' && userData?.role === 'owner';
 
   useEffect(() => {
     if (tables && selectedTable) {
@@ -237,18 +240,20 @@ const TabSelector = ({
                   {splitBillMode ? "Exit Split Bill" : "Split Bill"}
                 </button>
               )}
-              <button
-                onClick={() => setShowCancelConfirm(true)}
-                className={`flex items-center text-xs px-1 py-0.5 rounded ${
-                  hasItems
-                    ? "bg-red-600 text-white hover:bg-red-700"
-                    : "bg-gray-400 text-white"
-                }`}
-                disabled={!hasItems}
-                title="Cancel Order"
-              >
-                Cancel Order
-              </button>
+              {canCancelOrders && (
+                <button
+                  onClick={() => setShowCancelConfirm(true)}
+                  className={`flex items-center text-xs px-1 py-0.5 rounded ${
+                    hasItems
+                      ? "bg-red-600 text-white hover:bg-red-700"
+                      : "bg-gray-400 text-white"
+                  }`}
+                  disabled={!hasItems}
+                  title="Cancel Order"
+                >
+                  Cancel Order
+                </button>
+              )}
             </div>
           )}
         </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { TextInput, Select, Button } from "flowbite-react";
 import { BaseTextInput, EmailInput, CountrySelect, PhoneInput } from "../../../../common/Inputs";
 import countries from "../../../../common/Inputs/countries.json";
@@ -9,7 +9,7 @@ const StaffForm = ({ initialData, isUpdate, onSubmit, isLoading }) => {
     email: initialData?.emailId || initialData?.email || "",
     phone: initialData?.phoneNumber?.replace(/^\+\d+/, "") || "",
     countryCode: initialData?.phoneNumber?.match(/^\+(\d+)/) ? initialData?.phoneNumber?.match(/^\+(\d+)/)[1] : "91",
-    userType: initialData?.userType || "chef",
+    userType: initialData?.role === "owner" ? "owner" : initialData?.userType || "chef", // Set userType to "owner" if role is "owner"
     country: initialData?.country || "india"
   });
 
@@ -21,14 +21,25 @@ const StaffForm = ({ initialData, isUpdate, onSubmit, isLoading }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
     
-
     const formattedPhone = `+${formData.countryCode}${formData.phone}`;
-    
+    let finalData = { ...formData };
+    // If owner is selected, force userType to admin and add role: owner
+    if (finalData.userType === "owner") {
+      finalData = {
+        ...finalData,
+        userType: "admin",
+        role: "owner"
+      };
+    } else {
+      // Remove role if userType is not owner
+      delete finalData.role;
+    }
+
     onSubmit({
-      ...formData,
+      ...finalData,
       phoneNumber: formattedPhone,
-      userName: formData.name,
-      emailId: formData.email
+      userName: finalData.name,
+      emailId: finalData.email
     });
   };
 
@@ -109,6 +120,7 @@ const StaffForm = ({ initialData, isUpdate, onSubmit, isLoading }) => {
           <option value="chef">Chef</option>
           <option value="waiter">Waiter</option>
           <option value="admin">Admin</option>
+          <option value="owner">Owner</option>
           {isUpdate && <option value="member">Member</option>}
         </Select>
       </div>
