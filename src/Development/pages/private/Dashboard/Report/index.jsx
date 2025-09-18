@@ -1423,6 +1423,7 @@ const Report = () => {
         const [stockResponse, orderResponse, menuResponse] = await Promise.all([
           API.get("main", `/admin/stock-list-items/${institution}`),
           API.get("main", `/admin/list-orders/${institution}?type=${type}`, {}),
+          API.get("main", `/any/list-items/${institution}`)
         ]);
         setStocks(stockResponse || []);
         const paidOrders = (orderResponse || []).filter(
