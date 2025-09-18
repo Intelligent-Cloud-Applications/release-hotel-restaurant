@@ -1,0 +1,118 @@
+name: Dynamic Institution Deploy to S3
+
+on:
+  push:
+    branches:
+      - '*'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Install Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: yarn
+
+      - name: Create temp config reader
+        run: |
+          echo '{"type": "module"}' > temp-package.json
+          echo "import fs from 'fs';
+          
+          try {
+            const data = JSON.parse(fs.readFileSync('./src/Operation/data.json', 'utf8'));
+            
+            const { institutionId, s3BucketName, cloudFrontId } = data;
+            
+            const branch = process.env.GITHUB_REF.split('/').pop();
+            const stage = branch.startsWith('beta-') ? 'DEV' : 'PROD';
+            
+            const deployment = {
+              [\`beta-\${institutionId}\`]: {
+                s3Bucket: s3BucketName,
+                cloudfrontId: cloudFrontId,
+                stage: 'DEV'
+              },
+              [institutionId]: {
+                s3Bucket: s3BucketName,
+                cloudfrontId: cloudFrontId,
+                stage: 'PROD'
+              }
+            };
+            
+            const config = deployment[branch];
+            const output = config ? {
+              s3Bucket: config.s3Bucket,
+              cloudfrontId: config.cloudfrontId,
+              shouldDeploy: true,
+              reactAppStage: config.stage
+            } : {
+              s3Bucket: '',
+              cloudfrontId: '',
+              shouldDeploy: false,
+              reactAppStage: ''
+            };
+
+            // Write output to a file instead of console.log
+            fs.writeFileSync('config.json', JSON.stringify(output));
+            
+          } catch (error) {
+            console.error('Error in configuration:', error.message);
+            process.exit(1);
+          }" > configReader.mjs
+
+      - name: Get deployment configuration
+        id: config
+        run: |
+          cp package.json original-package.json
+          cp temp-package.json package.json
+          node configReader.mjs
+          cp original-package.json package.json
+          echo "s3_bucket=$(cat config.json | jq -r .s3Bucket)" >> $GITHUB_OUTPUT
+          echo "cloudfront_id=$(cat config.json | jq -r .cloudfrontId)" >> $GITHUB_OUTPUT
+          echo "should_deploy=$(cat config.json | jq -r .shouldDeploy)" >> $GITHUB_OUTPUT
+          echo "react_app_stage=$(cat config.json | jq -r .reactAppStage)" >> $GITHUB_OUTPUT
+
+      - name: Log Deployment Details
+        if: steps.config.outputs.should_deploy == 'true'
+        run: |
+          echo "Configuration being used:"
+          cat config.json
+          echo "Deploying to S3 Bucket: ${{ steps.config.outputs.s3_bucket }}"
+          echo "CloudFront Distribution ID: ${{ steps.config.outputs.cloudfront_id }}"
+          echo "Branch name: ${GITHUB_REF#refs/heads/}"
+          echo "React App Stage: ${{ steps.config.outputs.react_app_stage }}"
+
+      - name: Build the React app
+        if: steps.config.outputs.should_deploy == 'true'
+        run: |
+          export NODE_OPTIONS=--max_old_space_size=4096
+          yarn build
+
+      - name: Set up AWS CLI
+        if: steps.config.outputs.should_deploy == 'true'
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Deploy to S3
+        if: steps.config.outputs.should_deploy == 'true'
+        run: |
+          echo "Starting S3 sync to bucket: ${{ steps.config.outputs.s3_bucket }}"
+          aws s3 sync ./build s3://${{ steps.config.outputs.s3_bucket }} --delete
+          echo "S3 sync completed"
+
+      - name: Cloudfront Invalidation
+        if: steps.config.outputs.should_deploy == 'true'
+        run: |
+          echo "Creating CloudFront invalidation for distribution: ${{ steps.config.outputs.cloudfront_id }}"
+          aws cloudfront create-invalidation --distribution-id ${{ steps.config.outputs.cloudfront_id }} --paths "/*"
+          echo "CloudFront invalidation created"

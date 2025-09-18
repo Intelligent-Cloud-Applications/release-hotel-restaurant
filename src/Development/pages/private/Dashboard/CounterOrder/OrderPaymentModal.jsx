@@ -2,18 +2,19 @@ import React, { useState, useContext, useEffect } from "react";
 import { toast } from "react-toastify";
 import { API } from "aws-amplify";
 import { Context } from "../../../../Context";
+import Select from "react-select";
 
-const OrderPaymentModal = ({ 
-  selectedTable, 
-  institutionData, 
-  onClose, 
-  selectedOrderId, 
+const OrderPaymentModal = ({
+  selectedTable,
+  institutionData,
+  onClose,
+  selectedOrderId,
   fetchTableData,
   fetchPendingOrders,
   customerDetails,
-  orderGroups
+  orderGroups,
 }) => {
-  const matchedOrder = orderGroups.find(order => order.orderId === selectedOrderId);
+  const matchedOrder = orderGroups.find((order) => order.orderId === selectedOrderId);
 
   // Common state
   const { setLoader, hotelBookings, addHotelService } = useContext(Context);
@@ -34,6 +35,20 @@ const OrderPaymentModal = ({
   // Management-specific / BTC payer fields
   const [orderSource, setOrderSource] = useState("");
   const [payerName, setPayerName] = useState("");
+  const [companies, setCompanies] = useState([]);
+  const [newCompany, setNewCompany] = useState({ gstin: "", name: "" });
+  const [showAddCompanyForm, setShowAddCompanyForm] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Management dropdown options
+  const [managementOptions] = useState([
+    { value: "Md Sir", label: "Md Sir" },
+    { value: "Staff", label: "Staff" },
+    { value: "Police Station", label: "Police Station" },
+    { value: "Food Dep.", label: "Food Dep." },
+    { value: "custom", label: "Custom" },
+  ]);
+  const [customManagementInput, setCustomManagementInput] = useState("");
 
   const paymentMethods = ["QR", "Cash", "Card", "BTC"];
   const isPartialPayment = institutionData.paymentMethod === "partial";
@@ -43,33 +58,197 @@ const OrderPaymentModal = ({
     const inst = String(institutionData?.institution || "").trim();
     const name = String(institutionData?.companyName || "").toLowerCase();
     if (inst === "444" || inst === "555") return true;
-    if (String(selectedTable?.id || "").includes("Management444") || String(selectedTable?.id || "").includes("Management555")) return true;
+    if (
+      String(selectedTable?.id || "").includes("Management444") ||
+      String(selectedTable?.id || "").includes("Management555")
+    )
+      return true;
     return false;
   })();
+
+  // ---------- Robust fetchCompanies ----------
+  const fetchCompanies = async () => {
+    setLoader(true);
+    setError(null);
+    try {
+      const resp = await API.get("frontdesk", `/company/${institutionData?.institutionId}`, {});
+      let companiesList = [];
+
+      if (!resp) {
+        companiesList = [];
+      } else if (Array.isArray(resp)) {
+        companiesList = resp;
+      } else if (resp.companies && Array.isArray(resp.companies)) {
+        companiesList = resp.companies;
+      } else if (resp.body) {
+        try {
+          const bodyObj = typeof resp.body === "string" ? JSON.parse(resp.body) : resp.body;
+          if (Array.isArray(bodyObj)) companiesList = bodyObj;
+          else if (bodyObj.companies && Array.isArray(bodyObj.companies)) companiesList = bodyObj.companies;
+          else companiesList = bodyObj;
+        } catch (e) {
+          companiesList = [];
+        }
+      } else if (resp.data && Array.isArray(resp.data)) {
+        companiesList = resp.data;
+      } else {
+        companiesList = [];
+      }
+
+      setCompanies(companiesList || []);
+      return companiesList;
+    } catch (err) {
+      console.error("fetchCompanies error:", err);
+      setError("Failed to get companies");
+      toast.error("Failed to fetch companies");
+      return null;
+    } finally {
+      setLoader(false);
+    }
+  };
+
+  // ---------- Robust createCompany ----------
+  const createCompany = async (payload) => {
+    setLoader(true);
+    setError(null);
+    try {
+      const inst = institutionData?.institution || institutionData?.institutionId;
+      const resp = await API.post("frontdesk", "/company", {
+        body: { ...payload, institutionId: inst },
+      });
+
+      let newCompanyObj = null;
+      if (!resp) {
+        throw new Error("Empty response from create company API");
+      } else if (resp.company) {
+        newCompanyObj = resp.company;
+      } else if (resp.data && resp.data.company) {
+        newCompanyObj = resp.data.company;
+      } else if (resp.company_id || resp.companyId || resp.id) {
+        newCompanyObj = resp;
+      } else if (resp.body) {
+        try {
+          const bodyObj = typeof resp.body === "string" ? JSON.parse(resp.body) : resp.body;
+          newCompanyObj = bodyObj.company || bodyObj;
+        } catch (e) {
+          throw e;
+        }
+      } else {
+        newCompanyObj = resp;
+      }
+
+      setCompanies((prev) => [...(prev || []), newCompanyObj]);
+      setOrderSource(newCompanyObj.company_id || newCompanyObj.companyId || newCompanyObj.id || "");
+      setShowAddCompanyForm(false);
+      setNewCompany({ gstin: "", name: "" });
+      toast.success("Company added successfully");
+      return newCompanyObj;
+    } catch (error) {
+      console.error("createCompany error:", error);
+      setError("Failed to create company");
+      toast.error("Failed to create company");
+      return null;
+    } finally {
+      setLoader(false);
+    }
+  };
+
+  // ---------- Update Company Credit ----------
+  const updateCompanyCredit = async (companyId, amount, name, orderId) => {
+    try {
+      const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
+      const creditData = {
+        amount: Number(amount),
+        date: new Date().toISOString().split("T")[0],
+        name: name || "Unknown",
+        type: type,
+        orderId: orderId,
+      };
+      await API.patch("frontdesk", `/company`, {
+        body: {
+          credit: creditData,
+          institutionId: institutionData.institutionId,
+          company_id: companyId,
+        },
+      });
+      toast.success("Company credit updated successfully");
+    } catch (error) {
+      console.error("updateCompanyCredit error:", error);
+      toast.error("Failed to update company credit");
+      throw error;
+    }
+  };
+
+  // ---------- Calculate Totals ----------
+  const calculateTotals = (items) => {
+    if (!items || !Array.isArray(items)) {
+      return {
+        subtotal: 0,
+        cgst: 0,
+        sgst: 0,
+        serviceTax: 0,
+        totalWithTax: 0,
+      };
+    }
+
+    const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+    const serviceTaxPercentage =
+      institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0;
+    const cgstPercentage = institutionData?.cgst !== undefined ? institutionData.cgst : 2.5;
+    const sgstPercentage = institutionData?.sgst !== undefined ? institutionData.sgst : 2.5;
+
+    const taxableSubtotal = items
+      .filter((item) => item.type !== "bar")
+      .reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+    const cgst = (taxableSubtotal * cgstPercentage) / 100;
+    const sgst = (taxableSubtotal * sgstPercentage) / 100;
+    const serviceTax = (subtotal * serviceTaxPercentage) / 100;
+
+    const totalWithTax = Math.round(subtotal + cgst + sgst + serviceTax);
+
+    return {
+      subtotal,
+      cgst,
+      sgst,
+      serviceTax,
+      totalWithTax,
+    };
+  };
+
+  // Fetch companies only when BTC is selected
+  useEffect(() => {
+    if (selectedPaymentMethod === "BTC") {
+      fetchCompanies();
+    }
+  }, [selectedPaymentMethod]);
+
+  // Handle new company form submission
+  const handleAddCompany = async () => {
+    if (!newCompany.gstin || !newCompany.name) {
+      toast.error("Please provide both GSTIN and Company Name");
+      return;
+    }
+    await createCompany({
+      gstin: newCompany.gstin,
+      name: newCompany.name,
+    });
+  };
+
+  // Defensive mapping for react-select options
+  const companyOptions = (companies || []).map((company) => ({
+    value: company.company_id || company.companyId || company.id || company.name || "",
+    label: `${company.name || company.label || "Unnamed"}${company.gst_no ? ` — ${company.gst_no}` : ""}`,
+    raw: company,
+  }));
 
   // Calculate total bill amount for the specific order
   useEffect(() => {
     if (!matchedOrder) return;
 
-    const subtotal = matchedOrder.items.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    );
-
-    const serviceTaxPercentage =
-      institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0;
-    const cgstPercentage =
-      institutionData?.cgst !== undefined ? institutionData.cgst : 2.5;
-    const sgstPercentage =
-      institutionData?.sgst !== undefined ? institutionData.sgst : 2.5;
-
-    const totalTaxPercentage =
-      serviceTaxPercentage + cgstPercentage + sgstPercentage;
-
-    const taxAmount = (subtotal * totalTaxPercentage) / 100;
-    const totalWithTax = Math.round(subtotal + taxAmount);
-
-    setTotalBillAmount(totalWithTax);
+    const totals = calculateTotals(matchedOrder.items);
+    setTotalBillAmount(totals.totalWithTax);
   }, [matchedOrder, institutionData]);
 
   // Validate amount input for partial payment
@@ -95,13 +274,10 @@ const OrderPaymentModal = ({
     }
 
     // If BTC selected, require orderSource
-    if (selectedPaymentMethod === "BTC") {
-      if (!orderSource) {
-        toast.error("Please select Order Source for BTC payment.");
-        setLoader(false);
-        return;
-      }
-      // payerName can be optional but allow empty
+    if (selectedPaymentMethod === "BTC" && !orderSource) {
+      toast.error("Please select a company for BTC payment.");
+      setLoader(false);
+      return;
     }
 
     try {
@@ -112,33 +288,34 @@ const OrderPaymentModal = ({
         billLink = `https://manasrestaurant.tekkzy.com/receipt?orderIds=${selectedOrderId}`;
       }
 
-      // Only send message if phone number exists and we have a bill link
+      // Send message if phone number exists and we have a bill link
       const customerPhone = customerDetails[selectedTable?.id]?.phone;
-      if (customerPhone && billLink && (institutionData.institution === "bhuk2323" || institutionData.institution === "manas25")) {
+      if (
+        customerPhone &&
+        billLink &&
+        (institutionData.institution === "bhuk2323" || institutionData.institution === "manas25")
+      ) {
         try {
-          await API.post(
-            'main', 
-            `/admin/send-message/${institutionData.institution}`,
-            {
-              body: {
-                customerName: customerDetails[selectedTable?.id]?.name || "",
-                customerPhone: `+91${customerPhone}`,
-                billLink: billLink,
-                companyName: institutionData.companyName
-              }
-            }
-          );
+          await API.post("main", `/admin/send-message/${institutionData.institution}`, {
+            body: {
+              customerName: customerDetails[selectedTable?.id]?.name || "",
+              customerPhone: `+91${customerPhone}`,
+              billLink: billLink,
+              companyName: institutionData.companyName,
+            },
+          });
         } catch (msgError) {
           console.error("Error sending message:", msgError);
         }
       }
 
-      // prepare settle payload. include meta if BTC
+      // Prepare settle payload, include meta if BTC
       const settleBody = {
         paymentStatus: true,
         paymentMode: "offline",
         paymentMethod: selectedPaymentMethod,
         type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
+        status: "delivered",
       };
 
       if (selectedPaymentMethod === "BTC") {
@@ -146,17 +323,22 @@ const OrderPaymentModal = ({
           orderSource,
           payerName,
         };
+        // Update company credit for BTC payment
+        await updateCompanyCredit(orderSource, totalBillAmount, payerName, selectedOrderId);
       }
 
       // Handle hotel room billing
       if (selectedPaymentMethod === "ROOM") {
         let totalFoodBill = matchedOrder.items
-          .filter(item => item.type !== "bar")
+          .filter((item) => item.type !== "bar")
           .reduce((total, item) => total + item.price * item.quantity, 0);
 
         let totalBarBill = matchedOrder.items
-          .filter(item => item.type === "bar")
+          .filter((item) => item.type === "bar")
           .reduce((total, item) => total + item.price * item.quantity, 0);
+
+        const totals = calculateTotals(matchedOrder.items);
+        const totalFoodBillWithGST = totalFoodBill + totals.cgst + totals.sgst;
 
         if (!booking?.bookingId) {
           toast.error("Please select a room for hotel billing.");
@@ -168,12 +350,12 @@ const OrderPaymentModal = ({
           [booking.roomNumber]: {
             [new Date().toISOString().split("T")[0]]: [
               {
-                food_charges: totalFoodBill,
+                food_charges: totalFoodBillWithGST,
                 extra_bed_charges: 0,
                 laundry_charges: 0,
                 manual_charges: 0,
                 minibar_charges: totalBarBill,
-                order_id: selectedOrderId, 
+                order_id: selectedOrderId,
               },
             ],
           },
@@ -196,7 +378,6 @@ const OrderPaymentModal = ({
 
       if (error?.response?.data) {
         const apiError = error.response.data;
-        // Append backend message + error details
         if (apiError.message) errorMessage += ` - ${apiError.message}`;
         if (apiError.error) errorMessage += `: ${apiError.error}`;
       }
@@ -208,16 +389,13 @@ const OrderPaymentModal = ({
 
   // Management (444/555) direct-free settle
   const handleManagementFreeSettle = async () => {
-    // orderSource is required
     if (!orderSource) {
-      toast.error("Please select Order Source.");
+      toast.error("Please select or enter a management option.");
       return;
     }
-    // payerName optional
 
     setLoader(true);
     try {
-      // include orderSource and payerName in the settle request body
       await API.post(
         "main",
         `/admin/settle-bill-order/${institutionData.institution}/${tableIdStr}/${selectedOrderId}`,
@@ -229,7 +407,7 @@ const OrderPaymentModal = ({
             paymentMethod: "Free",
             status: "delivered",
             meta: {
-              orderSource,
+              orderSource: orderSource === "custom" ? customManagementInput : orderSource,
               payerName,
             },
           },
@@ -264,9 +442,9 @@ const OrderPaymentModal = ({
       return;
     }
 
-    // Validate BTC if used
     if (btcAmountFinal > 0 && !orderSource) {
-      toast.error("Please select Order Source for BTC payment.");
+      toast.error("Please select a company for BTC payment.");
+      setLoader(false);
       return;
     }
 
@@ -290,38 +468,40 @@ const OrderPaymentModal = ({
         meta: {
           orderSource,
           payerName,
-        }
+        },
       });
+      await updateCompanyCredit(orderSource, btcAmountFinal, payerName, selectedOrderId);
     }
 
     setLoader(true);
 
     try {
       const totalFoodBill = matchedOrder.items
-        .filter(item => item.type !== "bar")
+        .filter((item) => item.type !== "bar")
         .reduce((sum, item) => sum + item.price * item.quantity, 0);
 
       const totalBarBill = matchedOrder.items
-        .filter(item => item.type === "bar")
+        .filter((item) => item.type === "bar")
         .reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-      // Handle hotel room billing if room amount is present
       if (roomAmountFinal > 0) {
         if (!booking?.bookingId) {
           toast.error("Please select a room for hotel billing.");
           setLoader(false);
           return;
         }
+        const totals = calculateTotals(matchedOrder.items);
+        const totalFoodBillWithGST = totalFoodBill + totals.cgst + totals.sgst;
         await addHotelService(booking.bookingId, {
           [booking.roomNumber]: {
             [new Date().toISOString().split("T")[0]]: [
               {
-                food_charges: totalFoodBill,
+                food_charges: totalFoodBillWithGST,
                 extra_bed_charges: 0,
                 laundry_charges: 0,
                 manual_charges: 0,
                 minibar_charges: totalBarBill,
-                orderId: selectedOrderId,
+                order_id: selectedOrderId,
               },
             ],
           },
@@ -350,7 +530,6 @@ const OrderPaymentModal = ({
 
       if (error?.response?.data) {
         const apiError = error.response.data;
-        // Append backend message + error details
         if (apiError.message) errorMessage += ` - ${apiError.message}`;
         if (apiError.error) errorMessage += `: ${apiError.error}`;
       }
@@ -365,7 +544,6 @@ const OrderPaymentModal = ({
     onClose();
     setLoader(false);
 
-    // Refresh the table data and pending orders
     await fetchTableData(tableIdStr);
     await fetchPendingOrders();
 
@@ -454,40 +632,65 @@ const OrderPaymentModal = ({
                   className="w-full p-2 border rounded-md text-center mb-2"
                   placeholder="BTC"
                 />
-                {/* Order Source & Name for BTC partial */}
-                <div className="mt-2 space-y-2">
-                  <div>
-                    <label className="text-gray-700 text-sm mb-1 block">Order Source</label>
-                    <select
-                      className="border rounded-md p-2 w-full"
-                      value={orderSource}
-                      onChange={(e) => setOrderSource(e.target.value)}
+                {btcAmount > 0 && (
+                  <div className="mt-2 space-y-2">
+                    <label className="text-gray-700 text-sm mb-1">Select Company</label>
+                    <Select
+                      options={companyOptions}
+                      value={companyOptions.find((option) => option.value === orderSource) || null}
+                      onChange={(selected) => setOrderSource(selected ? selected.value : "")}
+                      placeholder="Select a company..."
+                      isClearable
+                      className="w-full"
+                    />
+                    <button
+                      onClick={() => setShowAddCompanyForm(true)}
+                      className="mt-2 text-blue-600 hover:underline text-sm"
                     >
-                      <option value="">Select Source</option>
-                      <option value="Md sir">Md sir</option>
-                      <option value="Staff">Staff</option>
-                      <option value="Police Station">Police Station</option>
-                      <option value="Food Dep.">Food Dep.</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-                  {orderSource === "Other" && (
+                      Add New Company
+                    </button>
+                    {showAddCompanyForm && (
+                      <div className="mt-2 p-3 border rounded-md bg-gray-50">
+                        <h3 className="text-sm font-semibold mb-2">Add New Company</h3>
+                        <input
+                          type="text"
+                          value={newCompany.gstin}
+                          onChange={(e) => setNewCompany({ ...newCompany, gstin: e.target.value })}
+                          className="w-full p-2 border rounded-md mb-2"
+                          placeholder="GSTIN"
+                        />
+                        <input
+                          type="text"
+                          value={newCompany.name}
+                          onChange={(e) => setNewCompany({ ...newCompany, name: e.target.value })}
+                          className="w-full p-2 border rounded-md mb-2"
+                          placeholder="Company Name"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => setShowAddCompanyForm(false)}
+                            className="px-3 py-1 bg-gray-200 text-gray-800 rounded-md"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleAddCompany}
+                            className="px-3 py-1 bg-green-600 text-white rounded-md"
+                          >
+                            Add
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <input
                       type="text"
-                      value={orderSource}
-                      onChange={(e) => setOrderSource(e.target.value)}
+                      value={payerName}
+                      onChange={(e) => setPayerName(e.target.value)}
                       className="w-full p-2 border rounded-md"
-                      placeholder="Enter custom order source"
+                      placeholder="Name (employee / payer)"
                     />
-                  )}
-                  <input
-                    type="text"
-                    value={payerName}
-                    onChange={(e) => setPayerName(e.target.value)}
-                    className="w-full p-2 border rounded-md"
-                    placeholder="Name (employee / payer)"
-                  />
-                </div>
+                  </div>
+                )}
               </div>
 
               {/* Room Payment - Only show if hotel integration */}
@@ -508,7 +711,7 @@ const OrderPaymentModal = ({
             {/* Hotel Room Selection - Only show if room amount is entered */}
             {institutionData.integration === "HOTEL" && roomAmount > 0 && (
               <div className="flex flex-row gap-2 my-2">
-                <h3>Select Room:</h3>
+                <h3 className="text-sm font-semibold">Select Room:</h3>
                 <select
                   className="border rounded-md p-2 w-full"
                   value={booking?.bookingId || ""}
@@ -549,36 +752,35 @@ const OrderPaymentModal = ({
         ) : (
           // Single Payment Method UI
           <div>
-            {/* If special management institution -> show the orderSource/name and direct-free settle */}
+            {/* If special management institution -> show the management dropdown */}
             {isManagementSpecial ? (
               <div className="space-y-3">
                 <h3 className="font-semibold mb-1 text-gray-700">Management Settlement</h3>
-
                 <div className="mt-2">
-                  <label className="text-gray-700 text-sm mb-1">Order Source</label>
-                  {["Md sir", "Staff", "Police Station", "Food Dep."].includes(orderSource) ? (
-                    <select
-                      className="border rounded-md p-2 w-full"
-                      value={orderSource}
-                      onChange={(e) => setOrderSource(e.target.value)}
-                    >
-                      <option value="Md sir">Md sir</option>
-                      <option value="Staff">Staff</option>
-                      <option value="Police Station">Police Station</option>
-                      <option value="Food Dep.">Food Dep.</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  ) : (
+                  <label className="text-gray-700 text-sm mb-1">Select Management Option</label>
+                  <Select
+                    options={managementOptions}
+                    value={managementOptions.find((option) => option.value === orderSource) || null}
+                    onChange={(selected) => {
+                      setOrderSource(selected ? selected.value : "");
+                      if (selected && selected.value !== "custom") {
+                        setCustomManagementInput("");
+                      }
+                    }}
+                    placeholder="Select an option..."
+                    isClearable
+                    className="w-full"
+                  />
+                  {orderSource === "custom" && (
                     <input
                       type="text"
-                      value={orderSource}
-                      onChange={(e) => setOrderSource(e.target.value)}
-                      className="w-full p-2 border rounded-md"
-                      placeholder="Enter custom order source"
+                      value={customManagementInput}
+                      onChange={(e) => setCustomManagementInput(e.target.value)}
+                      className="w-full p-2 border rounded-md mt-2"
+                      placeholder="Enter custom management option"
                     />
                   )}
                 </div>
-
                 <div className="flex flex-col">
                   <label className="text-gray-700 text-sm mb-1">Name</label>
                   <input
@@ -589,7 +791,6 @@ const OrderPaymentModal = ({
                     placeholder="Enter name (optional)"
                   />
                 </div>
-
                 <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-3 py-2 rounded-md mt-2 text-sm">
                   This will settle the order as <strong>Free</strong> for management.
                 </div>
@@ -611,44 +812,85 @@ const OrderPaymentModal = ({
                       {method}
                     </button>
                   ))}
+                  {institutionData.integration === "HOTEL" && (
+                    <button
+                      className={`p-3 rounded-md font-semibold border ${
+                        selectedPaymentMethod === "ROOM"
+                          ? "bg-green-500 text-white"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
+                      onClick={() => setSelectedPaymentMethod("ROOM")}
+                    >
+                      HOTEL BILL
+                    </button>
+                  )}
                 </div>
 
                 {/* BTC fields for single-pay */}
                 {selectedPaymentMethod === "BTC" && (
                   <div className="mt-3 space-y-2">
                     <div>
-                      <label className="text-gray-700 text-sm mb-1">Order Source</label>
-                      <select
-                        className="border rounded-md p-2 w-full"
-                        value={orderSource}
-                        onChange={(e) => setOrderSource(e.target.value)}
+                      <label className="text-gray-700 text-sm mb-1">Select Company</label>
+                      <Select
+                        options={companyOptions}
+                        value={companyOptions.find((option) => option.value === orderSource) || null}
+                        onChange={(selected) => setOrderSource(selected ? selected.value : "")}
+                        placeholder="Select a company..."
+                        isClearable
+                        className="w-full"
+                      />
+                      <button
+                        onClick={() => setShowAddCompanyForm(true)}
+                        className="mt-2 text-blue-600 hover:underline text-sm"
                       >
-                        <option value="">Select Source</option>
-                        <option value="Md sir">Md sir</option>
-                        <option value="Staff">Staff</option>
-                        <option value="Police Station">Police Station</option>
-                        <option value="Food Dep.">Food Dep.</option>
-                        <option value="Other">Other</option>
-                      </select>
+                        Add New Company
+                      </button>
+                      {showAddCompanyForm && (
+                        <div className="mt-2 p-3 border rounded-md bg-gray-50">
+                          <h3 className="text-sm font-semibold mb-2">Add New Company</h3>
+                          <input
+                            type="text"
+                            value={newCompany.gstin}
+                            onChange={(e) => setNewCompany({ ...newCompany, gstin: e.target.value })}
+                            className="w-full p-2 border rounded-md mb-2"
+                            placeholder="GSTIN"
+                          />
+                          <input
+                            type="text"
+                            value={newCompany.name}
+                            onChange={(e) => setNewCompany({ ...newCompany, name: e.target.value })}
+                            className="w-full p-2 border rounded-md mb-2"
+                            placeholder="Company Name"
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => setShowAddCompanyForm(false)}
+                              className="px-3 py-1 bg-gray-200 text-gray-800 rounded-md"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={handleAddCompany}
+                              className="px-3 py-1 bg-green-600 text-white rounded-md"
+                            >
+                              Add
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    {orderSource === "Other" && (
+                    <div className="flex flex-col">
+                      <label className="text-gray-700 text-sm mb-1">Name</label>
                       <input
                         type="text"
-                        value={orderSource}
-                        onChange={(e) => setOrderSource(e.target.value)}
+                        value={payerName}
+                        onChange={(e) => setPayerName(e.target.value)}
                         className="w-full p-2 border rounded-md"
-                        placeholder="Enter custom order source"
+                        placeholder="Name (employee / payer)"
                       />
-                    )}
-                    <input
-                      type="text"
-                      value={payerName}
-                      onChange={(e) => setPayerName(e.target.value)}
-                      className="w-full p-2 border rounded-md"
-                      placeholder="Name (employee / payer)"
-                    />
+                    </div>
                     <div className="text-xs text-gray-600">
-                      Order Source is required for BTC. Make sure the BTC amount matches the bill total.
+                      BTC payment will use the total bill amount (₹{totalBillAmount}). Company selection is required.
                     </div>
                   </div>
                 )}
@@ -656,7 +898,7 @@ const OrderPaymentModal = ({
                 {/* Hotel Room Selection */}
                 {selectedPaymentMethod === "ROOM" && (
                   <div className="flex flex-row gap-2 my-2">
-                    <h3>Select Room:</h3>
+                    <h3 className="text-sm font-semibold">Select Room:</h3>
                     <select
                       className="border rounded-md p-2 w-full"
                       value={booking?.bookingId || ""}
@@ -699,7 +941,6 @@ const OrderPaymentModal = ({
           >
             Cancel
           </button>
-          {/* Confirm button: changes behavior for management special */}
           {isManagementSpecial ? (
             <button
               onClick={handleManagementFreeSettle}

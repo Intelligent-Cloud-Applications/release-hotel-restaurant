@@ -611,20 +611,22 @@ const [tables, setTables] = useState([
         const totalBarBill = items.reduce((sum, item) => sum + (item.type === "bar" ? item.price * item.quantity : 0), 0);
 
         // Call addHotelService with the bookingId we resolved
-        await addHotelService(booking.bookingId, {
-          [booking.roomNumber]: {
-            [new Date().toISOString().split("T")[0]]: [
-              {
-                food_charges: totalFoodBill,
-                extra_bed_charges: 0,
-                laundry_charges: 0,
-                manual_charges: 0,
-                minibar_charges: totalBarBill,
-                order_id: order.orderId,
-              },
-            ],
-          },
-        });
+        const totals = calculateTotals(order.items|| []);
+const totalFoodBillWithGST = totalFoodBill + totals.cgst + totals.sgst;
+await addHotelService(booking?.bookingId, {
+  [booking.roomNumber]: {
+    [new Date().toISOString().split("T")[0]]: [
+      {
+        food_charges: totalFoodBillWithGST, // Include GST
+        extra_bed_charges: 0,
+        laundry_charges: 0,
+        manual_charges: 0,
+        minibar_charges: totalBarBill, // Bar items remain unchanged
+        order_id: order.orderId,
+      },
+    ],
+  },
+});
       }
 
       await API.post(
