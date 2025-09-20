@@ -264,6 +264,8 @@ const OrderPanel = ({
             toggleSplitBillMode={toggleSplitBillMode}
             hasItems={localBillItems.length > 0}
             KOTByTable={KOTByTable}
+            tableData={tableData} // Added
+  fetchTableData={fetchTableData} // Added
           />
           <OrderContent
             unpaidOrders={unpaidOrders}

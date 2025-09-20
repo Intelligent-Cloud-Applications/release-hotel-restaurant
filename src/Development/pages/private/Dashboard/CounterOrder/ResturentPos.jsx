@@ -67,7 +67,7 @@ const [tables, setTables] = useState([
   })),
 
   // Hotel rooms (only if bar integration is enabled)
-  ...(institutionData?.bar_integration === "Yes" && hotelBookings
+  ...(institutionData?.integration === "HOTEL" && hotelBookings
     ? hotelBookings.map(booking => ({
         id: `Hotel${booking.roomNumber}`,
         name: `Hotel ${booking.roomNumber}`,

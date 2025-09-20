@@ -197,7 +197,7 @@ const OrderContent = ({
   };
 
   const handleUnpaidPaymentMethodChange = (order, value) => {
-    const method = (value || "").toString().trim().toUpperCase();
+    const method = (value || "").toString().trim();
     if (method === "ROOM") {
       const firstBooking =
         hotelBookings && hotelBookings.length > 0 ? hotelBookings[0] : null;
@@ -756,7 +756,7 @@ const OrderContent = ({
   };
 
   const handleSettleUnpaidOrder = (order, paymentMethod, bookingInfo = null) => {
-    const normalizedMethod = (paymentMethod || "").toString().trim().toUpperCase();
+    const normalizedMethod = (paymentMethod || "").toString().trim();
     const orderWithPayment = {
       ...order,
       paymentMethod: normalizedMethod,
@@ -1117,10 +1117,10 @@ const OrderContent = ({
                       <option value="" disabled>
                         Settle
                       </option>
-                      <option value="cash">Cash</option>
-                      <option value="card">Card</option>
-                      <option value="upi">UPI</option>
-                      <option value="room">Hotel Bill</option>
+                      <option value="Cash">Cash</option>
+                      <option value="Card">Card</option>
+                      <option value="QR">UPI</option>
+                      <option value="ROOM">Hotel Bill</option>
                     </select>
                   </div>
                 </div>

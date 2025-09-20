@@ -1,3 +1,4 @@
+
 import React, { useEffect, useContext, useState } from 'react';
 import RestaurantPOS from './ResturentPos';
 import { API } from 'aws-amplify';
@@ -78,7 +79,7 @@ const fetchItems = async () => {
           return true;
         }
         // For other categories, only include 'cafe' type items
-        return item.type === 'cafe';
+        return !item.type || item.type === 'cafe';
       });
     }
     
