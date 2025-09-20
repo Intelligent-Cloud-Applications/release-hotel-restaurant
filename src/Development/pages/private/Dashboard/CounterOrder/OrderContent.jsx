@@ -23,6 +23,7 @@ import ReprintKOT from "./ReprintKOT";
 import data from "../../../../../Operation/data.json";
 import OrderPaymentModal from "./OrderPaymentModal";
 import StaffSelectionModal from "./StaffSelectionModal"
+import DiscountSection from "./DiscountSection";
 
 const OrderContent = ({
   selectedTable,
@@ -117,26 +118,23 @@ const OrderContent = ({
 
   // Helper function to set discount info
   const setCurrentDiscountInfo = (discountInfo) => {
-    if (!selectedTable) return;
+  if (!selectedTable) return;
 
-    const tableIdStr = String(selectedTable.id);
+  const tableIdStr = String(selectedTable.id);
 
-    setDiscountData(prev => {
-      const newData = { ...prev };
-      
-      if (splitBillMode && selectedOrderId) {
-        // For split bill mode, set discount for specific order
-        if (!newData[tableIdStr]) newData[tableIdStr] = {};
-        newData[tableIdStr][selectedOrderId] = discountInfo;
-      } else {
-        // For non-split bill mode, set table-level discount
-        newData[tableIdStr] = discountInfo;
-      }
-
-      return newData;
-    });
-  };
-
+  setDiscountData((prev) => {
+    const newData = { ...prev };
+    if (splitBillMode && selectedOrderId) {
+      newData[tableIdStr] = {
+        ...newData[tableIdStr],
+        [selectedOrderId]: { ...discountInfo },
+      };
+    } else {
+      newData[tableIdStr] = { ...discountInfo };
+    }
+    return newData;
+  });
+};
   const totalKotQuantity = (kotcurrent?.items || kotcurrent?.billItems || []).reduce(
     (sum, item) => sum + item.quantity,
     0
@@ -291,31 +289,28 @@ const OrderContent = ({
       amount: method === "none" ? 0 : currentInfo.amount
     });
   };
+const handleDiscountValueChange = (value) => {
+  const currentInfo = getCurrentDiscountInfo();
+  const newValue = Number(value) || 0;
+  let discountAmount = 0;
 
-  // Handle discount value change without losing focus
-  const handleDiscountValueChange = (value) => {
-    const currentInfo = getCurrentDiscountInfo();
-    const newValue = Number(value) || 0;
-    
-    // Calculate discount amount based on method
-    let discountAmount = 0;
-    if (currentInfo.method === "percentage") {
-      const items = splitBillMode 
-        ? (orderGroups.find(g => g.orderId === selectedOrderId)?.items || [])
-        : localBillItems;
-      const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-      discountAmount = (subtotal * newValue) / 100;
-    } else if (currentInfo.method === "amount") {
-      discountAmount = newValue;
-    }
+  // Calculate discount amount based on the current method
+  if (currentInfo.method === "percentage") {
+    const items = splitBillMode
+      ? (orderGroups.find(g => g.orderId === selectedOrderId)?.items || [])
+      : localBillItems;
+    const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    discountAmount = (subtotal * newValue) / 100;
+  } else if (currentInfo.method === "amount") {
+    discountAmount = newValue;
+  }
 
-    setCurrentDiscountInfo({
-      method: currentInfo.method,
-      value: newValue,
-      amount: discountAmount
-    });
-  };
-
+  setCurrentDiscountInfo({
+    method: currentInfo.method,
+    value: newValue,
+    amount: discountAmount,
+  });
+};
   const formatKOT = () => {
     const formatDateTime = () => {
       const now = new Date();
@@ -970,77 +965,7 @@ const OrderContent = ({
     );
   };
 
-  // FIXED: One-line Compact Discount Section with refs to prevent focus loss
-  const DiscountSection = ({ orderItems }) => {
-    const { billSubtotal } = calculateTotals(orderItems);
-    const currentDiscount = getCurrentDiscountInfo();
-
-    return (
-      <div className="flex items-center space-x-2 p-2 bg-gray-50 rounded-md border">
-        {/* Dropdown for method */}
-        <select
-          value={currentDiscount.method}
-          onChange={(e) => handleDiscountMethodChange(e.target.value)}
-          className="text-xs border rounded px-2 py-1 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-        >
-          <option value="none">None</option>
-          <option value="percentage">%</option>
-          <option value="amount">Amount</option>
-        </select>
-
-        {/* Input for value */}
-        {currentDiscount.method !== "none" && (
-          <div className="relative flex-1">
-            {currentDiscount.method === "percentage" && (
-              <Percent className="w-3 h-3 absolute left-2 top-2 text-gray-400" />
-            )}
-            {currentDiscount.method === "amount" && (
-              <span className="absolute left-2 top-1.5 text-gray-400 text-xs">
-                ₹
-              </span>
-            )}
-            <input
-              ref={discountValueInputRef}
-              type="number"
-              placeholder={
-                currentDiscount.method === "percentage" ? "0-100" : "Amount"
-              }
-              min="0"
-              max={
-                currentDiscount.method === "percentage" ? "100" : billSubtotal
-              }
-              step={currentDiscount.method === "percentage" ? "0.1" : "0.01"}
-              className="w-full pl-6 pr-2 py-1 text-xs border rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              value={currentDiscount.value || ""}
-              onChange={(e) => {
-                const value = Number(e.target.value);
-                if (currentDiscount.method === "percentage") {
-                  handleDiscountValueChange(Math.max(0, Math.min(100, value)));
-                } else {
-                  handleDiscountValueChange(Math.max(0, Math.min(billSubtotal, value)));
-                }
-              }}
-              onFocus={(e) => {
-                // Prevent focus loss by ensuring the input stays focused
-                setTimeout(() => {
-                  if (discountValueInputRef.current) {
-                    discountValueInputRef.current.focus();
-                  }
-                }, 0);
-              }}
-            />
-          </div>
-        )}
-
-        {/* Preview */}
-        {currentDiscount.value > 0 && (
-          <span className="text-xs font-medium text-red-600">
-            -₹{calculateTotals(orderItems).discountAmount.toFixed(2)}
-          </span>
-        )}
-      </div>
-    );
-  };
+ 
 
   // Render unpaid orders section
   const UnpaidOrdersSection = () => {
@@ -1315,7 +1240,14 @@ const OrderContent = ({
               </div>
 
               {/* Enhanced Discount Section */}
-              <DiscountSection orderItems={orderItems} />
+             <DiscountSection 
+  orderItems={orderItems} 
+  calculateTotals={calculateTotals}
+  getCurrentDiscountInfo={getCurrentDiscountInfo}
+  handleDiscountMethodChange={handleDiscountMethodChange}
+  handleDiscountValueChange={handleDiscountValueChange}
+  discountValueInputRef={discountValueInputRef}
+/>
             </div>
 
             <div className="border-t p-4 space-y-2">
@@ -1517,7 +1449,14 @@ const OrderContent = ({
               </div>
 
               {/* Enhanced Discount Section */}
-              <DiscountSection orderItems={localBillItems} />
+             <DiscountSection 
+  orderItems={localBillItems} 
+  calculateTotals={calculateTotals}
+  getCurrentDiscountInfo={getCurrentDiscountInfo}
+  handleDiscountMethodChange={handleDiscountMethodChange}
+  handleDiscountValueChange={handleDiscountValueChange}
+  discountValueInputRef={discountValueInputRef}
+/>
             </div>
 
             <div className="border-t p-4 space-y-2">
