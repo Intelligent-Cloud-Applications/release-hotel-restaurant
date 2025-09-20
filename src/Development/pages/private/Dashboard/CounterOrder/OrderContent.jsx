@@ -22,6 +22,7 @@ import PrintBill from "./PrintBill";
 import ReprintKOT from "./ReprintKOT";
 import data from "../../../../../Operation/data.json";
 import OrderPaymentModal from "./OrderPaymentModal";
+import StaffSelectionModal from "./StaffSelectionModal"
 
 const OrderContent = ({
   selectedTable,
@@ -197,7 +198,7 @@ const OrderContent = ({
   };
 
   const handleUnpaidPaymentMethodChange = (order, value) => {
-    const method = (value || "").toString().trim();
+    const method = (value || "").toString().trim().toUpperCase();
     if (method === "ROOM") {
       const firstBooking =
         hotelBookings && hotelBookings.length > 0 ? hotelBookings[0] : null;
@@ -756,7 +757,7 @@ const OrderContent = ({
   };
 
   const handleSettleUnpaidOrder = (order, paymentMethod, bookingInfo = null) => {
-    const normalizedMethod = (paymentMethod || "").toString().trim();
+    const normalizedMethod = (paymentMethod || "").toString().trim().toUpperCase();
     const orderWithPayment = {
       ...order,
       paymentMethod: normalizedMethod,
@@ -1117,10 +1118,10 @@ const OrderContent = ({
                       <option value="" disabled>
                         Settle
                       </option>
-                      <option value="Cash">Cash</option>
-                      <option value="Card">Card</option>
-                      <option value="QR">UPI</option>
-                      <option value="ROOM">Hotel Bill</option>
+                      <option value="cash">Cash</option>
+                      <option value="card">Card</option>
+                      <option value="upi">UPI</option>
+                      <option value="room">Hotel Bill</option>
                     </select>
                   </div>
                 </div>
@@ -1432,7 +1433,19 @@ const OrderContent = ({
                 setShowReprintKOT={setShowReprintKOT}
               />
             )}
-            {showStaffSelectionModal && <StaffSelectionModal />}
+            {showStaffSelectionModal && <StaffSelectionModal
+  showStaffSelectionModal={showStaffSelectionModal}
+  setShowStaffSelectionModal={setShowStaffSelectionModal}
+  selectedStaff={selectedStaff}
+  setSelectedStaff={setSelectedStaff}
+  staffData={staffData}
+  selectedTable={selectedTable}
+  institutionData={institutionData}
+  splitBillMode={splitBillMode}
+  selectedOrderId={selectedOrderId}
+  fetchPendingOrders={fetchPendingOrders}
+  setLoader={setLoader}
+/>}
           </>
         );
       } else {
@@ -1617,7 +1630,19 @@ const OrderContent = ({
                 setShowReprintKOT={setShowReprintKOT}
               />
             )}
-            {showStaffSelectionModal && <StaffSelectionModal />}
+            {showStaffSelectionModal && <StaffSelectionModal
+  showStaffSelectionModal={showStaffSelectionModal}
+  setShowStaffSelectionModal={setShowStaffSelectionModal}
+  selectedStaff={selectedStaff}
+  setSelectedStaff={setSelectedStaff}
+  staffData={staffData}
+  selectedTable={selectedTable}
+  institutionData={institutionData}
+  splitBillMode={splitBillMode}
+  selectedOrderId={selectedOrderId}
+  fetchPendingOrders={fetchPendingOrders}
+  setLoader={setLoader}
+/>}
           </>
         );
       }
@@ -1843,66 +1868,7 @@ const OrderContent = ({
     );
   };
 
-  // Staff Selection Modal
-  const StaffSelectionModal = () =>
-    showStaffSelectionModal && (
-      <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white p-6 rounded-lg shadow-lg relative max-w-md w-full">
-          <button
-            onClick={() => setShowStaffSelectionModal(false)}
-            className="absolute top-2 right-2 text-gray-500 hover:text-gray-700"
-            aria-label="Close"
-          >
-            <X className="w-6 h-6" />
-          </button>
-          <h2 className="text-lg font-semibold mb-4">
-            Select Staff for Bill Delivery
-          </h2>
-          <p className="mb-4">
-            Please select the staff member who will deliver the bill to the
-            customer.
-          </p>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700">
-              Staff Member:
-            </label>
-            <select
-              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
-              value={selectedStaff}
-              onChange={(e) => setSelectedStaff(e.target.value)}
-            >
-              <option value="">Select a staff member</option>
-              {(staffData || []).map((staff) => (
-                <option key={staff.cognitoId} value={staff.userName}>
-                  {staff.userName}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex justify-end gap-3">
-            <button
-              onClick={() => setShowStaffSelectionModal(false)}
-              className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleAssignStaffToBill}
-              disabled={!selectedStaff}
-              className={`px-4 py-2 ${
-                selectedStaff
-                  ? "bg-blue-600 hover:bg-blue-700"
-                  : "bg-gray-300"
-              } border border-transparent rounded-md shadow-sm text-sm font-medium text-white`}
-            >
-              Assign Staff
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-
-  const MoveItemModal = () => {
+ const MoveItemModal = () => {
     if (!movingItem) return null;
 
     const otherOrders = orderGroups.filter(
@@ -2031,12 +1997,23 @@ const OrderContent = ({
       </div>
     );
   };
-
   return (
     <>
       <div className="flex-1 flex flex-col">{renderContent()}</div>
       <SettleModal />
-      <StaffSelectionModal />
+    <StaffSelectionModal
+  showStaffSelectionModal={showStaffSelectionModal}
+  setShowStaffSelectionModal={setShowStaffSelectionModal}
+  selectedStaff={selectedStaff}
+  setSelectedStaff={setSelectedStaff}
+  staffData={staffData}
+  selectedTable={selectedTable}
+  institutionData={institutionData}
+  splitBillMode={splitBillMode}
+  selectedOrderId={selectedOrderId}
+  fetchPendingOrders={fetchPendingOrders}
+  setLoader={setLoader}
+/>
       <MoveItemModal />
       {showOrderPaymentModal && (
         <OrderPaymentModal
