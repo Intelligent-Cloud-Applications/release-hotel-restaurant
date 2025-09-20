@@ -7,6 +7,7 @@ import { MdInventory2 } from "react-icons/md";
 import { TbReportSearch } from "react-icons/tb";
 import { RiMoneyRupeeCircleFill, RiBillLine } from "react-icons/ri";
 import { FiMaximize, FiMinimize } from "react-icons/fi";
+import { FaHotel } from "react-icons/fa";
 import { Link, useLocation } from "react-router-dom";
 import { useState, useEffect, useContext } from "react";
 import { API } from "aws-amplify";
@@ -21,6 +22,7 @@ const routes = [
   { path: 'item', label: '', icon: MdOutlineProductionQuantityLimits, allowedUserTypes: ['admin', 'chef'] },
   { path: 'stockmanagement', label: '', icon: MdInventory2, allowedUserTypes: ['admin'] },
   { path: 'qrmanage', label: '', icon: MdQrCodeScanner, allowedUserTypes: ['admin'], requiresOwnerRole: true },
+  { path: 'room-details', label: '', icon: FaHotel, allowedUserTypes: ['admin', 'waiter'] },
   { path: 'revenue', label: '', icon: RiMoneyRupeeCircleFill, allowedUserTypes: ['admin'] },
   { path: 'orderhistory', label: '', icon: RiBillLine, allowedUserTypes: ['admin'] },
   { path: 'report', label: '', icon: TbReportSearch, allowedUserTypes: ['admin'] },
