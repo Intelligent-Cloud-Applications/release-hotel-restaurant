@@ -67,7 +67,7 @@ const PaymentModal = ({
     setLoader(true);
     setError(null);
     try {
-      const resp = await API.get("frontdesk", `/company/${institutionData.institutionId}`, {});
+      const resp = await API.get("frontdesk", `/company/${institutionData.institution}`, {});
       let companiesList = [];
 
       if (!resp) {
@@ -108,7 +108,7 @@ const PaymentModal = ({
     setLoader(true);
     setError(null);
     try {
-      const inst = institutionData.institutionId;
+      const inst = institutionData.institution;
       const resp = await API.post("frontdesk", "/company", {
         body: { ...payload, institutionId: inst },
       });
@@ -165,7 +165,7 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
     await API.patch("frontdesk", `/company`, {
       body: {
         credit: creditData,
-        institutionId: institutionData.institutionId,
+        institutionId: institutionData.institution,
         company_id: companyId,
       },
     });
@@ -186,10 +186,7 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
 
   // Handle new company form submission
   const handleAddCompany = async () => {
-    if (!newCompany.gstin || !newCompany.name) {
-      toast.error("Please provide both GSTIN and Company Name");
-      return;
-    }
+    
     await createCompany({
       gstin: newCompany.gstin,
       name: newCompany.name,
@@ -696,13 +693,13 @@ await addHotelService(booking?.bookingId, {
                 {showAddCompanyForm && (
                   <div className="mt-2 p-3 border rounded-md bg-gray-50">
                     <h3 className="text-sm font-semibold mb-2">Add New Company</h3>
-                    <input
+                    {/* <input
                       type="text"
                       value={newCompany.gstin}
                       onChange={(e) => setNewCompany({ ...newCompany, gstin: e.target.value })}
                       className="w-full p-2 border rounded-md mb-2"
                       placeholder="GSTIN"
-                    />
+                    /> */}
                     <input
                       type="text"
                       value={newCompany.name}
@@ -864,13 +861,13 @@ await addHotelService(booking?.bookingId, {
                       {showAddCompanyForm && (
                         <div className="mt-2 p-3 border rounded-md bg-gray-50">
                           <h3 className="text-sm font-semibold mb-2">Add New Company</h3>
-                          <input
+                          {/* <input
                             type="text"
                             value={newCompany.gstin}
                             onChange={(e) => setNewCompany({ ...newCompany, gstin: e.target.value })}
                             className="w-full p-2 border rounded-md mb-2"
                             placeholder="GSTIN"
-                          />
+                          /> */}
                           <input
                             type="text"
                             value={newCompany.name}

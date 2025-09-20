@@ -71,7 +71,7 @@ const OrderPaymentModal = ({
     setLoader(true);
     setError(null);
     try {
-      const resp = await API.get("frontdesk", `/company/${institutionData?.institutionId}`, {});
+      const resp = await API.get("frontdesk", `/company/${institutionData?.institution}`, {});
       let companiesList = [];
 
       if (!resp) {
@@ -112,7 +112,7 @@ const OrderPaymentModal = ({
     setLoader(true);
     setError(null);
     try {
-      const inst = institutionData?.institution || institutionData?.institutionId;
+      const inst = institutionData?.institution || institutionData?.institution;
       const resp = await API.post("frontdesk", "/company", {
         body: { ...payload, institutionId: inst },
       });
@@ -167,7 +167,7 @@ const OrderPaymentModal = ({
       await API.patch("frontdesk", `/company`, {
         body: {
           credit: creditData,
-          institutionId: institutionData.institutionId,
+          institutionId: institutionData.institution,
           company_id: companyId,
         },
       });
