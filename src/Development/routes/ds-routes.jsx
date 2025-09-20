@@ -23,6 +23,7 @@ import MenuTextExtractor from '../pages/private/Dashboard/Item/MenuTextExtractor
 import Receipt  from '../pages/public/Receiept';
 import StockManagement from '../pages/private/Dashboard/StockManagement/index.jsx';
 import Report from '../pages/private/Dashboard/Report/index.jsx';
+import RoomDetails from '../pages/private/Dashboard/RoomDetails/index.jsx';
 const RoutesContainer = () => {
   return (
     <Routes>
@@ -39,6 +40,7 @@ const RoutesContainer = () => {
         <Route path='item' element={ <Item /> } />
         <Route path='profile' element={ <Profile /> } />
         <Route path='qrmanage' element={ <QRManage /> } />
+        <Route path='room-details' element={ <RoomDetails /> } />
         <Route path='pendingorders' element={ <PendingOrders /> } />
         <Route path='menu' element={ <MenuTextExtractor /> } />
         <Route path='report' element={ <Report /> } />
