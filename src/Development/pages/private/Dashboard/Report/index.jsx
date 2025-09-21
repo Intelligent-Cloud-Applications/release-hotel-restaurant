@@ -13,6 +13,18 @@ import {
 } from "../StockManagement/index";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
+import {
+  ChevronDown,
+  Filter,
+  RefreshCw,
+  Download,
+  FileText,
+  FileSpreadsheet,
+  Calendar,
+  Search,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 
 const Loader = () => (
   <div className="flex flex-col items-center justify-center p-12">
@@ -26,126 +38,262 @@ const Loader = () => (
   </div>
 );
 
-// Common table styling configuration
-const getTableStyles = () => ({
-  theme: "grid",
-  headStyles: {
-    fillColor: [33, 150, 243], // Vibrant blue header background
-    textColor: [255, 255, 255], // White text for headers
-    fontStyle: "bold",
-    halign: "center",
-    fontSize: 9, // Slightly smaller font
-    cellPadding: 2, // Reduced padding
-    font: "helvetica",
-  },
-  bodyStyles: {
-    fontSize: 8, // Smaller font for body
-    cellPadding: 1.5, // Reduced padding
-    font: "helvetica",
-    textColor: [33, 33, 33], // Dark gray text
-  },
-  alternateRowStyles: {
-    fillColor: [245, 245, 245], // Light gray for alternating rows
-  },
-  styles: {
-    lineColor: [200, 200, 200], // Light gray borders
-    lineWidth: 0.1,
-    overflow: "linebreak",
-  },
-  margin: { top: 30, left: 15, right: 15 }, // Increased margins to prevent cutoff
-});
-
-// Common header setup for PDFs
-const setupPDFHeader = (doc, title, isoDate, institutionData, currentTime, dateRange = null) => {
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14); // Slightly smaller title font
-  const titleWidth = doc.getTextWidth(title);
-  doc.text(title, (doc.internal.pageSize.width - titleWidth) / 2, 15);
-  doc.setFontSize(9); // Smaller font for header text
-  doc.setFont("helvetica", "normal");
-  const dateText = dateRange
-    ? `Date Range: ${dateRange.start} to ${dateRange.end}`
-    : `Date: ${isoDate.split("-").reverse().join("/")}`;
-  doc.text(dateText, 15, 25);
-  doc.text(`Printed: ${currentTime}`, doc.internal.pageSize.width - 15 - doc.getTextWidth(`Printed: ${currentTime}`), 25);
-  doc.setLineWidth(0.5);
-  doc.line(15, 28, doc.internal.pageSize.width - 15, 28); // Horizontal line under header
+// utility to format combined quantity strings for cafe display
+const formatKgMlString = (qty, unit) => {
+  // qty assumed to be numeric in base units (g or ml) or for kg/l units passed as numbers in kg/l
+  if (unit === "piece" || unit === "pieces" || unit === "pc") {
+    return `${safeNum(qty)} pcs`;
+  }
+  if (unit === "kg") {
+    // qty in kg (may be fractional)
+    const wholeKg = Math.floor(qty);
+    const grams = Math.round((qty - wholeKg) * 1000);
+    if (wholeKg > 0 && grams > 0) return `${wholeKg}kg ${grams}g`;
+    if (wholeKg > 0) return `${wholeKg}kg`;
+    return `${grams}g`;
+  }
+  if (unit === "g") {
+    const kg = Math.floor(qty / 1000);
+    const g = qty % 1000;
+    if (kg > 0 && g > 0) return `${kg}kg ${g}g`;
+    if (kg > 0) return `${kg}kg`;
+    return `${g}g`;
+  }
+  if (unit === "l") {
+    const wholeL = Math.floor(qty);
+    const ml = Math.round((qty - wholeL) * 1000);
+    if (wholeL > 0 && ml > 0) return `${wholeL}L ${ml}ml`;
+    if (wholeL > 0) return `${wholeL}L`;
+    return `${ml}ml`;
+  }
+  if (unit === "ml") {
+    const l = Math.floor(qty / 1000);
+    const ml = qty % 1000;
+    if (l > 0 && ml > 0) return `${l}L ${ml}ml`;
+    if (l > 0) return `${l}L`;
+    return `${ml}ml`;
+  }
+  // fallback — show raw
+  return String(qty);
 };
 
 const formatNumber = (num) => {
-  const rounded = Number(num.toFixed(2));
-  return rounded % 1 === 0 ? rounded.toString() : rounded.toFixed(2).replace(/\.?0+$/, "");
+  if (num === null || num === undefined || Number.isNaN(num)) return "0";
+  const rounded = Number(Number(num).toFixed(2));
+  return rounded % 1 === 0
+    ? rounded.toString()
+    : rounded.toFixed(2).replace(/\.?0+$/, "");
 };
 
 const buildCafeDailyReport = (isoDate, stocks) => {
   const key = dateToKey(isoDate);
   const items = [];
+
   stocks
     .filter((s) => s.type === "cafe")
     .forEach((stock) => {
       const update = (stock.stockupdate || {})[key] || {};
       const hasUpdate = Object.keys(update).length > 0;
-      const openingRaw = hasUpdate ? update.openingStock ?? update.opening ?? update.open ?? 0 : stock.quantity ?? 0;
+      const openingRaw = hasUpdate
+        ? update.openingStock ?? update.opening ?? update.open ?? 0
+        : stock.quantity ?? 0;
       const receivedRaw = update.received ?? 0;
       const unit = stock.unit || "g";
+
+      // convert raw to base numeric ml/g as per parseVolumeToMl (returns numeric ml for ml units; for pieces parseVolumeToMl should return number as is)
       let openingQty = parseVolumeToMl(openingRaw);
       let receivedQty = parseVolumeToMl(receivedRaw);
-      let totalQty = openingQty + receivedQty;
+
       if (unit === "piece") {
         openingQty = safeNum(openingRaw);
         receivedQty = safeNum(receivedRaw);
-        totalQty = openingQty + receivedQty;
       }
+
+      // compute consumption by iterating update keys (excluding known keys)
       let consumptionQty = 0;
-      Object.keys(update).forEach((key) => {
+      Object.keys(update).forEach((k) => {
         if (
-          !["openingStock", "opening", "open", "received"].includes(key) &&
-          !key.startsWith("unitRate_")
+          !["openingStock", "opening", "open", "received"].includes(k) &&
+          !k.startsWith("unitRate_")
         ) {
-          const cnt = safeNum(update[key] ?? 0);
-          const num = Number(String(key).match(/\d+/)?.[0] || 1);
+          const cnt = safeNum(update[k] ?? 0);
+          const num = Number(String(k).match(/\d+/)?.[0] || 1);
           consumptionQty += cnt * num;
         }
       });
+
+      const totalQty = openingQty + receivedQty;
       const closingQty = Math.max(0, totalQty - consumptionQty);
-      const convertQuantities = (qty, unit) => {
-        let kgL = 0,
-          gMl = 0,
-          piece = 0;
-        if (unit === "piece") {
-          piece = qty;
-        } else if (["kg", "l"].includes(unit)) {
-          kgL = qty;
-          gMl = (qty * 1000) % 1000;
-        } else if (["g", "ml"].includes(unit)) {
-          kgL = Math.floor(qty / 1000);
-          gMl = qty % 1000;
+
+      // For display, convert numeric base quantities into human-friendly strings
+      // If unit in kg/l context: parseVolumeToMl likely returned ml for ml units; we need to convert properly.
+      // We'll normalize:
+      const isWeight = ["kg", "g"].includes(unit);
+      const isVolume = ["l", "ml"].includes(unit);
+
+      const displayOpening = (() => {
+        if (unit === "piece") return formatKgMlString(openingQty, "piece");
+        if (isWeight) {
+          // openingQty might be provided as grams if parseVolumeToMl returns ml for volumes;
+          // assume original openingRaw was in either 'kg' or 'g' strings and parseVolumeToMl returned numeric in ml for volumes.
+          // If stock.unit === 'kg' the parseVolumeToMl might be used inconsistently by codebase. We'll attempt to interpret:
+          // If parseVolumeToMl produced a number and unit is weight, we try to interpret openingRaw directly if numeric and accompanied by unit string in stock.oneBottleVolume maybe.
+          // To keep it consistent: if unit === 'kg' and openingRaw seems numeric in kg, use openingRaw, else if openingQty seems large (>1000) treat as grams.
+          const numeric = Number(openingRaw);
+          if (
+            !Number.isNaN(numeric) &&
+            String(openingRaw).toString().includes("kg")
+          ) {
+            return formatKgMlString(numeric, "kg");
+          }
+          // fallback: treat openingQty as grams if large
+          if (openingQty > 1000) return formatKgMlString(openingQty, "g");
+          return formatKgMlString(openingQty, "g");
         }
-        return { kgL, gMl, piece };
-      };
+        if (isVolume) {
+          // parseVolumeToMl returns ml number for ml/l
+          // If unit === 'l', openingRaw might already be in liters — but parseVolumeToMl returns ml
+          // Convert ml to liters for display
+          const ml = openingQty;
+          return formatKgMlString(ml, "ml");
+        }
+        // fallback
+        return String(openingQty);
+      })();
+
+      const displayReceived = (() => {
+        if (unit === "piece") return formatKgMlString(receivedQty, "piece");
+        if (["kg", "g"].includes(unit)) {
+          if (receivedQty > 1000) return formatKgMlString(receivedQty, "g");
+          return formatKgMlString(receivedQty, "g");
+        }
+        if (["l", "ml"].includes(unit)) {
+          return formatKgMlString(receivedQty, "ml");
+        }
+        return String(receivedQty);
+      })();
+
+      const displayConsumption = (() => {
+        if (unit === "piece") return formatKgMlString(consumptionQty, "piece");
+        if (["kg", "g"].includes(unit)) {
+          return formatKgMlString(consumptionQty, "g");
+        }
+        if (["l", "ml"].includes(unit)) {
+          return formatKgMlString(consumptionQty, "ml");
+        }
+        return String(consumptionQty);
+      })();
+
+      const displayClosing = (() => {
+        if (unit === "piece") return formatKgMlString(closingQty, "piece");
+        if (["kg", "g"].includes(unit)) {
+          return formatKgMlString(closingQty, "g");
+        }
+        if (["l", "ml"].includes(unit)) {
+          return formatKgMlString(closingQty, "ml");
+        }
+        return String(closingQty);
+      })();
+
       items.push({
         stockId: stock.stockId,
         stockName: stock.stockName || stock.name || "-",
-        opening: convertQuantities(openingQty, unit),
-        received: convertQuantities(receivedQty, unit),
-        consumption: convertQuantities(consumptionQty, unit),
-        closing: convertQuantities(closingQty, unit),
+        openingRaw,
+        receivedRaw,
+        consumptionRaw: consumptionQty,
+        closingRaw: closingQty,
+        openingDisplay: displayOpening,
+        receivedDisplay: displayReceived,
+        consumptionDisplay: displayConsumption,
+        closingDisplay: displayClosing,
         unit,
       });
     });
+
   items.sort((a, b) => a.stockName.localeCompare(b.stockName));
   return { items };
 };
 
-// Updated exportCafeDailyReport
-const exportCafeDailyReport = (isoDate, stocks, institutionData) => {
+// Professional PDF styling helper
+const addProfessionalHeader = (doc, title, subtitle, dateText, generatedText) => {
+  // Company header with proper spacing
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.setTextColor(40, 40, 40);
+  
+  const titleWidth = doc.getTextWidth(title);
+  const centerX = doc.internal.pageSize.width / 2;
+  doc.text(title, centerX - titleWidth / 2, 20);
+
+  // Subtitle
+  doc.setFontSize(14);
+  doc.setTextColor(60, 60, 60);
+  const subtitleWidth = doc.getTextWidth(subtitle);
+  doc.text(subtitle, centerX - subtitleWidth / 2, 30);
+
+  // Date and generated info
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(80, 80, 80);
+  doc.text(dateText, 20, 45);
+  const generatedWidth = doc.getTextWidth(generatedText);
+  doc.text(generatedText, doc.internal.pageSize.width - 20 - generatedWidth, 45);
+
+  // Professional line separator
+  doc.setDrawColor(180, 180, 180);
+  doc.setLineWidth(0.5);
+  doc.line(20, 50, doc.internal.pageSize.width - 20, 50);
+
+  return 60; // Return Y position for content start
+};
+
+const addProfessionalFooter = (doc, pageNum, totalPages, additionalText = "") => {
+  const pageHeight = doc.internal.pageSize.height;
+  const pageWidth = doc.internal.pageSize.width;
+  
+  // Footer line
+  doc.setDrawColor(180, 180, 180);
+  doc.setLineWidth(0.3);
+  doc.line(20, pageHeight - 25, pageWidth - 20, pageHeight - 25);
+  
+  // Page numbers
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - 40, pageHeight - 15);
+  
+  // Additional text if provided
+  if (additionalText) {
+    const textWidth = doc.getTextWidth(additionalText);
+    doc.text(additionalText, (pageWidth - textWidth) / 2, pageHeight - 10);
+  }
+};
+
+// Requires: jsPDF, jsPDF-AutoTable
+// Requires: jsPDF, jsPDF-AutoTable
+const exportCafeDailyReport = (builtData, institutionData = {}, isoDate, options = {}) => {
+  const { includeLogo = false, logoDataUrl = null, filenamePrefix = "" } = options;
+
   if (!isoDate) {
     alert("Choose a date first");
     return;
   }
+  const { items = [] } = builtData || {};
+  if (!Array.isArray(items) || items.length === 0) {
+    alert("No items found for the selected date.");
+    return;
+  }
 
-  const { items } = buildCafeDailyReport(isoDate, stocks);
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" }); // Landscape for better fit
+  // PDF setup
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+  });
+  const pageWidth = doc.internal.pageSize.width;
+  const margin = { left: 18, right: 18, top: 18, bottom: 18 };
+
+  // Time strings (Asia/Kolkata)
   const currentTime = new Date().toLocaleString("en-IN", {
     timeZone: "Asia/Kolkata",
     hour12: true,
@@ -156,625 +304,529 @@ const exportCafeDailyReport = (isoDate, stocks, institutionData) => {
     minute: "2-digit",
   });
 
-  // HEADER (matches Order/Bar Report style)
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  const title = `${(institutionData?.companyName || "Company Name").toUpperCase()}`;
-  const titleWidth = doc.getTextWidth(title);
-  doc.text(title, (doc.internal.pageSize.width - titleWidth) / 2, 15);
+  const companyName = (institutionData?.companyName || "COMPANY NAME").toString();
+  const titleText = `${companyName.toUpperCase()}`;
+  const subtitleText = "CAFE DAILY STOCK REPORT";
+  const dateText = `Report Date: ${isoDate.split("-").reverse().join("/")}`;
+  const generatedText = `Generated: ${currentTime}`;
 
-  doc.setFontSize(12);
-  const subtitle = "CAFE DAILY STOCK SUMMARY";
-  const subtitleWidth = doc.getTextWidth(subtitle);
-  doc.text(subtitle, (doc.internal.pageSize.width - subtitleWidth) / 2, 25);
+  // Header (only first page)
+  const addHeader = () => {
+    const headerY = margin.top;
+    const logoSize = 18;
+    if (includeLogo && logoDataUrl) {
+      try {
+        doc.addImage(logoDataUrl, "PNG", margin.left, headerY - 2, logoSize, logoSize, undefined, "FAST");
+      } catch {}
+    }
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    const leftX = includeLogo && logoDataUrl ? margin.left + (logoSize + 6) : margin.left;
+    doc.text(titleText, leftX, headerY + 4);
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    const subX = pageWidth - margin.right;
+    doc.text(subtitleText, subX, headerY + 4, { align: "right" });
+
+    doc.setFontSize(9);
+    doc.setTextColor(80);
+    doc.text(dateText, leftX, headerY + 10);
+    doc.text(generatedText, subX, headerY + 10, { align: "right" });
+
+    doc.setDrawColor(220);
+    doc.setLineWidth(0.4);
+    doc.line(margin.left, headerY + 13, pageWidth - margin.right, headerY + 13);
+  };
+
+  // Footer (all pages)
+  const addFooter = (pageNumber, totalPages) => {
+    const footerY = doc.internal.pageSize.height - margin.bottom + 6;
+    doc.setFontSize(8);
+    doc.setTextColor(120);
+    doc.setFont("helvetica", "normal");
+    doc.text(
+      "This document is computer generated and requires no signature for authenticity.",
+      margin.left,
+      footerY
+    );
+    const pageText = `Page ${pageNumber} / ${totalPages}`;
+    doc.text(pageText, pageWidth - margin.right, footerY, { align: "right" });
+  };
+
+  // Page 1 header
+  addHeader();
+
+  // Executive Summary
+  let yPos = margin.top + 20;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(40);
+  doc.text("EXECUTIVE SUMMARY", margin.left, yPos);
+
+  yPos += 6;
+  doc.setDrawColor(230);
+  doc.setLineWidth(0.3);
+  doc.line(margin.left, yPos, margin.left + 55, yPos);
+
+  yPos += 8;
+  const totalItems = items.length;
+  const totalReceived = items.reduce((s, it) => s + Number(it.received || 0), 0);
+  const totalConsumed = items.reduce((s, it) => s + Number(it.consumption || 0), 0);
+  const totalClosing = items.reduce((s, it) => s + Number(it.closing || 0), 0);
+
+  const summaryRows = [
+    ["Total Items Tracked", String(totalItems)],
+    ["Total Received (sum)", String(totalReceived)],
+    ["Total Consumed (sum)", String(totalConsumed)],
+    ["Total Closing (sum)", String(totalClosing)],
+    ["Report Period", isoDate.split("-").reverse().join("/")],
+  ];
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
-  const dateText = `Date: ${isoDate.split("-").reverse().join("/")}`;
-  doc.text(dateText, 15, 35);
-  const printedText = `Generated: ${currentTime}`;
-  doc.text(printedText, doc.internal.pageSize.width - 15 - doc.getTextWidth(printedText), 35);
-
-  // Header separator
-  doc.setLineWidth(0.5);
-  doc.line(15, 38, doc.internal.pageSize.width - 15, 38);
-
-  // EXECUTIVE SUMMARY
-  let yPos = 50;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.text("EXECUTIVE SUMMARY", 15, yPos);
-  doc.setLineWidth(0.1);
-  doc.line(15, yPos + 2, 15 + doc.getTextWidth("EXECUTIVE SUMMARY"), yPos + 2);
-  yPos += 8;
-
-  // Aggregate key metrics
-  const safe = (n) => Number(n || 0);
-  const sumOf = (selector) => items.reduce((sum, item) => sum + safe(selector(item)), 0);
-
-  const totalItems = items.length;
-  const totalOpeningL = (sumOf((i) => i.opening.kgL * 1000 + i.opening.gMl) / 1000).toFixed(2);
-  const totalReceivedL = (sumOf((i) => i.received.kgL * 1000 + i.received.gMl) / 1000).toFixed(2);
-  const totalConsumptionL = (sumOf((i) => i.consumption.kgL * 1000 + i.consumption.gMl) / 1000).toFixed(2);
-  const totalClosingL = (sumOf((i) => i.closing.kgL * 1000 + i.closing.gMl) / 1000).toFixed(2);
-
-  doc.autoTable({
-    startY: yPos,
-    head: [["Metric", "Value", "Metric", "Value"]],
-    body: [
-      ["Total Items", totalItems, "Total Opening (L)", totalOpeningL],
-      ["Total Received (L)", totalReceivedL, "Total Consumption (L)", totalConsumptionL],
-      ["Total Closing (L)", totalClosingL, "", ""],
-    ],
-    theme: "grid",
-    headStyles: {
-      fillColor: [41, 128, 185],
-      textColor: [255, 255, 255],
-      fontStyle: "bold",
-      fontSize: 11,
-      halign: "center",
-    },
-    bodyStyles: {
-      fontSize: 10,
-      cellPadding: 3,
-      halign: "center",
-    },
-    columnStyles: {
-      0: { halign: "center", cellWidth: 50 },
-      1: { halign: "center", cellWidth: 40 },
-      2: { halign: "center", cellWidth: 50 },
-      3: { halign: "center", cellWidth: 40 },
-    },
-    margin: { left: 15, right: 15 },
+  const col1X = margin.left;
+  const col2X = margin.left + 85;
+  let rowY = yPos;
+  summaryRows.forEach(([k, v]) => {
+    doc.setFont("helvetica", "bold");
+    doc.text(k, col1X, rowY);
+    doc.setFont("helvetica", "normal");
+    doc.text(v, col2X, rowY);
+    rowY += 6;
   });
 
-  // CAFE STOCK TABLE
-  yPos = doc.lastAutoTable.finalY + 15;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text("DAILY CAFE STOCK DETAILS", 15, yPos);
-  doc.setLineWidth(0.1);
-  doc.line(15, yPos + 2, 15 + doc.getTextWidth("DAILY CAFE STOCK DETAILS"), yPos + 2);
-  yPos += 8;
+  yPos = rowY + 6;
 
-  // Process items for table
-  const tableData = items.map((it) => {
-    return [
-      (it.stockName || "-").substring(0, 20), // Item name
-      formatNumber(it.opening.kgL),            // Opening kg/l
-      it.opening.gMl.toFixed(0),               // Opening g/ml
-      it.opening.piece,                        // Opening piece
-      formatNumber(it.received.kgL),           // Received kg/l
-      it.received.gMl.toFixed(0),              // Received g/ml
-      it.received.piece,                       // Received piece
-      formatNumber(it.consumption.kgL),        // Consumption kg/l
-      it.consumption.gMl.toFixed(0),           // Consumption g/ml
-      it.consumption.piece,                    // Consumption piece
-      formatNumber(it.closing.kgL),            // Closing kg/l
-      it.closing.gMl.toFixed(0),               // Closing g/ml
-      it.closing.piece,                        // Closing piece
-    ];
-  });
+  // Table Data
+  const tableBody = items.map((it, idx) => [
+    idx + 1,
+    it.stockName || "-",
+    it.openingDisplay ?? "-",
+    it.receivedDisplay ?? "-",
+    it.consumptionDisplay ?? "-",
+    it.closingDisplay ?? "-",
+    it.unit || "-",
+  ]);
 
-  // Table headers
-  const headers = [
-    "Item",
-    "Opening", "Opening", "Opening",
-    "Received", "Received", "Received",
-    "Consumption", "Consumption", "Consumption",
-    "Closing", "Closing", "Closing",
-  ];
+  const tableHead = [["S.No", "Item Name", "Opening", "Received", "Consumed", "Closing", "Unit"]];
 
-  // Table sub-headers
-  const subHeaders = [
-    "",
-    "kg/l", "g/ml", "piece",
-    "kg/l", "g/ml", "piece",
-    "kg/l", "g/ml", "piece",
-    "kg/l", "g/ml", "piece",
-  ];
-
-  // Build table
+  // Stock Table
   doc.autoTable({
     startY: yPos,
-    head: [headers, subHeaders], // Multi-row header
-    body: tableData,
+    head: tableHead,
+    body: tableBody,
     theme: "striped",
+    styles: {
+      font: "helvetica",
+      fontSize: 9,
+      cellPadding: 3,
+      overflow: "linebreak",
+      valign: "middle",
+      halign: "center",
+      lineColor: [220, 220, 220],
+      lineWidth: 0.2,
+    },
     headStyles: {
       fillColor: [52, 73, 94],
       textColor: [255, 255, 255],
       fontStyle: "bold",
-      fontSize: 10,
       halign: "center",
     },
-    bodyStyles: {
-      fontSize: 9,
-      cellPadding: 2,
-      textColor: [44, 62, 80],
-      halign: "center", // default center
-    },
-    alternateRowStyles: {
-      fillColor: [248, 249, 250],
-    },
-    // Column alignment overrides
+    tableWidth: "auto",   // ensure fits page
+    halign: "center",     // center the table
+    margin: { left: 18, right: 18 },
+
     columnStyles: {
-      0: { halign: "left", cellWidth: 35 }, // Item name left-aligned
-      1: { cellWidth: 12 }, 2: { cellWidth: 12 }, 3: { cellWidth: 12 }, // Opening
-      4: { cellWidth: 12 }, 5: { cellWidth: 12 }, 6: { cellWidth: 12 }, // Received
-      7: { cellWidth: 12 }, 8: { cellWidth: 12 }, 9: { cellWidth: 12 }, // Consumption
-      10: { cellWidth: 12 }, 11: { cellWidth: 12 }, 12: { cellWidth: 12 }, // Closing
+      0: { cellWidth: 12, halign: "center" }, // S.No
+      1: { halign: "left" },                  // Item Name auto
     },
-    styles: {
-      overflow: "linebreak",
-      lineColor: [189, 195, 199],
-      lineWidth: 0.1,
+
+    didDrawPage: (data) => {
+      // ✅ Draw header only on first page
+      if (doc.internal.getCurrentPageInfo().pageNumber === 1) {
+        addHeader();
+      }
     },
-    margin: { left: 15, right: 15 },
-    pageBreak: "auto",
   });
 
-  // FOOTER: Page numbers
-  const pageCount = doc.internal.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
+  // Add footers to all pages
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.text(
-      `Page ${i} of ${pageCount}`,
-      doc.internal.pageSize.width - 15,
-      doc.internal.pageSize.height - 10,
-      { align: "right" }
-    );
+    addFooter(i, totalPages);
   }
 
-  doc.save(`${institutionData.companyName}_cafe_report_${isoDate}.pdf`);
+  const safeName = companyName.replace(/\s+/g, "_").toLowerCase();
+  const filename = `${filenamePrefix || safeName}_cafe_report_${isoDate}.pdf`;
+  doc.save(filename);
 };
 
-const buildDailyReportByCategory = (isoDate, typeFilter, stocks, allOrders) => {
-  const key = dateToKey(isoDate);
-  const baseSaleCols = ["60 ml", "30 ml"];
-  const saleSizes = new Set(baseSaleCols);
-  const rateSizes = new Set();
-  const groups = {};
-  stocks
-    .filter((s) => s.type === typeFilter)
-    .forEach((stock) => {
-      const update = (stock.stockupdate || {})[key] || {};
-      Object.keys(update || {}).forEach((k) => {
-        if (k.startsWith("unitRate_")) {
-          rateSizes.add(k.replace("unitRate_", ""));
-        } else if (
-          !["openingStock", "opening", "open", "received", "transferred"].includes(k)
-        ) {
-          saleSizes.add(k);
-        }
-      });
-      const cat = stock.category || "UNCATEGORISED";
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push({ stock, update });
-    });
-  const saleCols = Array.from(saleSizes).sort((a, b) => {
-    const na = Number(String(a).match(/\d+/)?.[0] || 0);
-    const nb = Number(String(b).match(/\d+/)?.[0] || 0);
-    return nb - na || String(a).localeCompare(b);
-  });
-  const rateCols = Array.from(rateSizes).sort((a, b) => {
-    const na = Number(String(a).match(/\d+/)?.[0] || 0);
-    const nb = Number(String(b).match(/\d+/)?.[0] || 0);
-    return na - nb || String(a).localeCompare(b);
-  });
-  const categories = [];
-  let grandTotalAmount = 0;
-  Object.keys(groups)
-    .sort()
-    .forEach((cat) => {
-      const items = groups[cat].map(({ stock, update }) => {
-        const hasUpdate = Object.keys(update).length > 0;
-        const openingRaw = hasUpdate ? update.openingStock ?? update.opening ?? update.open ?? 0 : stock.quantity ?? 0;
-        const receivedRaw = update.received ?? 0;
-        const transferredRaw = update.transferred ?? 0;
-        const openingMl = parseVolumeToMl(openingRaw);
-        const receivedMl = parseVolumeToMl(receivedRaw);
-        const transferredMl = parseVolumeToMl(transferredRaw);
-        const totalMl = openingMl + receivedMl;
-        const sales = {};
-        let salesVolumeMl = 0;
-        saleCols.forEach((s) => {
-          const cnt = safeNum(update[s] ?? 0);
-          sales[s] = cnt;
-          const num = Number(String(s).match(/\d+/)?.[0] || 0);
-          if (num) salesVolumeMl += cnt * num;
-        });
-        let amount = 0;
-        rateCols.forEach((r) => {
-          const rate = safeNum(update[`unitRate_${r}`] ?? 0);
-          const cnt = safeNum(update[r] ?? 0);
-          amount += rate * cnt;
-        });
-        const closingMl = Math.max(0, totalMl - salesVolumeMl - transferredMl);
-        const oneBottleMl = parseVolumeToMl(stock.oneBottleVolume || "1000 ml");
-        const openingBTL = formatBottlesMl(openingMl, oneBottleMl);
-        const receivedBTL = formatBottlesMl(receivedMl, oneBottleMl);
-        const totalBTL = formatBottlesMl(totalMl, oneBottleMl);
-        const transferredBTL = formatBottlesMl(transferredMl, oneBottleMl);
-        const closingBTL = formatBottlesMl(closingMl, oneBottleMl);
-        return {
-          stockId: stock.stockId,
-          stockName: stock.stockName || stock.name || "-",
-          openingMl,
-          receivedMl,
-          totalMl,
-          transferredMl,
-          openingBTL,
-          receivedBTL,
-          totalBTL,
-          transferredBTL,
-          sales,
-          unitRates: rateCols.reduce((acc, r) => {
-            acc[r] = safeNum(update[`unitRate_${r}`] ?? 0);
-            return acc;
-          }, {}),
-          amount,
-          closingMl,
-          closingBTL,
-          oneBottleMl,
-          oneBottleLabel: stock.oneBottleVolume || `${oneBottleMl} ml`,
-        };
-      });
-      const catTotals = {
-        openingMl: 0,
-        receivedMl: 0,
-        totalMl: 0,
-        transferredMl: 0,
-        sales: {},
-        amount: 0,
-        closingMl: 0,
-        closingBottles: 0,
-        closingRemainderMl: 0,
-      };
-      saleCols.forEach((s) => (catTotals.sales[s] = 0));
-      items.forEach((it) => {
-        catTotals.openingMl += safeNum(it.openingMl);
-        catTotals.receivedMl += safeNum(it.receivedMl);
-        catTotals.totalMl += safeNum(it.totalMl);
-        catTotals.transferredMl += safeNum(it.transferredMl);
-        saleCols.forEach((s) => {
-          catTotals.sales[s] += safeNum(it.sales[s]);
-        });
-        catTotals.amount += safeNum(it.amount);
-        catTotals.closingMl += safeNum(it.closingMl);
-        catTotals.closingBottles += safeNum(it.closingBTL.bottles);
-        catTotals.closingRemainderMl += safeNum(it.closingBTL.remainder);
-      });
-      const oneBottleMl = items.length > 0 ? items[0].oneBottleMl : 1000;
-      catTotals.openingBTL = formatBottlesMl(catTotals.openingMl, oneBottleMl);
-      catTotals.receivedBTL = formatBottlesMl(catTotals.receivedMl, oneBottleMl);
-      catTotals.totalBTL = formatBottlesMl(catTotals.totalMl, oneBottleMl);
-      catTotals.transferredBTL = formatBottlesMl(catTotals.transferredMl, oneBottleMl);
-      catTotals.closingBTL = {
-        bottles: catTotals.closingBottles,
-        remainder: catTotals.closingRemainderMl,
-      };
-      grandTotalAmount += catTotals.amount;
-      categories.push({ category: cat, items, totals: catTotals });
-    });
-  return { categories, saleCols, rateCols, grandTotalAmount };
-};
 
-const exportDailyReport = (isoDate, stocks, allOrders, institutionData) => {
-  if (!isoDate) {
-    alert("Choose a date first");
-    return;
-  }
 
-  const { categories, grandTotalAmount } = buildDailyReportByCategory(
-    isoDate,
-    "bar",
-    stocks,
-    allOrders
-  );
+// ================== exportItemPDF ==================
+const exportItemPDF = (builtData, institutionData, start, end) => {
+  const { items = [] } = builtData || {};
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
 
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const currentTime = new Date().toLocaleString("en-IN", {
-    timeZone: "Asia/Kolkata",
-    hour12: true,
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+    timeZone: "Asia/Kolkata", hour12: true, day: "2-digit", month: "2-digit",
+    year: "numeric", hour: "2-digit", minute: "2-digit",
   });
 
-  // HEADER (same style as Order PDF)
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  const title = `${(institutionData?.companyName || "Company Name").toUpperCase()}`;
-  const titleWidth = doc.getTextWidth(title);
-  doc.text(title, (doc.internal.pageSize.width - titleWidth) / 2, 15);
+  const title = (institutionData?.companyName || "Company Name").toUpperCase();
+  const subtitle = "ITEM SALES ANALYSIS REPORT";
+  const dateText = `Period: ${start.toLocaleDateString("en-IN")} to ${end.toLocaleDateString("en-IN")}`;
+  const generatedText = `Generated: ${currentTime}`;
 
-  doc.setFontSize(12);
-  const subtitle = "BAR DAILY REPORT";
-  const subtitleWidth = doc.getTextWidth(subtitle);
-  doc.text(subtitle, (doc.internal.pageSize.width - subtitleWidth) / 2, 25);
+  let yPos = addProfessionalHeader(doc, title, subtitle, dateText, generatedText);
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  const dateText = `Date: ${isoDate.split("-").reverse().join("/")}`;
-  doc.text(dateText, 15, 35);
-  const printedText = `Generated: ${currentTime}`;
-  doc.text(printedText, doc.internal.pageSize.width - 15 - doc.getTextWidth(printedText), 35);
+  // Executive Summary
+  yPos += 10;
+  doc.setFont("helvetica", "bold").setFontSize(12).setTextColor(40, 40, 40);
+  doc.text("EXECUTIVE SUMMARY", 20, yPos);
+  yPos += 5; doc.setDrawColor(200).line(20, yPos, 80, yPos);
+  yPos += 10;
 
-  // Header separator
-  doc.setLineWidth(0.5);
-  doc.line(15, 38, doc.internal.pageSize.width - 15, 38);
-
-  // EXECUTIVE SUMMARY
-  let yPos = 50;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.text("EXECUTIVE SUMMARY", 15, yPos);
-  doc.setLineWidth(0.1);
-  doc.line(15, yPos + 2, 15 + doc.getTextWidth("EXECUTIVE SUMMARY"), yPos + 2);
-  yPos += 8;
-
-  const safe = (n) => Number(n || 0);
-  const sumOf = (selector) => categories.reduce((sum, c) => sum + safe(selector(c)), 0);
-
-  // Aggregate in ML (convert to L for display)
-  const openingL = (sumOf((c) => c.totals.openingMl) / 1000).toFixed(2);
-  const receivedL = (sumOf((c) => c.totals.receivedMl) / 1000).toFixed(2);
-  const transferredL = (sumOf((c) => c.totals.transferredMl) / 1000).toFixed(2);
-  const closingL = (sumOf((c) => c.totals.closingMl) / 1000).toFixed(2);
-  const totalCategories = categories.length;
-  const totalItems = categories.reduce((sum, c) => sum + (c.items?.length || 0), 0);
-  const totalSales60 = sumOf((c) => safe(c.totals.sales?.["60 ml"]));
-  const totalSales30 = sumOf((c) => safe(c.totals.sales?.["30 ml"]));
-  const totalSalesBTL = categories.reduce((sum, c) => {
-    const sales = c.totals.sales || {};
-    return (
-      sum +
-      Object.entries(sales).reduce(
-        (s, [k, v]) => (["30 ml", "60 ml"].includes(String(k).toLowerCase()) ? s : s + safe(v)),
-        0
-      )
-    );
-  }, 0);
+  const totalItems = items.length;
+  const totalQty = items.reduce((s, it) => s + (it.quantity || 0), 0);
+  const barQty = items.filter(it => it.type === "Bar").reduce((s, it) => s + (it.quantity || 0), 0);
+  const cafeQty = items.filter(it => it.type === "Cafe").reduce((s, it) => s + (it.quantity || 0), 0);
 
   doc.autoTable({
     startY: yPos,
-    head: [["Metric", "Value", "Metric", "Value"]],
+    head: [["Performance Metric", "Value"]],
     body: [
-      ["Total Categories", totalCategories, "Total Items", totalItems],
-      ["Opening (L)", openingL, "Received (L)", receivedL],
-      ["Transferred (L)", transferredL, "Closing (L)", closingL],
-      ["Sales 60ML", totalSales60, "Sales 30ML", totalSales30],
-      ["Sales BTL", totalSalesBTL, "Grand Amount", grandTotalAmount.toFixed(2)],
+      ["Total Unique Items", String(totalItems)],
+      ["Total Quantity Sold", String(totalQty)],
+      ["Bar Items Quantity", String(barQty)],
+      ["Cafe Items Quantity", String(cafeQty)],
+      ["Analysis Period", `${start.toLocaleDateString("en-IN")} - ${end.toLocaleDateString("en-IN")}`],
     ],
     theme: "grid",
-    headStyles: {
-      fillColor: [41, 128, 185],
-      textColor: [255, 255, 255],
-      fontStyle: "bold",
-      fontSize: 11,
-      halign: "center",
-    },
-    bodyStyles: {
-      fontSize: 10,
-      cellPadding: 3,
-      halign: "center",
-    },
-    columnStyles: {
-      0: { halign: "center", cellWidth: 50 },
-      1: { halign: "center", cellWidth: 40 },
-      2: { halign: "center", cellWidth: 50 },
-      3: { halign: "center", cellWidth: 40 },
-    },
-    margin: { left: 15, right: 15 },
+    headStyles: { fillColor: [52,73,94], textColor: [255,255,255], fontStyle: "bold", halign: "center" },
+    styles: { fontSize: 10, cellPadding: 3 },
+    margin: { left: 20, right: 20 },
+    tableWidth: "auto",
+    halign: "center",
   });
 
-  // CATEGORY TABLES
-  yPos = doc.lastAutoTable.finalY + 15;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text("DAILY STOCK BY CATEGORY", 15, yPos);
-  doc.setLineWidth(0.1);
-  doc.line(15, yPos + 2, 15 + doc.getTextWidth("DAILY STOCK BY CATEGORY"), yPos + 2);
-  yPos += 8;
+  // Detailed Breakdown
+  yPos = doc.lastAutoTable.finalY + 20;
+  doc.setFont("helvetica", "bold").setFontSize(12).text("DETAILED SALES BREAKDOWN", 20, yPos);
+  yPos += 5; doc.line(20, yPos, 105, yPos); yPos += 10;
 
-  categories.forEach((cat, idx) => {
-    // Page break check before section
-    let startY = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 10 : yPos;
-    if (startY > doc.internal.pageSize.height - 40) {
-      doc.addPage();
-      startY = 25;
-    }
+  const body = items.map(it => [(it.name || "-"), it.type || "-", String(it.quantity || 0)]);
 
-    // Category title tag
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.text(`Category: ${cat.category}`, 15, startY);
-    startY += 6;
-
-    // Build body rows
-    const rows = cat.items.map((it) => {
-      const bottleSalesKeys = Object.keys(it.sales || {}).filter(
-        (k) => !["30 ml", "60 ml"].includes(k.toLowerCase())
-      );
-      const totalBottleSold = bottleSalesKeys.reduce((sum, k) => sum + safe(it.sales[k]), 0);
-      const rate60ml = safe(it.unitRates?.["60 ml"]);
-      const rate30ml = safe(it.unitRates?.["30 ml"]);
-      const bottleRateKeys = Object.keys(it.unitRates || {}).filter(
-        (k) => !["30 ml", "60 ml"].includes(k.toLowerCase())
-      );
-      const rateBottle = bottleRateKeys.length > 0 ? safe(it.unitRates[bottleRateKeys[0]]) : 0;
-
-      return [
-        (it.stockName || "-").substring(0, 18),
-        it.openingBTL.bottles,
-        it.openingBTL.remainder,
-        it.receivedBTL.bottles,
-        it.receivedBTL.remainder,
-        it.totalBTL.bottles,
-        it.totalBTL.remainder,
-        it.transferredBTL.bottles,
-        it.transferredBTL.remainder,
-        safe(it.sales["60 ml"] || 0),
-        safe(it.sales["30 ml"] || 0),
-        totalBottleSold,
-        rate60ml ? rate60ml.toFixed(0) : "0",
-        rate30ml ? rate30ml.toFixed(0) : "0",
-        rateBottle ? rateBottle.toFixed(0) : "0",
-        it.closingBTL.bottles,
-        it.closingBTL.remainder,
-        safe(it.amount).toFixed(0),
-      ];
-    });
-
-    // Category total row
-    rows.push([
-      "TOTAL:",
-      cat.totals.openingBTL.bottles,
-      cat.totals.openingBTL.remainder,
-      cat.totals.receivedBTL.bottles,
-      cat.totals.receivedBTL.remainder,
-      cat.totals.totalBTL.bottles,
-      cat.totals.totalBTL.remainder,
-      cat.totals.transferredBTL.bottles,
-      cat.totals.transferredBTL.remainder,
-      safe(cat.totals.sales["60 ml"] || 0),
-      safe(cat.totals.sales["30 ml"] || 0),
-      Object.entries(cat.totals.sales || {}).reduce(
-        (sum, [k, v]) => (["30 ml", "60 ml"].includes(k.toLowerCase()) ? sum : sum + safe(v)),
-        0
-      ),
-      "",
-      "",
-      "",
-      cat.totals.closingBTL.bottles,
-      cat.totals.closingBTL.remainder,
-      safe(cat.totals.amount).toFixed(0),
-    ]);
-
-    // Table
-    doc.autoTable({
-      startY,
-      head: [
-        [
-          { content: "Item", rowSpan: 2 },
-          { content: "Opening", colSpan: 2 },
-          { content: "Received", colSpan: 2 },
-          { content: "Total", colSpan: 2 },
-          { content: "Transfer", colSpan: 2 },
-          { content: "Sales", colSpan: 3 },
-          { content: "Rate", colSpan: 3 },
-          { content: "Closing", colSpan: 2 },
-          { content: "Amount", rowSpan: 2 },
-        ],
-        [
-          "BTL",
-          "ML",
-          "BTL",
-          "ML",
-          "BTL",
-          "ML",
-          "BTL",
-          "ML",
-          "60ML",
-          "30ML",
-          "BTL",
-          "60ML",
-          "30ML",
-          "BTL",
-          "BTL",
-          "ML",
-        ],
-      ],
-      body: rows,
-      theme: "striped",
-      headStyles: {
-        fillColor: [52, 73, 94],
-        textColor: [255, 255, 255],
-        fontStyle: "bold",
-        fontSize: 10,
-        halign: "center",
-      },
-      bodyStyles: {
-        fontSize: 9,
-        cellPadding: 2,
-        textColor: [44, 62, 80],
-        halign: "center", // default center for all cells
-      },
-      alternateRowStyles: {
-        fillColor: [248, 249, 250],
-      },
-      // Column widths tuned for landscape A4
-      columnStyles: {
-        0: { halign: "left", cellWidth: 28 },   // Item
-        1: { cellWidth: 10 }, 2: { cellWidth: 12 }, // Opening
-        3: { cellWidth: 10 }, 4: { cellWidth: 12 }, // Received
-        5: { cellWidth: 10 }, 6: { cellWidth: 12 }, // Total
-        7: { cellWidth: 10 }, 8: { cellWidth: 12 }, // Transfer
-        9: { cellWidth: 10 }, 10: { cellWidth: 10 }, 11: { cellWidth: 10 }, // Sales
-        12: { cellWidth: 10 }, 13: { cellWidth: 10 }, 14: { cellWidth: 12 }, // Rate
-        15: { cellWidth: 10 }, 16: { cellWidth: 12 }, // Closing
-        17: { halign: "right", cellWidth: 16 }, // Amount
-      },
-      styles: {
-        overflow: "linebreak",
-        lineColor: [189, 195, 199],
-        lineWidth: 0.1,
-      },
-      margin: { left: 15, right: 15 },
-      pageBreak: "auto",
-    });
+  doc.autoTable({
+    startY: yPos,
+    head: [["Item Name", "Category", "Quantity Sold"]],
+    body,
+    theme: "striped",
+    headStyles: { fillColor: [52,73,94], textColor: [255,255,255], fontStyle: "bold", halign: "center" },
+    bodyStyles: { fontSize: 9, textColor: [44,62,80] },
+    alternateRowStyles: { fillColor: [248,249,250] },
+    styles: { cellPadding: 2, overflow: "linebreak", lineColor: [189,195,199], lineWidth: 0.1 },
+    margin: { left: 20, right: 20 },
+    tableWidth: "auto",
+    halign: "center",
   });
 
-  // FOOTER: Grand total and page numbers
-  let finalY = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 10 : doc.internal.pageSize.height - 20;
+  // Totals footer
+  const finalY = doc.lastAutoTable.finalY + 15;
+  doc.setFont("helvetica", "bold").setFontSize(10).setTextColor(40,40,40);
+  doc.text(`TOTAL ITEMS ANALYZED: ${totalItems}`, 20, finalY);
+  doc.text(`TOTAL QUANTITY SOLD: ${totalQty}`, 20, finalY + 8);
 
-  const pageCount = doc.internal.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let i=1; i<=totalPages; i++) {
     doc.setPage(i);
+    addProfessionalFooter(doc, i, totalPages, "This document is computer generated and requires no signature for authenticity.");
+  }
 
-    // Page number
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.text(
-      `Page ${i} of ${pageCount}`,
-      doc.internal.pageSize.width - 15,
-      doc.internal.pageSize.height - 10,
-      { align: "right" }
-    );
+  const safeName = (institutionData.companyName || "company").replace(/\s+/g,"_").toLowerCase();
+  doc.save(`${safeName}_item_analysis_${start.toISOString().slice(0,10)}_to_${end.toISOString().slice(0,10)}.pdf`);
+};
 
-    if (i === pageCount) {
-      const footerY = Math.max(finalY, doc.internal.pageSize.height - 30);
-      doc.setLineWidth(0.5);
-      doc.line(15, footerY - 5, doc.internal.pageSize.width - 15, footerY - 5);
 
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      doc.text(`Grand Total Amount: ${grandTotalAmount.toFixed(2)}`, 15, footerY);
-      doc.setFont("helvetica", "italic");
-      doc.setFontSize(7);
-      doc.text(
-        "This report is computer generated and does not require signature.",
-        doc.internal.pageSize.width / 2,
-        footerY + 8,
-        { align: "center" }
-      );
+// ================== exportOrderPDF ==================
+const exportOrderPDF = (builtData, institutionData, start, end, subtype=null) => {
+  const {
+    orders = [], totalBilledAmount=0, totalCgst=0, totalSgst=0, totalServiceTax=0,
+    totalBarAmount=0, totalCafeAmount=0, paymentBreakdown={}
+  } = builtData || {};
+
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const currentTime = new Date().toLocaleString("en-IN", { timeZone:"Asia/Kolkata", hour12:true,
+    day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit" });
+
+  const title = (institutionData?.companyName || "Company Name").toUpperCase();
+  const subtitle = subtype==="cancelled"?"CANCELLED ORDERS REPORT": subtype==="pending"?"PENDING ORDERS REPORT":"ORDER ANALYSIS REPORT";
+  const dateText = `Period: ${start.toLocaleDateString("en-IN")} to ${end.toLocaleDateString("en-IN")}`;
+  const generatedText = `Generated: ${currentTime}`;
+
+  let yPos = addProfessionalHeader(doc, title, subtitle, dateText, generatedText);
+
+  // Executive Summary
+  yPos += 8;
+  doc.setFont("helvetica","bold").setFontSize(12).text("EXECUTIVE SUMMARY",20,yPos);
+  yPos += 5; doc.setDrawColor(200).line(20,yPos,80,yPos); yPos += 8;
+
+  const summaryBody = [
+    ["Total Orders Processed", String(orders.length), "Total Revenue Generated", `${totalBilledAmount.toFixed(2)}`],
+    ["Bar Sales Revenue", `${totalBarAmount.toFixed(2)}`, "Cafe Sales Revenue", `${totalCafeAmount.toFixed(2)}`],
+    ["CGST Collected", `${totalCgst.toFixed(2)}`, "SGST Collected", `${totalSgst.toFixed(2)}`],
+    ["Service Tax", `${totalServiceTax.toFixed(2)}`, "Analysis Period", `${Math.floor((end-start)/(1000*60*60*24))+1} days`],
+  ];
+
+  doc.autoTable({
+    startY: yPos,
+    body: summaryBody,
+    theme: "grid",
+    styles: { fontSize:9, cellPadding:3 },
+    margin: { left:20, right:20 },
+    tableWidth: "auto",
+    halign: "center",
+  });
+
+  // Payment Breakdown
+  yPos = doc.lastAutoTable.finalY + 10;
+  doc.setFont("helvetica","bold").setFontSize(10).text("PAYMENT METHOD BREAKDOWN",20,yPos);
+  yPos += 5; doc.line(20,yPos,100,yPos); yPos += 5;
+
+  const paymentBody = Object.entries(paymentBreakdown).map(([m,a])=>[m,`${a.toFixed(2)}`,((a/totalBilledAmount)*100).toFixed(1)+"%"]);
+
+  doc.autoTable({
+    startY: yPos,
+    head: [["Payment Method","Amount","Percentage"]],
+    body: paymentBody,
+    theme: "striped",
+    headStyles: { fillColor:[52,73,94], textColor:[255,255,255], fontStyle:"bold", halign:"center" },
+    styles: { fontSize:8, cellPadding:2 },
+    margin: { left:20, right:20 },
+    tableWidth: "auto",
+    halign: "center",
+  });
+
+  // Detailed Orders
+  yPos = doc.lastAutoTable.finalY + 15;
+  doc.setFont("helvetica","bold").setFontSize(10).text("DETAILED ORDER INFORMATION",20,yPos);
+  yPos += 5; doc.line(20,yPos,115,yPos); yPos += 8;
+
+  const isBhuk = institutionData?.institution === "bhuk2323";
+  let tableColumns = ["Order ID","Customer","Table",...(isBhuk?["Phone"]:[]),"Date","Time","Payment","Items","Amount"];
+  if (subtype==="cancelled") tableColumns.push("Cancel Reason");
+
+  const tableData = orders.map(order=>{
+    const itemsText = Array.isArray(order.items)?order.items.map(i=>`${i.name}(${i.quantity})`).join(", "):"No items";
+    const row = [
+      order.orderId||"N/A", order.name||"N/A", order.tableName||"N/A", ...(isBhuk?[order.phoneNumber||"N/A"]:[]),
+      new Date(order.createdAt).toLocaleDateString("en-IN"),
+      new Date(order.createdAt).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit",hour12:false}),
+      getPaymentDisplay(order),
+      itemsText.length>60?itemsText.slice(0,57)+"...":itemsText,
+      `${safeNum(order.totalAmount).toFixed(2)}`
+    ];
+    if (subtype==="cancelled") row.push(order.cancelReason||"N/A");
+    return row;
+  });
+
+  doc.autoTable({
+    startY: yPos,
+    head: [tableColumns],
+    body: tableData,
+    theme: "striped",
+    headStyles: { fillColor:[52,73,94], textColor:[255,255,255], fontStyle:"bold", fontSize:8, halign:"center" },
+    bodyStyles: { fontSize:7, textColor:[44,62,80] },
+    styles: { cellPadding:2, overflow:"linebreak", lineColor:[189,195,199], lineWidth:0.1 },
+    margin: { left:20, right:20 },
+    tableWidth: "auto",
+    halign: "center",
+  });
+
+  // Footer + Summary
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let i=1; i<=totalPages; i++) {
+    doc.setPage(i);
+    addProfessionalFooter(doc,i,totalPages,"This document is computer generated and requires no signature for authenticity.");
+    if (i===totalPages) {
+      const footerY = Math.max(doc.lastAutoTable.finalY+15, doc.internal.pageSize.height-40);
+      doc.setFont("helvetica","bold").setFontSize(10).setTextColor(40,40,40);
+      doc.text(`TOTAL ORDERS: ${orders.length}`,20,footerY);
+      doc.text(`TOTAL REVENUE: ${totalBilledAmount.toFixed(2)}`,doc.internal.pageSize.width-80,footerY);
     }
   }
 
-  doc.save(`${institutionData.companyName}_bar_report_${isoDate}.pdf`);
+  const safeName = (institutionData.companyName||"company").replace(/\s+/g,"_").toLowerCase();
+  doc.save(`${safeName}_Order_Report_${start.toISOString().slice(0,10)}_to_${end.toISOString().slice(0,10)}.pdf`);
 };
 
-const buildOrderReport = (start, end, allOrders) => {
+
+// ================== exportSettlementPDF ==================
+const exportSettlementPDF = (builtData, institutionData, start, end) => {
+  const { orders=[], totalBilledAmount=0, totalCgst=0, totalSgst=0, totalServiceTax=0,
+          totalBarAmount=0, totalCafeAmount=0, paymentBreakdown={} } = builtData || {};
+
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const currentTime = new Date().toLocaleString("en-IN", { timeZone:"Asia/Kolkata", hour12:true,
+    day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit" });
+
+  const title = (institutionData?.companyName || "Company Name").toUpperCase();
+  const subtitle = "FINANCIAL SETTLEMENT REPORT";
+  const dateText = `Settlement Period: ${start.toLocaleDateString("en-IN")} to ${end.toLocaleDateString("en-IN")}`;
+  const generatedText = `Generated: ${currentTime}`;
+
+  let yPos = addProfessionalHeader(doc, title, subtitle, dateText, generatedText);
+
+  // Financial Summary
+  yPos += 10;
+  doc.setFont("helvetica","bold").setFontSize(12).text("FINANCIAL SUMMARY",20,yPos);
+  yPos += 5; doc.line(20,yPos,75,yPos); yPos += 10;
+
+  const summaryData = [
+    ["Total Revenue",`${totalBilledAmount.toFixed(2)}`],
+    ["Bar Sales",`${totalBarAmount.toFixed(2)}`],
+    ["Cafe Sales",`${totalCafeAmount.toFixed(2)}`],
+    ["CGST Collected",`${totalCgst.toFixed(2)}`],
+    ["SGST Collected",`${totalSgst.toFixed(2)}`],
+    ["Service Tax",`${totalServiceTax.toFixed(2)}`],
+    ["Net Taxable Amount",`${(totalBilledAmount-totalCgst-totalSgst-totalServiceTax).toFixed(2)}`],
+  ];
+
+  doc.autoTable({
+    startY: yPos,
+    head: [["Financial Metric","Amount ()"]],
+    body: summaryData,
+    theme: "grid",
+    headStyles: { fillColor:[52,73,94], textColor:[255,255,255], fontStyle:"bold", halign:"center" },
+    styles: { fontSize:10, cellPadding:3 },
+    margin: { left:20, right:20 },
+    tableWidth: "auto",
+    halign: "center",
+  });
+
+  // Payment Methods
+  yPos = doc.lastAutoTable.finalY + 20;
+  doc.setFont("helvetica","bold").setFontSize(12).text("PAYMENT METHOD ANALYSIS",20,yPos);
+  yPos += 5; doc.line(20,yPos,110,yPos); yPos += 10;
+
+  const breakdownBody = Object.entries(paymentBreakdown).map(([m,a])=>[m,`${a.toFixed(2)}`,`${((a/totalBilledAmount)*100).toFixed(1)}%`]);
+  breakdownBody.push(["TOTAL",`${totalBilledAmount.toFixed(2)}`,"100.0%"]);
+
+  doc.autoTable({
+    startY: yPos,
+    head: [["Payment Method","Amount ()","Percentage"]],
+    body: breakdownBody,
+    theme: "striped",
+    headStyles: { fillColor:[52,73,94], textColor:[255,255,255], fontStyle:"bold", halign:"center" },
+    bodyStyles: { fontSize:9 },
+    alternateRowStyles: { fillColor:[248,249,250] },
+    margin: { left:20, right:20 },
+    tableWidth: "auto",
+    halign: "center",
+    didParseCell: d=>{
+      if(d.row.index===breakdownBody.length-1){ d.cell.styles.fontStyle="bold"; d.cell.styles.fillColor=[220,220,220]; }
+    }
+  });
+
+  // Order Summary
+  yPos = doc.lastAutoTable.finalY + 20;
+  doc.setFont("helvetica","bold").setFontSize(12).text("ORDER SUMMARY",20,yPos);
+  yPos += 5; doc.line(20,yPos,65,yPos); yPos += 10;
+
+  const orderSummaryData = orders.slice(0,15).map(o=>[
+    o.orderId||"N/A", o.name||"N/A",
+    new Date(o.createdAt).toLocaleDateString("en-IN"),
+    getPaymentDisplay(o).substring(0,15),
+    `${safeNum(o.totalAmount).toFixed(2)}`
+  ]);
+  if (orders.length>15) orderSummaryData.push(["... ",`${orders.length-15} more orders`,"...","...",""+orders.slice(15).reduce((s,o)=>s+safeNum(o.totalAmount),0).toFixed(2)]);
+
+  doc.autoTable({
+    startY: yPos,
+    head: [["Order ID","Customer","Date","Payment","Amount"]],
+    body: orderSummaryData,
+    theme: "striped",
+    headStyles: { fillColor:[52,73,94], textColor:[255,255,255], fontStyle:"bold", halign:"center" },
+    bodyStyles: { fontSize:8, textColor:[44,62,80] },
+    alternateRowStyles: { fillColor:[248,249,250] },
+    margin: { left:20, right:20 },
+    tableWidth: "auto",
+    halign: "center",
+  });
+
+  // Footer
+  const totalPages = doc.internal.getNumberOfPages();
+  for(let i=1;i<=totalPages;i++){
+    doc.setPage(i);
+    addProfessionalFooter(doc,i,totalPages,"This document is computer generated and requires no signature for authenticity.");
+    if(i===totalPages){
+      const footerY = Math.max(doc.lastAutoTable.finalY+15, doc.internal.pageSize.height-40);
+      doc.setFont("helvetica","bold").setFontSize(11).setTextColor(40,40,40);
+      doc.text(`SETTLEMENT TOTAL: ${totalBilledAmount.toFixed(2)}`,20,footerY);
+      doc.text(`TOTAL ORDERS SETTLED: ${orders.length}`,20,footerY+8);
+    }
+  }
+
+  const safeName = (institutionData.companyName||"company").replace(/\s+/g,"_").toLowerCase();
+  doc.save(`${safeName}_Settlement_Report_${start.toISOString().slice(0,10)}_to_${end.toISOString().slice(0,10)}.pdf`);
+};
+
+// Simplified cafe Excel export (combined strings)
+const exportCafeExcel = (builtData, institutionData, isoDate) => {
+  const { items } = builtData;
+  const exportData = items.map((it) => ({
+    "Item Name": it.stockName,
+    Opening: it.openingDisplay,
+    Received: it.receivedDisplay,
+    Consumption: it.consumptionDisplay,
+    Closing: it.closingDisplay,
+    Unit: it.unit,
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(exportData);
+  applyExcelStyles(ws, exportData);
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Cafe Report");
+  XLSX.writeFile(
+    wb,
+    `${institutionData.companyName || "Company"}_cafe_report_${isoDate}.xlsx`
+  );
+};
+
+const getPaymentMethod = (order) => {
+  return order.paymentMethod || order.paymentMethods?.[0]?.method || "Unknown";
+};
+
+const getPaymentDisplay = (order) => {
+  let paymentStr = order.paymentMethod || "Cash";
+  if (order.paymentMethods && Array.isArray(order.paymentMethods)) {
+    paymentStr = order.paymentMethods
+      .map((pm) => {
+        let str = `${pm.method}(${pm.amount})`;
+        if (pm.name || pm.reason || pm.note) {
+          str += ` - ${pm.name || pm.reason || pm.note}`;
+        }
+        return str;
+      })
+      .join(", ");
+  }
+  return paymentStr;
+};
+
+const buildOrderReport = (start, end, filteredOrders) => {
   const startTime = new Date(start).setHours(0, 0, 0, 0);
   const endTime = new Date(end).setHours(23, 59, 59, 999);
-  const filteredOrders = allOrders.filter((order) => {
-    const orderDate = new Date(order.createdAt);
-    return orderDate >= startTime && orderDate <= endTime;
-  });
+
+  const orders = filteredOrders
+    .filter((order) => {
+      const orderDate = new Date(order.createdAt);
+      return orderDate >= startTime && orderDate <= endTime;
+    })
+    .sort((a, b) => getPaymentMethod(a).localeCompare(getPaymentMethod(b)));
+
   let totalBilledAmount = 0,
     totalCgst = 0,
     totalSgst = 0,
@@ -783,19 +835,25 @@ const buildOrderReport = (start, end, allOrders) => {
     totalCafeAmount = 0,
     totalBarItemsCount = 0,
     totalCafeItemsCount = 0;
+
   const paymentBreakdown = {};
   const itemQuantities = {};
-  filteredOrders.forEach((order) => {
+
+  orders.forEach((order) => {
     totalBilledAmount += safeNum(order.totalAmount);
     totalCgst += safeNum(order.cgst);
     totalSgst += safeNum(order.sgst);
     totalServiceTax += safeNum(order.serviceTax);
+
     const payKey = order.paymentMethod || order.paymentMode || "Cash";
-    paymentBreakdown[payKey] = (paymentBreakdown[payKey] || 0) + safeNum(order.totalAmount);
+    paymentBreakdown[payKey] =
+      (paymentBreakdown[payKey] || 0) + safeNum(order.totalAmount);
+
     (order.items || []).forEach((it) => {
       const itQty = safeNum(it.quantity);
       const itAmount = safeNum(it.price) * itQty;
       const itType = String(it.type || "").toLowerCase();
+
       if (itType === "bar") {
         totalBarAmount += itAmount;
         totalBarItemsCount += itQty;
@@ -803,6 +861,7 @@ const buildOrderReport = (start, end, allOrders) => {
         totalCafeAmount += itAmount;
         totalCafeItemsCount += itQty;
       }
+
       if (it.name) {
         itemQuantities[it.name] = {
           quantity: (itemQuantities[it.name]?.quantity || 0) + itQty,
@@ -811,8 +870,9 @@ const buildOrderReport = (start, end, allOrders) => {
       }
     });
   });
+
   return {
-    orders: filteredOrders,
+    orders,
     totalBilledAmount,
     totalCgst,
     totalSgst,
@@ -826,457 +886,148 @@ const buildOrderReport = (start, end, allOrders) => {
   };
 };
 
-const buildItemReport = (start, end, allOrders) => {
+const buildItemReport = (start, end, allOrders, itemTypeFilter = null) => {
   const { itemQuantities } = buildOrderReport(start, end, allOrders);
-  const items = Object.entries(itemQuantities).map(([name, { quantity, type }]) => ({
+
+  let items = Object.entries(itemQuantities).map(([name, { quantity, type }]) => ({
     name,
     quantity,
     type: type === "bar" ? "Bar" : "Cafe",
   }));
+
+  if (itemTypeFilter) {
+    items = items.filter((it) => it.type === itemTypeFilter);
+  }
+
   items.sort((a, b) => a.name.localeCompare(b.name));
   return { items };
 };
 
-// Updated exportItemPDF
-const exportItemPDF = (start, end, institutionData, allOrders) => {
-  const { items } = buildItemReport(start, end, allOrders);
+// Excel export functions
+const exportItemExcel = (builtData, institutionData, start, end) => {
+  const { items } = builtData;
+  const exportData = items.map((item) => ({
+    "Item Name": item.name,
+    Type: item.type,
+    "Quantity Sold": item.quantity,
+  }));
 
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-  const currentTime = new Date().toLocaleString("en-IN", {
-    timeZone: "Asia/Kolkata",
-    hour12: true,
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const ws = XLSX.utils.json_to_sheet(exportData);
+  applyExcelStyles(ws, exportData);
 
-  // ---------- HEADER (same style as Order / Bar / Cafe) ----------
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  const title = `${(institutionData?.companyName || "Company Name").toUpperCase()}`;
-  const titleWidth = doc.getTextWidth(title);
-  doc.text(title, (doc.internal.pageSize.width - titleWidth) / 2, 15);
-
-  doc.setFontSize(12);
-  const subtitle = "ITEM SALES REPORT";
-  const subtitleWidth = doc.getTextWidth(subtitle);
-  doc.text(subtitle, (doc.internal.pageSize.width - subtitleWidth) / 2, 25);
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  const dateRange = `Period: ${start.toLocaleDateString("en-IN")} to ${end.toLocaleDateString("en-IN")}`;
-  doc.text(dateRange, 15, 35);
-  const printedText = `Generated: ${currentTime}`;
-  doc.text(printedText, doc.internal.pageSize.width - 15 - doc.getTextWidth(printedText), 35);
-
-  doc.setLineWidth(0.5);
-  doc.line(15, 38, doc.internal.pageSize.width - 15, 38);
-
-  // ---------- EXECUTIVE SUMMARY ----------
-  let yPos = 50;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.text("EXECUTIVE SUMMARY", 15, yPos);
-  doc.setLineWidth(0.1);
-  doc.line(15, yPos + 2, 15 + doc.getTextWidth("EXECUTIVE SUMMARY"), yPos + 2);
-  yPos += 8;
-
-  const totalItems = items.length;
-  const totalQty   = items.reduce((sum, it) => sum + (it.quantity || 0), 0);
-  const barQty     = items.filter(it => it.type === "Bar").reduce((sum, it) => sum + (it.quantity || 0), 0);
-  const cafeQty    = items.filter(it => it.type === "Cafe").reduce((sum, it) => sum + (it.quantity || 0), 0);
-
-  doc.autoTable({
-    startY: yPos,
-    head: [["Metric", "Value", "Metric", "Value"]],
-    body: [
-      ["Total Items", totalItems, "Total Quantity", totalQty],
-      ["Bar Sales Qty", barQty, "Cafe Sales Qty", cafeQty],
-    ],
-    theme: "grid",
-    headStyles: {
-      fillColor: [41, 128, 185],
-      textColor: [255, 255, 255],
-      fontStyle: "bold",
-      fontSize: 11,
-      halign: "center",
-    },
-    bodyStyles: { fontSize: 10, cellPadding: 3, halign: "center" },
-    columnStyles: {
-      0: { halign: "center", cellWidth: 50 },
-      1: { halign: "center", cellWidth: 40 },
-      2: { halign: "center", cellWidth: 50 },
-      3: { halign: "center", cellWidth: 40 },
-    },
-    margin: { left: 15, right: 15 },
-  });
-
-  // ---------- DETAIL TABLE ----------
-  yPos = doc.lastAutoTable.finalY + 15;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text("ITEM SALES DETAILS", 15, yPos);
-  doc.setLineWidth(0.1);
-  doc.line(15, yPos + 2, 15 + doc.getTextWidth("ITEM SALES DETAILS"), yPos + 2);
-  yPos += 8;
-
-  const body = items.map(it => [
-    (it.name || "-").substring(0, 35),
-    it.type,
-    it.quantity,
-  ]);
-
-  doc.autoTable({
-    startY: yPos,
-    head: [["Item Name", "Type", "Quantity Sold"]],
-    body,
-    theme: "striped",
-    headStyles: {
-      fillColor: [52, 73, 94],
-      textColor: [255, 255, 255],
-      fontStyle: "bold",
-      fontSize: 10,
-      halign: "center",
-    },
-    bodyStyles: {
-      fontSize: 9,
-      cellPadding: 2,
-      textColor: [44, 62, 80],
-      halign: "center",
-    },
-    alternateRowStyles: { fillColor: [248, 249, 250] },
-    columnStyles: {
-      0: { halign: "left", cellWidth: 100 },   // Item name left
-      1: { halign: "center", cellWidth: 35 },  // Type center
-      2: { halign: "center", cellWidth: 35 },  // Qty center
-    },
-    styles: {
-      overflow: "linebreak",
-      lineColor: [189, 195, 199],
-      lineWidth: 0.1,
-    },
-    margin: { left: 15, right: 15 },
-    pageBreak: "auto",
-  });
-
-  // ---------- FOOTER / PAGE NUMBERS ----------
-  const pageCount = doc.internal.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.text(
-      `Page ${i} of ${pageCount}`,
-      doc.internal.pageSize.width - 15,
-      doc.internal.pageSize.height - 10,
-      { align: "right" }
-    );
-    if (i === pageCount) {
-      const footerY = Math.max(doc.lastAutoTable.finalY + 10, doc.internal.pageSize.height - 30);
-      doc.setLineWidth(0.5);
-      doc.line(15, footerY - 5, doc.internal.pageSize.width - 15, footerY - 5);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      doc.text(`Total Quantity: ${totalQty}`, 15, footerY);
-      doc.setFont("helvetica", "italic");
-      doc.setFontSize(7);
-      doc.text(
-        "This report is computer generated and does not require signature.",
-        doc.internal.pageSize.width / 2,
-        footerY + 8,
-        { align: "center" }
-      );
-    }
-  }
-
-  doc.save(
-    `${institutionData.companyName}_item_report_${start.toISOString().slice(0, 10)}${
-      start.toLocaleDateString() !== end.toLocaleDateString() ? `_to_${end.toISOString().slice(0, 10)}` : ""
-    }.pdf`
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Item Report");
+  XLSX.writeFile(
+    wb,
+    `${institutionData.companyName}_item_report_${start
+      .toISOString()
+      .slice(0, 10)}${
+      start.toLocaleDateString() !== end.toLocaleDateString()
+        ? `_to_${end.toISOString().slice(0, 10)}`
+        : ""
+    }.xlsx`
   );
 };
 
-// Updated exportOrderPDF
-const exportOrderPDF = (start, end, institutionData, allOrders) => {
-  const {
-    orders,
-    totalBilledAmount,
-    totalCgst,
-    totalSgst,
-    totalServiceTax,
-    totalBarAmount,
-    totalCafeAmount,
-    paymentBreakdown,
-  } = buildOrderReport(start, end, allOrders);
-  
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" }); // Changed to landscape for better table layout
-  const currentTime = new Date().toLocaleString("en-IN", {
-    timeZone: "Asia/Kolkata",
-    hour12: true,
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+const exportOrderExcel = (builtData, institutionData, start, end) => {
+  const { orders } = builtData;
+  const exportData = orders.map((order) => ({
+    "Order ID": order.orderId || "N/A",
+    Customer: order.name || "N/A",
+    Table: order.tableName || "N/A",
+    Date: new Date(order.createdAt).toLocaleDateString(),
+    Time: new Date(order.createdAt).toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
+    Payment: getPaymentDisplay(order),
+    Total: safeNum(order.totalAmount),
+    CGST: safeNum(order.cgst),
+    SGST: safeNum(order.sgst),
+    "Service Tax": safeNum(order.serviceTax),
+    Items: order.items
+      ? order.items.map((it) => `${it.name || "N/A"}(x${it.quantity || 0})`).join("; ")
+      : "",
+  }));
 
-  // Header with company branding
-  const dateRange = {
-    start: start.toLocaleDateString("en-IN"),
-    end: end.toLocaleDateString("en-IN"),
-  };
-  
-  // Enhanced header setup
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  const title = `${(institutionData?.companyName || "Company Name").toUpperCase()}`;
-  const titleWidth = doc.getTextWidth(title);
-  doc.text(title, (doc.internal.pageSize.width - titleWidth) / 2, 15);
-  
-  doc.setFontSize(12);
-  const subtitle = "ORDER REPORT";
-  const subtitleWidth = doc.getTextWidth(subtitle);
-  doc.text(subtitle, (doc.internal.pageSize.width - subtitleWidth) / 2, 25);
-  
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  const dateText = `Period: ${dateRange.start} to ${dateRange.end}`;
-  doc.text(dateText, 15, 35);
-  doc.text(`Generated: ${currentTime}`, doc.internal.pageSize.width - 15 - doc.getTextWidth(`Generated: ${currentTime}`), 35);
-  
-  // Header separator line
-  doc.setLineWidth(0.5);
-  doc.line(15, 38, doc.internal.pageSize.width - 15, 38);
+  const ws = XLSX.utils.json_to_sheet(exportData);
+  applyExcelStyles(ws, exportData);
 
-  // Enhanced summary section with better layout
-  let yPos = 50;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.text("EXECUTIVE SUMMARY", 15, yPos);
-  doc.setLineWidth(0.1); // Added line under section title
-  doc.line(15, yPos + 2, 15 + doc.getTextWidth("EXECUTIVE SUMMARY"), yPos + 2);
-  yPos += 8;
-
-  // Summary data remains in two columns for better space utilization, with left/right alignment as is professional for metrics.
-  const summaryData = [
-    { label: "Total Orders", value: orders.length.toString() },
-    { label: "Total Revenue", value: `${totalBilledAmount.toFixed(2)}` },
-    { label: "Bar Sales", value: `${totalBarAmount.toFixed(2)}` },
-    { label: "Cafe Sales", value: `${totalCafeAmount.toFixed(2)}` },
-    { label: "CGST", value: `${totalCgst.toFixed(2)}` },
-    { label: "SGST", value: `${totalSgst.toFixed(2)}` },
-    { label: "Service Tax", value: `${totalServiceTax.toFixed(2)}` },
-  ];
-
-  doc.autoTable({
-    startY: yPos,
-    head: [["Metric", "Amount", "Payment Method", "Amount"]],
-    body: [
-      ...summaryData.slice(0, Math.ceil(summaryData.length / 2)).map((item, index) => {
-        const paymentEntries = Object.entries(paymentBreakdown);
-        const paymentItem = paymentEntries[index];
-        return [
-          item.label,
-          item.value,
-          paymentItem ? paymentItem[0] : "",
-          paymentItem ? `${paymentItem[1].toFixed(2)}` : ""
-        ];
-      }),
-      // Handle remaining summary items if odd number
-      ...summaryData.slice(Math.ceil(summaryData.length / 2)).map((item) => [
-        item.label,
-        item.value,
-        "",
-        ""
-      ])
-    ],
-    theme: "grid",
-    headStyles: {
-      fillColor: [41, 128, 185],
-      textColor: [255, 255, 255],
-      fontStyle: "bold",
-      fontSize: 11,
-      halign: "center",
-    },
-    bodyStyles: {
-      fontSize: 10,
-      cellPadding: 3,
-    },
-    columnStyles: {
-      0: { halign: "left", cellWidth: 50, fontStyle: "bold" },
-      1: { halign: "right", cellWidth: 40 },
-      2: { halign: "left", cellWidth: 50, fontStyle: "bold" },
-      3: { halign: "right", cellWidth: 40 },
-    },
-    margin: { left: 15, right: 15 },
-  });
-
-  // Orders section with improved table design
-  yPos = doc.lastAutoTable.finalY + 15;
-  
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text("ORDER DETAILS", 15, yPos);
-  doc.setLineWidth(0.1); // Added line under section title
-  doc.line(15, yPos + 2, 15 + doc.getTextWidth("ORDER DETAILS"), yPos + 2);
-  yPos += 8;
-
-  const isBhuk = institutionData?.institution === "bhuk2323";
-  
-  // Optimized column structure for landscape orientation
-  const tableColumns = [
-    { header: "Order ID", dataKey: "orderId", width: 25 },
-    { header: "Customer", dataKey: "customer", width: 35 },
-    { header: "Table", dataKey: "table", width: 20 },
-    ...(isBhuk ? [{ header: "Phone", dataKey: "phone", width: 30 }] : []),
-    { header: "Date", dataKey: "date", width: 25 },
-    { header: "Time", dataKey: "time", width: 25 },
-    { header: "Payment", dataKey: "payment", width: 35 },
-    { header: "Items", dataKey: "items", width: 80 }, // Adjusted width for more space
-    { header: "Amount", dataKey: "amount", width: 25 },
-  ];
-
-  // Process orders data for the table
-  const tableData = orders.map((order) => {
-    const paymentMethod = order.paymentMethods
-      ? Array.isArray(order.paymentMethods)
-        ? order.paymentMethods.map((pm) => `${pm.method}(${pm.amount})`).join(", ")
-        : Object.entries(order.paymentMethods)
-            .map(([method, amount]) => `${method}(${amount})`)
-            .join(", ")
-      : order.paymentMethod || "Cash";
-
-    // Format items more compactly
-    const itemsText = order.items && Array.isArray(order.items)
-      ? order.items.map(item => `${item.name}(${item.quantity})`).join(", ")
-      : "No items";
-
-    return {
-      orderId: order.orderId || "N/A",
-      customer: order.name || "N/A",
-      table: order.tableName || "N/A",
-      ...(isBhuk ? { phone: order.phoneNumber || "N/A" } : {}),
-      date: new Date(order.createdAt).toLocaleDateString("en-IN"),
-      time: new Date(order.createdAt).toLocaleTimeString("en-IN", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false
-      }),
-      payment: paymentMethod,
-      items: itemsText,
-      amount: `${order.totalAmount.toFixed(2)}`,
-    };
-  });
-
-  doc.autoTable({
-    startY: yPos,
-    head: [tableColumns.map(col => col.header)],
-    body: tableData.map(row => tableColumns.map(col => row[col.dataKey])),
-    theme: "striped",
-    headStyles: {
-      fillColor: [52, 73, 94],
-      textColor: [255, 255, 255],
-      fontStyle: "bold",
-      fontSize: 11,
-      halign: "center",
-      cellPadding: 3,
-    },
-    bodyStyles: {
-      fontSize: 10, // Increased body font size for better readability
-      cellPadding: 2,
-      textColor: [44, 62, 80],
-      // Default all body cells to center alignment
-      halign: "center",
-    },
-    alternateRowStyles: {
-      fillColor: [248, 249, 250],
-    },
-    columnStyles: Object.fromEntries(
-      tableColumns.map((col, index) => [
-        index,
-        {
-          cellWidth: col.width,
-          // Override default center alignment for specific columns:
-          // Amount should be right-aligned
-          // Items should be left-aligned and wrapped
-          halign: col.dataKey === "amount" ? "right" : 
-                  col.dataKey === "items" ? "left" : "center",
-          ...(col.dataKey === "items" ? { 
-            fontSize: 10, // Increased font size for items
-            overflow: "linebreak",
-            cellPadding: 1.5 
-          } : {}),
-        }
-      ])
-    ),
-    styles: {
-      overflow: "linebreak",
-      cellPadding: 2,
-      // Global font size for the table, overridden by headStyles and bodyStyles
-      fontSize: 7, 
-      lineColor: [189, 195, 199],
-      lineWidth: 0.1,
-    },
-    margin: { left: 15, right: 15 },
-    pageBreak: "auto",
-  });
-
-  // Footer with totals and page numbers
-  let finalY = doc.lastAutoTable.finalY + 10;
-  
-  // Add page numbers and summary footer
-  const pageCount = doc.internal.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    
-    // Page number
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.text(
-      `Page ${i} of ${pageCount}`,
-      doc.internal.pageSize.width - 15,
-      doc.internal.pageSize.height - 10,
-      { align: "right" }
-    );
-    
-    // Footer summary on last page
-    if (i === pageCount) {
-      const footerY = Math.max(finalY, doc.internal.pageSize.height - 30); // Adjusted footer position
-      
-      doc.setLineWidth(0.5);
-      doc.line(15, footerY - 5, doc.internal.pageSize.width - 15, footerY - 5);
-      
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      doc.text(`Total Revenue: ${totalBilledAmount.toFixed(2)}`, 15, footerY);
-      doc.text(`Total Orders: ${orders.length}`, doc.internal.pageSize.width - 15, footerY, { align: "right" });
-      
-      doc.setFont("helvetica", "italic");
-      doc.setFontSize(7);
-      doc.text(
-        "This report is computer generated and does not require signature.",
-        doc.internal.pageSize.width / 2,
-        footerY + 8,
-        { align: "center" }
-      );
-    }
-  }
-
-  doc.save(
-    `${institutionData.companyName}_Order_Report_${start.toISOString().slice(0, 10)}_to_${end.toISOString().slice(0, 10)}.pdf`
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Order Report");
+  XLSX.writeFile(
+    wb,
+    `${institutionData.companyName}_orders_${start.toISOString().slice(0, 10)}${
+      start.toLocaleDateString() !== end.toLocaleDateString()
+        ? `_to_${end.toISOString().slice(0, 10)}`
+        : ""
+    }.xlsx`
   );
 };
 
+const exportSettlementExcel = (builtData, institutionData, start, end) => {
+  const { paymentBreakdown, totalBilledAmount } = builtData;
+
+  const exportData = Object.entries(paymentBreakdown).map(([method, amount]) => ({
+    "Payment Method": method,
+    Amount: amount,
+  }));
+
+  exportData.push({
+    "Payment Method": "Total",
+    Amount: totalBilledAmount,
+  });
+
+  const ws = XLSX.utils.json_to_sheet(exportData);
+  applyExcelStyles(ws, exportData);
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Settlement Report");
+  XLSX.writeFile(
+    wb,
+    `${institutionData.companyName}_settlement_${start.toISOString().slice(0, 10)}${
+      start.toLocaleDateString() !== end.toLocaleDateString()
+        ? `_to_${end.toISOString().slice(0, 10)}`
+        : ""
+    }.xlsx`
+  );
+};
+
+// applyExcelStyles - as provided in your code (keeps cell styling & alignment behavior)
 const applyExcelStyles = (ws, data, headerRowCount = 1) => {
-  const range = XLSX.utils.decode_range(ws['!ref']);
-  const headerStyle = { font: { bold: true }, fill: { fgColor: { rgb: "2196F3" } }, alignment: { horizontal: "center" }, border: { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } } };
-  const numberStyle = { numFmt: "#,##0.00", alignment: { horizontal: "right" } };
-  const currencyStyle = { numFmt: "#,##0.00", alignment: { horizontal: "right" } };
+  const range = XLSX.utils.decode_range(ws["!ref"]);
+
+  const headerStyle = {
+    font: { bold: true },
+    fill: { fgColor: { rgb: "2196F3" } },
+    alignment: { horizontal: "center" },
+    border: {
+      top: { style: "thin" },
+      bottom: { style: "thin" },
+      left: { style: "thin" },
+      right: { style: "thin" },
+    },
+  };
+
+  const numberStyle = {
+    numFmt: "#,##0.00",
+    alignment: { horizontal: "right" },
+  };
+  const currencyStyle = {
+    numFmt: "#,##0.00",
+    alignment: { horizontal: "right" },
+  };
   const textStyle = { alignment: { horizontal: "left", wrapText: true } };
-  const dateStyle = { numFmt: "dd/mm/yyyy", alignment: { horizontal: "center" } };
-  const totalStyle = { font: { bold: true }, fill: { fgColor: { rgb: "FFFF00" } }, alignment: { horizontal: "right" } };
+  const dateStyle = {
+    numFmt: "dd/mm/yyyy",
+    alignment: { horizontal: "center" },
+  };
+  const totalStyle = {
+    font: { bold: true },
+    fill: { fgColor: { rgb: "FFFF00" } },
+    alignment: { horizontal: "right" },
+  };
 
   // Apply header styles
   for (let C = range.s.c; C <= range.e.c; ++C) {
@@ -1289,25 +1040,48 @@ const applyExcelStyles = (ws, data, headerRowCount = 1) => {
 
   // Apply body styles and detect totals
   for (let R = range.s.r + headerRowCount; R <= range.e.r; ++R) {
-    const isTotalRow = data[R - headerRowCount] && (data[R - headerRowCount].Category === "TOTAL" || data[R - headerRowCount].Category === "GRAND TOTAL" || data[R - headerRowCount]["Order ID"] === "Summary");
+    const isTotalRow =
+      data[R - headerRowCount] &&
+      (data[R - headerRowCount].Category === "TOTAL" ||
+        data[R - headerRowCount].Category === "GRAND TOTAL" ||
+        data[R - headerRowCount]["Order ID"] === "Summary");
+
     for (let C = range.s.c; C <= range.e.c; ++C) {
       const cell = XLSX.utils.encode_cell({ r: R, c: C });
       if (!ws[cell]) continue;
+
       if (isTotalRow) {
         ws[cell].s = { ...ws[cell].s, ...totalStyle };
       } else if (typeof ws[cell].v === "number") {
-        if (ws[cell].v % 1 !== 0 || /Amount|Sales|Rate|Total|CGST|SGST|Service Tax|Price/i.test(Object.keys(data[0])[C])) {
+        if (
+          ws[cell].v % 1 !== 0 ||
+          /Amount|Sales|Rate|Total|CGST|SGST|Service Tax|Price/i.test(
+            Object.keys(data[0])[C]
+          )
+        ) {
           ws[cell].s = { ...ws[cell].s, ...currencyStyle };
         } else {
           ws[cell].s = { ...ws[cell].s, ...numberStyle };
         }
-      } else if (/date/i.test(Object.keys(data[0])[C].toLowerCase())) {
+      } else if (
+        Object.keys(data[0])[C] &&
+        /date/i.test(Object.keys(data[0])[C].toLowerCase())
+      ) {
         ws[cell].s = { ...ws[cell].s, ...dateStyle };
       } else {
         ws[cell].s = { ...ws[cell].s, ...textStyle };
       }
+
       // Borders for all cells
-      ws[cell].s = { ...ws[cell].s, border: { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } } };
+      ws[cell].s = {
+        ...ws[cell].s,
+        border: {
+          top: { style: "thin" },
+          bottom: { style: "thin" },
+          left: { style: "thin" },
+          right: { style: "thin" },
+        },
+      };
     }
   }
 
@@ -1317,519 +1091,22 @@ const applyExcelStyles = (ws, data, headerRowCount = 1) => {
     let max = 10;
     for (let R = range.s.r; R <= range.e.r; ++R) {
       const cell = XLSX.utils.encode_cell({ r: R, c: C });
-      if (ws[cell] && ws[cell].v) max = Math.max(max, (ws[cell].v.toString().length + 2));
+      if (ws[cell] && ws[cell].v)
+        max = Math.max(max, ws[cell].v.toString().length + 2);
     }
     colWidths.push({ wch: max });
   }
-  ws['!cols'] = colWidths;
-
-  // Enable filters
-  ws['!autofilter'] = { ref: XLSX.utils.encode_range(range) };
-};
-
-const exportItemExcel = (start, end, institutionData, allOrders) => {
-  const { items } = buildItemReport(start, end, allOrders);
-  // Prepare data for Excel
-  const exportData = items.map((item) => ({
-    "Item Name": item.name,
-    Type: item.type,
-    "Quantity Sold": item.quantity,
-  }));
-  // Add a header row for clarity
-  const worksheetData = [
-    { "Item Name": `${institutionData.companyName || "Company Name"} Item Report`, Type: "", "Quantity Sold": "" },
-    ...exportData,
-  ];
-  const ws = XLSX.utils.json_to_sheet(worksheetData);
-  applyExcelStyles(ws, worksheetData);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Item Report");
-  XLSX.writeFile(
-    wb,
-    `${institutionData.companyName}_item_report_${start.toISOString().slice(0, 10)}${
-      start.toLocaleDateString() !== end.toLocaleDateString() ? `_to_${end.toISOString().slice(0, 10)}` : ""
-    }.xlsx`
-  );
-};
-
-const exportOrderExcel = (start, end, institutionData, allOrders) => {
-  const {
-    orders,
-    totalBilledAmount,
-    totalCgst,
-    totalSgst,
-    totalServiceTax,
-    totalBarAmount,
-    totalCafeAmount,
-    paymentBreakdown,
-    itemQuantities,
-  } = buildOrderReport(start, end, allOrders);
-
-  const ws = XLSX.utils.aoa_to_sheet([]); // Start with empty sheet for full control
-  let row = 0;
-
-  // === TITLE ROW ===
-  const title = `${institutionData.companyName} Order Report`;
-  XLSX.utils.sheet_add_aoa(ws, [[title]], { origin: { r: row, c: 0 } });
-  ws[`A${row + 1}`].s = {
-    font: { bold: true, sz: 14 },
-    alignment: { horizontal: "center" },
-    fill: { fgColor: { rgb: "E3F2FD" } },
-  };
-  ws["!merges"] = [{ s: { r: row, c: 0 }, e: { r: row, c: 15 } }];
-  row += 2;
-
-  // === DATE RANGE ===
-  const dateRange = `Date Range: ${start.toLocaleDateString("en-IN")} to ${end.toLocaleDateString("en-IN")}`;
-  XLSX.utils.sheet_add_aoa(ws, [[dateRange]], { origin: { r: row, c: 0 } });
-  ws[`A${row + 1}`].s = {
-    font: { italic: true, sz: 10 },
-    alignment: { horizontal: "left" },
-  };
-  row += 2;
-
-  // === SUMMARY SECTION ===
-  XLSX.utils.sheet_add_aoa(ws, [["SUMMARY"]], { origin: { r: row, c: 0 } });
-  ws[`A${row + 1}`].s = {
-    font: { bold: true, sz: 12, color: { rgb: "1976D2" } },
-    fill: { fgColor: { rgb: "BBDEFB" } },
-    alignment: { horizontal: "left" },
-    border: {
-      top: { style: "thin" },
-      bottom: { style: "thin" },
-      left: { style: "thin" },
-      right: { style: "thin" },
-    },
-  };
-  ws["!merges"].push({ s: { r: row, c: 0 }, e: { r: row, c: 15 } });
-  row++;
-
-  const summaryData = [
-    ["Metric", "Value"],
-    ["Total Orders", orders.length],
-    ["Total Amount", totalBilledAmount],
-    ["Bar Sales", totalBarAmount],
-    ["Cafe Sales", totalCafeAmount],
-    ["CGST", totalCgst],
-    ["SGST", totalSgst],
-    ["Service Tax", totalServiceTax],
-  ];
-
-  XLSX.utils.sheet_add_aoa(ws, summaryData, { origin: { r: row, c: 0 } });
-
-  // Style summary header
-  for (let c = 0; c <= 1; c++) {
-    ws[XLSX.utils.encode_cell({ r: row, c })].s = {
-      font: { bold: true },
-      fill: { fgColor: { rgb: "2196F3" } },
-      alignment: { horizontal: "center" },
-      font: { color: { rgb: "FFFFFF" } },
-      border: {
-        top: { style: "thin" },
-        bottom: { style: "thin" },
-        left: { style: "thin" },
-        right: { style: "thin" },
-      },
-    };
-  }
-
-  // Style summary body
-  for (let r = row + 1; r <= row + summaryData.length - 1; r++) {
-    for (let c = 0; c <= 1; c++) {
-      const cellRef = XLSX.utils.encode_cell({ r, c });
-      ws[cellRef].s = {
-        alignment: c === 0 ? { horizontal: "left" } : { horizontal: "right" },
-        font: { bold: r === row + 1 },
-        fill: { fgColor: { rgb: r % 2 === 0 ? "F5F5F5" : "FFFFFF" } },
-        border: {
-          top: { style: "thin" },
-          bottom: { style: "thin" },
-          left: { style: "thin" },
-          right: { style: "thin" },
-        },
-      };
-      if (c === 1 && typeof ws[cellRef].v === "number") {
-        ws[cellRef].z = "#,##0.00";
-      }
-    }
-  }
-  row += summaryData.length + 1;
-
-  // === PAYMENT BREAKDOWN ===
-  XLSX.utils.sheet_add_aoa(ws, [["PAYMENT BREAKDOWN"]], { origin: { r: row, c: 0 } });
-  ws[`A${row + 1}`].s = {
-    font: { bold: true, sz: 12, color: { rgb: "1976D2" } },
-    fill: { fgColor: { rgb: "BBDEFB" } },
-    alignment: { horizontal: "left" },
-    border: {
-      top: { style: "thin" },
-      bottom: { style: "thin" },
-      left: { style: "thin" },
-      right: { style: "thin" },
-    },
-  };
-  ws["!merges"].push({ s: { r: row, c: 0 }, e: { r: row, c: 15 } });
-  row++;
-
-  const paymentData = [["Payment Method", "Amount"]];
-  Object.entries(paymentBreakdown).forEach(([method, amount]) => {
-    paymentData.push([method, amount]);
-  });
-
-  XLSX.utils.sheet_add_aoa(ws, paymentData, { origin: { r: row, c: 0 } });
-
-  // Style payment header
-  for (let c = 0; c <= 1; c++) {
-    ws[XLSX.utils.encode_cell({ r: row, c })].s = {
-      font: { bold: true },
-      fill: { fgColor: { rgb: "2196F3" } },
-      alignment: { horizontal: "center" },
-      font: { color: { rgb: "FFFFFF" } },
-      border: {
-        top: { style: "thin" },
-        bottom: { style: "thin" },
-        left: { style: "thin" },
-        right: { style: "thin" },
-      },
-    };
-  }
-
-  // Style payment body
-  for (let r = row + 1; r <= row + paymentData.length - 1; r++) {
-    for (let c = 0; c <= 1; c++) {
-      const cellRef = XLSX.utils.encode_cell({ r, c });
-      ws[cellRef].s = {
-        alignment: c === 0 ? { horizontal: "left" } : { horizontal: "right" },
-        fill: { fgColor: { rgb: r % 2 === 0 ? "F5F5F5" : "FFFFFF" } },
-        border: {
-          top: { style: "thin" },
-          bottom: { style: "thin" },
-          left: { style: "thin" },
-          right: { style: "thin" },
-        },
-      };
-      if (c === 1 && typeof ws[cellRef].v === "number") {
-        ws[cellRef].z = "#,##0.00";
-      }
-    }
-  }
-  row += paymentData.length + 1;
-
-  // === ORDERS SECTION ===
-  XLSX.utils.sheet_add_aoa(ws, [["ORDERS"]], { origin: { r: row, c: 0 } });
-  ws[`A${row + 1}`].s = {
-    font: { bold: true, sz: 12, color: { rgb: "1976D2" } },
-    fill: { fgColor: { rgb: "BBDEFB" } },
-    alignment: { horizontal: "left" },
-    border: {
-      top: { style: "thin" },
-      bottom: { style: "thin" },
-      left: { style: "thin" },
-      right: { style: "thin" },
-    },
-  };
-  ws["!merges"].push({ s: { r: row, c: 0 }, e: { r: row, c: 15 } });
-  row++;
-
-  // Define columns based on institution
-  const isBhuk = institutionData?.institution === "bhuk2323";
-  const baseHeaders = [
-    "Order ID",
-    "Customer",
-    "Table",
-    ...(isBhuk ? ["Phone"] : []),
-    "Date",
-    "Time",
-    "Payment Method",
-    "Total",
-    "CGST",
-    "SGST",
-    "Service Tax",
-    "Items", // Combined item details in one cell
-  ];
-
-  // Write headers
-  XLSX.utils.sheet_add_aoa(ws, [baseHeaders], { origin: { r: row, c: 0 } });
-
-  // Style headers
-  for (let c = 0; c < baseHeaders.length; c++) {
-    const cellRef = XLSX.utils.encode_cell({ r: row, c });
-    ws[cellRef].s = {
-      font: { bold: true, color: { rgb: "FFFFFF" } },
-      fill: { fgColor: { rgb: "1976D2" } },
-      alignment: { horizontal: "center", wrapText: true },
-      border: {
-        top: { style: "thin" },
-        bottom: { style: "thin" },
-        left: { style: "thin" },
-        right: { style: "thin" },
-      },
-    };
-  }
-  row++;
-
-  // Write order data with combined items in a single cell
-  let outlineLevel = 1;
-  orders.forEach((order) => {
-    const paymentMethod = order.paymentMethods
-      ? Array.isArray(order.paymentMethods)
-        ? order.paymentMethods.map((pm) => `${pm.method} (${pm.amount})`).join("; ")
-        : Object.entries(order.paymentMethods)
-            .map(([method, amount]) => `${method} (${amount})`)
-            .join("; ")
-      : order.paymentMethod || "N/A";
-
-    // Format items into a single string with line breaks
-    const itemsString = order.items && Array.isArray(order.items)
-      ? order.items.map(item =>
-          `${item.name || "N/A"} (Qty: ${item.quantity || 0}, ${(item.price * item.quantity).toFixed(2)})`
-        ).join("\n")
-      : "N/A";
-
-    // Main order row with combined items
-    const orderRowData = [
-      order.orderId,
-      order.name || "N/A",
-      order.tableName || "N/A",
-      ...(isBhuk ? [order.phoneNumber || "N/A"] : []),
-      new Date(order.createdAt).toLocaleDateString(),
-      new Date(order.createdAt).toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      }),
-      paymentMethod,
-      order.totalAmount,
-      order.cgst ? (order.totalAmount * (order.cgst / 100)).toFixed(2) : "N/A",
-      order.sgst ? (order.totalAmount * (order.sgst / 100)).toFixed(2) : "N/A",
-      order.serviceTax || "N/A",
-      itemsString, // Combined items in one cell
-    ];
-
-    XLSX.utils.sheet_add_aoa(ws, [orderRowData], { origin: { r: row, c: 0 } });
-
-    // Style order row
-    for (let c = 0; c < baseHeaders.length; c++) {
-      const cellRef = XLSX.utils.encode_cell({ r: row, c });
-      ws[cellRef].s = {
-        font: { bold: true },
-        fill: { fgColor: { rgb: "E3F2FD" } },
-        alignment: (() => {
-          if (c === baseHeaders.length - 1) { // Items column
-            return { horizontal: "left", vertical: "top", wrapText: true };
-          }
-          if (c === 0 || c === 1 || c === 2 || (isBhuk && c === 3) || c === 6) return { horizontal: "left" };
-          if ([7, 8, 9, 10].includes(c)) return { horizontal: "right" };
-          return { horizontal: "center" };
-        })(),
-        border: {
-          top: { style: "thin" },
-          bottom: { style: "thin" },
-          left: { style: "thin" },
-          right: { style: "thin" },
-        },
-      };
-      if ([7, 8, 9, 10].includes(c) && typeof ws[cellRef].v === "number") {
-        ws[cellRef].z = "#,##0.00";
-      }
-    }
-
-    // Set row height for items cell
-    const lines = itemsString.split('\n').length;
-    ws[`A${row + 1}`].h = { hpt: Math.min(15 * lines, 100) }; // Max 100 points height
-
-    // Set outline level for grouping
-    if (!ws["!rows"]) ws["!rows"] = [];
-    ws["!rows"][row] = { level: outlineLevel, hpt: Math.min(15 * lines, 100) };
-
-    row++;
-  });
-
-  // === COLUMN WIDTHS ===
-  const colWidths = baseHeaders.map((header, index) => {
-    switch (header) {
-      case "Order ID":
-        return { wch: 12 };
-      case "Customer":
-        return { wch: 18 };
-      case "Table":
-        return { wch: 10 };
-      case "Phone":
-        return { wch: 12 };
-      case "Date":
-      case "Time":
-        return { wch: 10 };
-      case "Payment Method":
-        return { wch: 20 };
-      case "Total":
-      case "CGST":
-      case "SGST":
-      case "Service Tax":
-        return { wch: 12 };
-      case "Items":
-        return { wch: 50 }; // Wider column for items
-      default:
-        return { wch: 12 };
-    }
-  });
   ws["!cols"] = colWidths;
 
-  // Enable filters on header row (orders section)
-  ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: row - orders.length - 1, c: 0 }, e: { r: row - 1, c: baseHeaders.length - 1 } }) };
-
-  // Freeze top row of orders
-  ws["!freeze"] = { ySplit: row - orders.length - 1, xSplit: 0 };
-
-  // Create workbook and save
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Order Report");
-
-  XLSX.writeFile(
-    wb,
-    `${institutionData.companyName}_orders_${start.toISOString().slice(0, 10)}${
-      start.toLocaleDateString() !== end.toLocaleDateString() ? `_to_${end.toISOString().slice(0, 10)}` : ""
-    }.xlsx`
-  );
-};
-
-// New Excel export for Cafe
-const exportCafeExcel = (isoDate, stocks, institutionData) => {
-  const { items } = buildCafeDailyReport(isoDate, stocks);
-  const exportData = items.map((it) => ({
-    "Item Name": it.stockName,
-    "Opening kg/l": it.opening.kgL,
-    "Opening g/ml": it.opening.gMl,
-    "Opening piece": it.opening.piece,
-    "Received kg/l": it.received.kgL,
-    "Received g/ml": it.received.gMl,
-    "Received piece": it.received.piece,
-    "Consumption kg/l": it.consumption.kgL,
-    "Consumption g/ml": it.consumption.gMl,
-    "Consumption piece": it.consumption.piece,
-    "Closing kg/l": it.closing.kgL,
-    "Closing g/ml": it.closing.gMl,
-    "Closing piece": it.closing.piece,
-    Unit: it.unit,
-  }));
-  const ws = XLSX.utils.json_to_sheet(exportData);
-  applyExcelStyles(ws, exportData);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Cafe Report");
-  XLSX.writeFile(wb, `${institutionData.companyName}_cafe_report_${isoDate}.xlsx`);
-};
-
-// New Excel export for Bar
-const exportBarExcel = (isoDate, stocks, allOrders, institutionData) => {
-  const { categories, grandTotalAmount } = buildDailyReportByCategory(isoDate, "bar", stocks, allOrders);
-  let exportData = [];
-  categories.forEach((cat) => {
-    exportData.push({
-      Category: cat.category,
-      Item: "",
-      "Opening BTL": "",
-      "Opening ML": "",
-      "Received BTL": "",
-      "Received ML": "",
-      "Total BTL": "",
-      "Total ML": "",
-      "Transfer BTL": "",
-      "Transfer ML": "",
-      "Sales 60ML": "",
-      "Sales 30ML": "",
-      "Sales BTL": "",
-      "Rate 60ML": "",
-      "Rate 30ML": "",
-      "Rate BTL": "",
-      "Closing BTL": "",
-      "Closing ML": "",
-      Amount: "",
-    });
-    cat.items.forEach((it) => {
-      const bottleSalesKeys = Object.keys(it.sales || {}).filter((k) => !["30 ml", "60 ml"].includes(k.toLowerCase()));
-      const totalBottleSold = bottleSalesKeys.reduce((sum, k) => sum + safeNum(it.sales[k]), 0);
-      const rate60ml = safeNum(it.unitRates?.["60 ml"] || 0);
-      const rate30ml = safeNum(it.unitRates?.["30 ml"] || 0);
-      const bottleRateKeys = Object.keys(it.unitRates || {}).filter((k) => !["30 ml", "60 ml"].includes(k.toLowerCase()));
-      const rateBottle = bottleRateKeys.length > 0 ? safeNum(it.unitRates[bottleRateKeys[0]]) : 0;
-      exportData.push({
-        Category: "",
-        Item: it.stockName,
-        "Opening BTL": it.openingBTL.bottles,
-        "Opening ML": it.openingBTL.remainder,
-        "Received BTL": it.receivedBTL.bottles,
-        "Received ML": it.receivedBTL.remainder,
-        "Total BTL": it.totalBTL.bottles,
-        "Total ML": it.totalBTL.remainder,
-        "Transfer BTL": it.transferredBTL.bottles,
-        "Transfer ML": it.transferredBTL.remainder,
-        "Sales 60ML": safeNum(it.sales["60 ml"] || 0),
-        "Sales 30ML": safeNum(it.sales["30 ml"] || 0),
-        "Sales BTL": totalBottleSold,
-        "Rate 60ML": rate60ml > 0 ? rate60ml : 0,
-        "Rate 30ML": rate30ml > 0 ? rate30ml : 0,
-        "Rate BTL": rateBottle > 0 ? rateBottle : 0,
-        "Closing BTL": it.closingBTL.bottles,
-        "Closing ML": it.closingBTL.remainder,
-        Amount: safeNum(it.amount),
-      });
-    });
-    exportData.push({
-      Category: "TOTAL",
-      Item: "",
-      "Opening BTL": cat.totals.openingBTL.bottles,
-      "Opening ML": cat.totals.openingBTL.remainder,
-      "Received BTL": cat.totals.receivedBTL.bottles,
-      "Received ML": cat.totals.receivedBTL.remainder,
-      "Total BTL": cat.totals.totalBTL.bottles,
-      "Total ML": cat.totals.totalBTL.remainder,
-      "Transfer BTL": cat.totals.transferredBTL.bottles,
-      "Transfer ML": cat.totals.transferredBTL.remainder,
-      "Sales 60ML": safeNum(cat.totals.sales["60 ml"] || 0),
-      "Sales 30ML": safeNum(cat.totals.sales["30 ml"] || 0),
-      "Sales BTL": Object.entries(cat.totals.sales || {}).reduce(
-        (sum, [k, v]) => (["30 ml", "60 ml"].includes(k.toLowerCase()) ? sum : sum + safeNum(v)),
-        0
-      ),
-      "Rate 60ML": "",
-      "Rate 30ML": "",
-      "Rate BTL": "",
-      "Closing BTL": cat.totals.closingBTL.bottles,
-      "Closing ML": cat.totals.closingBTL.remainder,
-      Amount: safeNum(cat.totals.amount),
-    });
-  });
-  exportData.push({
-    Category: "GRAND TOTAL",
-    Item: "",
-    "Opening BTL": "",
-    "Opening ML": "",
-    "Received BTL": "",
-    "Received ML": "",
-    "Total BTL": "",
-    "Total ML": "",
-    "Transfer BTL": "",
-    "Transfer ML": "",
-    "Sales 60ML": "",
-    "Sales 30ML": "",
-    "Sales BTL": "",
-    "Rate 60ML": "",
-    "Rate 30ML": "",
-    "Rate BTL": "",
-    "Closing BTL": "",
-    "Closing ML": "",
-    Amount: grandTotalAmount,
-  });
-  const ws = XLSX.utils.json_to_sheet(exportData);
-  applyExcelStyles(ws, exportData);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Bar Report");
-  XLSX.writeFile(wb, `${institutionData.companyName}_bar_report_${isoDate}.xlsx`);
+  // Enable filters
+  ws["!autofilter"] = { ref: XLSX.utils.encode_range(range) };
 };
 
 const buildItemReferenceData = (menuItems) => {
   if (!menuItems || menuItems.length === 0) {
     return [];
   }
+
   const referenceData = [];
   menuItems
     .filter((item) => item.itemId)
@@ -1841,6 +1118,7 @@ const buildItemReferenceData = (menuItems) => {
     .forEach((item) => {
       const fullId = item.itemId.toString();
       let shorthandNo = "";
+
       if (fullId.startsWith("1000") && fullId.length === 5) {
         shorthandNo = fullId.substring(4);
       } else if (fullId.length === 5 && fullId.startsWith("100")) {
@@ -1848,6 +1126,7 @@ const buildItemReferenceData = (menuItems) => {
       } else {
         shorthandNo = fullId;
       }
+
       referenceData.push({
         "Shorthand Search": shorthandNo,
         "Item Name": item.itemName || "N/A",
@@ -1856,6 +1135,7 @@ const buildItemReferenceData = (menuItems) => {
         Type: item.type || "N/A",
       });
     });
+
   return referenceData;
 };
 
@@ -1863,17 +1143,25 @@ const exportItemReferenceExcel = (menuItems, institutionData) => {
   const referenceData = buildItemReferenceData(menuItems);
   const ws = XLSX.utils.json_to_sheet(referenceData);
   applyExcelStyles(ws, referenceData);
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Item ID Reference");
   XLSX.writeFile(
     wb,
-    `${institutionData?.companyName || "Restaurant"}_Item_ID_Reference_${new Date().toISOString().slice(0, 10)}.xlsx`
+    `${
+      institutionData?.companyName || "Restaurant"
+    }_Item_ID_Reference_${new Date().toISOString().slice(0, 10)}.xlsx`
   );
 };
 
 const Report = () => {
   const { institutionData } = useContext(Context) || {};
-  const institution = institutionData?.institution || institutionData?.id || institutionData?.name || "";
+  const institution =
+    institutionData?.institution ||
+    institutionData?.id ||
+    institutionData?.name ||
+    "";
+
   const [stocks, setStocks] = useState([]);
   const [allOrders, setAllOrders] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
@@ -1884,13 +1172,39 @@ const Report = () => {
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [reportData, setReportData] = useState(null);
+  const [paymentFilter, setPaymentFilter] = useState("All");
+  const [orderSourceFilter, setOrderSourceFilter] = useState("All"); // Added orderSource filter
+  const [paymentOptions, setPaymentOptions] = useState([]);
+  const [orderSourceOptions, setOrderSourceOptions] = useState([]); // Added orderSource options
 
+  const getRecordCount = () => {
+    if (!reportData) return 0;
+    switch (reportData.type) {
+      case "cafe":
+        return reportData.data.items?.length || 0;
+      case "item":
+        return reportData.data.items?.length || 0;
+      case "order":
+      case "settlement":
+        return reportData.data.orders?.length || 0;
+      case "itemId":
+        return reportData.data.length || 0;
+      default:
+        return 0;
+    }
+  };
+
+  // REPORT OPTIONS
   const reportOptions = [
     { value: "", label: "Select Report" },
-    { value: "bar", label: "Bar Daily Report" },
-    { value: "cafe", label: "Cafe Daily Report" },
+    { value: "cafe", label: "Stock Report" },
     { value: "item", label: "Item Report" },
+    { value: "beverage_item", label: "Beverage Item Report" },
+    { value: "kitchen_item", label: "Kitchen Item Report" },
     { value: "order", label: "Order Report" },
+    { value: "settlement", label: "Settlement Report" },
+    { value: "pending_orders", label: "Pending Orders Report" },
+    { value: "cancelled_orders", label: "Cancelled Orders Report" },
     { value: "itemId", label: "Item ID Reference" },
   ];
 
@@ -1904,15 +1218,20 @@ const Report = () => {
           setAllOrders([]);
           return;
         }
+
         const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
+
         const [stockResponse, orderResponse, menuResponse] = await Promise.all([
           API.get("main", `/admin/stock-list-items/${institution}`),
           API.get("main", `/admin/list-orders/${institution}?type=${type}`, {}),
           API.get("main", `/any/list-items/${institution}`),
         ]);
+
         setStocks(stockResponse || []);
-        const paidOrders = (orderResponse || []).filter((order) => order.paymentStatus === true);
-        setAllOrders(paidOrders);
+        const paidOrders = (orderResponse || []).filter(
+          (order) => order.paymentStatus === true
+        );
+        setAllOrders(orderResponse || []); // Keep all orders for pending/cancelled
         setMenuItems(menuResponse || []);
       } catch (error) {
         console.error("Error fetching data:", error);
@@ -1920,34 +1239,89 @@ const Report = () => {
         setLoading(false);
       }
     };
+
     fetchData();
   }, [institution]);
 
   useEffect(() => {
+    const methods = new Set();
+    const sources = new Set(); // Added orderSource collection
+    
+    allOrders.forEach((order) => {
+      if (order.paymentMethod) methods.add(order.paymentMethod);
+      if (order.paymentMethods && Array.isArray(order.paymentMethods)) {
+        order.paymentMethods.forEach((pm) => methods.add(pm.method));
+      }
+      
+      // Collect orderSource values
+      if (order.orderSource) sources.add(order.orderSource);
+    });
+
+    setPaymentOptions(["All", ...Array.from(methods).sort()]);
+    setOrderSourceOptions(["All", ...Array.from(sources).sort()]); // Set orderSource options
+  }, [allOrders]);
+
+  useEffect(() => {
     if (!selectedReport || loading) return;
 
-    let effectiveEnd = ["bar", "cafe"].includes(selectedReport) ? new Date(startDate) : endDate;
+    let effectiveEnd = ["cafe"].includes(selectedReport) ? new Date(startDate) : endDate;
+
+    const hasPayment = (order, method) => {
+      if (method === "All") return true;
+      if (order.paymentMethod === method) return true;
+      if (order.paymentMethods && Array.isArray(order.paymentMethods)) {
+        return order.paymentMethods.some((pm) => pm.method === method && pm.amount > 0);
+      }
+      return false;
+    };
+
+    const hasOrderSource = (order, source) => {
+      if (source === "All") return true;
+      return order.orderSource === source;
+    };
+
+    let filteredOrders = allOrders;
+    if (["order", "settlement"].includes(selectedReport)) {
+      filteredOrders = allOrders.filter((o) => 
+        hasPayment(o, paymentFilter) && hasOrderSource(o, orderSourceFilter)
+      );
+    } else if (selectedReport === "pending_orders") {
+      filteredOrders = allOrders.filter((o) => 
+        !o.paymentStatus && !o.cancel && hasOrderSource(o, orderSourceFilter)
+      );
+    } else if (selectedReport === "cancelled_orders") {
+      filteredOrders = allOrders.filter((o) => 
+        o.cancel === true && hasOrderSource(o, orderSourceFilter)
+      );
+    }
 
     if (selectedReport === "itemId") {
       const data = buildItemReferenceData(menuItems);
       setReportData({ type: "itemId", data });
     } else {
       const isoStart = startDate.toISOString().slice(0, 10);
-      if (selectedReport === "bar") {
-        const data = buildDailyReportByCategory(isoStart, "bar", stocks, allOrders);
-        setReportData({ type: "bar", data });
-      } else if (selectedReport === "cafe") {
+      if (selectedReport === "cafe") {
         const data = buildCafeDailyReport(isoStart, stocks);
         setReportData({ type: "cafe", data });
       } else if (selectedReport === "item") {
-        const data = buildItemReport(startDate, effectiveEnd, allOrders);
+        const data = buildItemReport(startDate, effectiveEnd, filteredOrders);
         setReportData({ type: "item", data });
-      } else if (selectedReport === "order") {
-        const data = buildOrderReport(startDate, effectiveEnd, allOrders);
-        setReportData({ type: "order", data });
+      } else if (selectedReport === "beverage_item") {
+        const data = buildItemReport(startDate, effectiveEnd, filteredOrders, "Bar");
+        setReportData({ type: "item", subtype: "beverage", data });
+      } else if (selectedReport === "kitchen_item") {
+        const data = buildItemReport(startDate, effectiveEnd, filteredOrders, "Cafe");
+        setReportData({ type: "item", subtype: "kitchen", data });
+      } else if (["order", "settlement", "pending_orders", "cancelled_orders"].includes(selectedReport)) {
+        const data = buildOrderReport(startDate, effectiveEnd, filteredOrders);
+        setReportData({
+          type: selectedReport === "settlement" ? "settlement" : "order",
+          subtype: selectedReport === "pending_orders" ? "pending" : selectedReport === "cancelled_orders" ? "cancelled" : null,
+          data,
+        });
       }
     }
-  }, [selectedReport, startDate, endDate, stocks, allOrders, menuItems, loading]);
+  }, [selectedReport, startDate, endDate, paymentFilter, orderSourceFilter, stocks, allOrders, menuItems, loading]);
 
   const getDateLimits = () => {
     const today = new Date();
@@ -1970,194 +1344,69 @@ const Report = () => {
   if (loading) return <Loader />;
 
   const renderPreview = () => {
-    if (!reportData) return <p className="text-gray-500">Select a report to preview.</p>;
+    if (!reportData) return <p className="text-gray-500 text-sm">Select a report to preview.</p>;
 
+    // make preview text a little smaller: using text-sm
     switch (reportData.type) {
-      case "cafe":
+      case "cafe": {
         const { items: cafeItems } = reportData.data;
         return (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto text-sm">
             <table className="min-w-full bg-white border border-gray-300">
               <thead className="bg-gray-100">
                 <tr>
-                  <th rowSpan="2" className="px-4 py-2 border text-left">Item</th>
-                  <th colSpan="3" className="px-4 py-2 border text-center">Opening</th>
-                  <th colSpan="3" className="px-4 py-2 border text-center">Received</th>
-                  <th colSpan="3" className="px-4 py-2 border text-center">Consumption</th>
-                  <th colSpan="3" className="px-4 py-2 border text-center">Closing</th>
-                </tr>
-                <tr>
-                  <th className="px-4 py-2 border text-right">kg/l</th>
-                  <th className="px-4 py-2 border text-right">g/ml</th>
-                  <th className="px-4 py-2 border text-right">piece</th>
-                  <th className="px-4 py-2 border text-right">kg/l</th>
-                  <th className="px-4 py-2 border text-right">g/ml</th>
-                  <th className="px-4 py-2 border text-right">piece</th>
-                  <th className="px-4 py-2 border text-right">kg/l</th>
-                  <th className="px-4 py-2 border text-right">g/ml</th>
-                  <th className="px-4 py-2 border text-right">piece</th>
-                  <th className="px-4 py-2 border text-right">kg/l</th>
-                  <th className="px-4 py-2 border text-right">g/ml</th>
-                  <th className="px-4 py-2 border text-right">piece</th>
+                  <th className="px-3 py-2 border text-left text-xs">Item</th>
+                  <th className="px-3 py-2 border text-center text-xs">Opening</th>
+                  <th className="px-3 py-2 border text-center text-xs">Received</th>
+                  <th className="px-3 py-2 border text-center text-xs">Consumption</th>
+                  <th className="px-3 py-2 border text-center text-xs">Closing</th>
+                  <th className="px-3 py-2 border text-center text-xs">Unit</th>
                 </tr>
               </thead>
               <tbody>
                 {cafeItems.map((it, index) => (
                   <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
-                    <td className="px-4 py-2 border text-left">{it.stockName.substring(0, 20)}</td>
-                    <td className="px-4 py-2 border text-right">{formatNumber(it.opening.kgL)}</td>
-                    <td className="px-4 py-2 border text-right">{it.opening.gMl.toFixed(0)}</td>
-                    <td className="px-4 py-2 border text-right">{it.opening.piece}</td>
-                    <td className="px-4 py-2 border text-right">{formatNumber(it.received.kgL)}</td>
-                    <td className="px-4 py-2 border text-right">{it.received.gMl.toFixed(0)}</td>
-                    <td className="px-4 py-2 border text-right">{it.received.piece}</td>
-                    <td className="px-4 py-2 border text-right">{formatNumber(it.consumption.kgL)}</td>
-                    <td className="px-4 py-2 border text-right">{it.consumption.gMl.toFixed(0)}</td>
-                    <td className="px-4 py-2 border text-right">{it.consumption.piece}</td>
-                    <td className="px-4 py-2 border text-right">{formatNumber(it.closing.kgL)}</td>
-                    <td className="px-4 py-2 border text-right">{it.closing.gMl.toFixed(0)}</td>
-                    <td className="px-4 py-2 border text-right">{it.closing.piece}</td>
+                    <td className="px-3 py-2 border text-left">{it.stockName.substring(0, 30)}</td>
+                    <td className="px-3 py-2 border text-center">{it.openingDisplay}</td>
+                    <td className="px-3 py-2 border text-center">{it.receivedDisplay}</td>
+                    <td className="px-3 py-2 border text-center">{it.consumptionDisplay}</td>
+                    <td className="px-3 py-2 border text-center">{it.closingDisplay}</td>
+                    <td className="px-3 py-2 border text-center">{it.unit}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         );
-      case "bar":
-        const { categories: barCategories, grandTotalAmount } = reportData.data;
-        return (
-          <div className="overflow-x-auto">
-            <table className="min-w-full bg-white border border-gray-300">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th rowSpan="2" className="px-4 py-2 border text-left">ITEM</th>
-                  <th colSpan="2" className="px-4 py-2 border text-center">OPENING</th>
-                  <th colSpan="2" className="px-4 py-2 border text-center">RECEIVED</th>
-                  <th colSpan="2" className="px-4 py-2 border text-center">TOTAL</th>
-                  <th colSpan="2" className="px-4 py-2 border text-center">TRANSFER</th>
-                  <th colSpan="3" className="px-4 py-2 border text-center">SALES</th>
-                  <th colSpan="3" className="px-4 py-2 border text-center">RATE</th>
-                  <th colSpan="2" className="px-4 py-2 border text-center">CLOSING</th>
-                  <th rowSpan="2" className="px-4 py-2 border text-right">AMOUNT</th>
-                </tr>
-                <tr>
-                  <th className="px-4 py-2 border text-center">BTL</th>
-                  <th className="px-4 py-2 border text-center">ML</th>
-                  <th className="px-4 py-2 border text-center">BTL</th>
-                  <th className="px-4 py-2 border text-center">ML</th>
-                  <th className="px-4 py-2 border text-center">BTL</th>
-                  <th className="px-4 py-2 border text-center">ML</th>
-                  <th className="px-4 py-2 border text-center">BTL</th>
-                  <th className="px-4 py-2 border text-center">ML</th>
-                  <th className="px-4 py-2 border text-center">60ML</th>
-                  <th className="px-4 py-2 border text-center">30ML</th>
-                  <th className="px-4 py-2 border text-center">BTL</th>
-                  <th className="px-4 py-2 border text-center">60ML</th>
-                  <th className="px-4 py-2 border text-center">30ML</th>
-                  <th className="px-4 py-2 border text-center">BTL</th>
-                  <th className="px-4 py-2 border text-center">BTL</th>
-                  <th className="px-4 py-2 border text-center">ML</th>
-                </tr>
-              </thead>
-              <tbody>
-                {barCategories.map((cat, catIndex) => (
-                  <React.Fragment key={catIndex}>
-                    <tr>
-                      <td colSpan="18" className="px-4 py-2 border text-center font-bold bg-gray-200">
-                        {cat.category}
-                      </td>
-                    </tr>
-                    {cat.items.map((it, index) => {
-                      const bottleSalesKeys = Object.keys(it.sales || {}).filter(
-                        (k) => !["30 ml", "60 ml"].includes(k.toLowerCase())
-                      );
-                      const totalBottleSold = bottleSalesKeys.reduce((sum, k) => sum + safeNum(it.sales[k]), 0);
-                      const rate60ml = safeNum(it.unitRates?.["60 ml"] || 0);
-                      const rate30ml = safeNum(it.unitRates?.["30 ml"] || 0);
-                      const bottleRateKeys = Object.keys(it.unitRates || {}).filter(
-                        (k) => !["30 ml", "60 ml"].includes(k.toLowerCase())
-                      );
-                      const rateBottle = bottleRateKeys.length > 0 ? safeNum(it.unitRates[bottleRateKeys[0]]) : 0;
-                      return (
-                        <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
-                          <td className="px-4 py-2 border text-left">{it.stockName.substring(0, 12)}</td>
-                          <td className="px-4 py-2 border text-center">{it.openingBTL.bottles}</td>
-                          <td className="px-4 py-2 border text-center">{it.openingBTL.remainder}</td>
-                          <td className="px-4 py-2 border text-center">{it.receivedBTL.bottles}</td>
-                          <td className="px-4 py-2 border text-center">{it.receivedBTL.remainder}</td>
-                          <td className="px-4 py-2 border text-center">{it.totalBTL.bottles}</td>
-                          <td className="px-4 py-2 border text-center">{it.totalBTL.remainder}</td>
-                          <td className="px-4 py-2 border text-center">{it.transferredBTL.bottles}</td>
-                          <td className="px-4 py-2 border text-center">{it.transferredBTL.remainder}</td>
-                          <td className="px-4 py-2 border text-center">{safeNum(it.sales["60 ml"] || 0)}</td>
-                          <td className="px-4 py-2 border text-center">{safeNum(it.sales["30 ml"] || 0)}</td>
-                          <td className="px-4 py-2 border text-center">{totalBottleSold}</td>
-                          <td className="px-4 py-2 border text-center">{rate60ml > 0 ? rate60ml.toFixed(0) : "0"}</td>
-                          <td className="px-4 py-2 border text-center">{rate30ml > 0 ? rate30ml.toFixed(0) : "0"}</td>
-                          <td className="px-4 py-2 border text-center">{rateBottle > 0 ? rateBottle.toFixed(0) : "0"}</td>
-                          <td className="px-4 py-2 border text-center">{it.closingBTL.bottles}</td>
-                          <td className="px-4 py-2 border text-center">{it.closingBTL.remainder}</td>
-                          <td className="px-4 py-2 border text-right">{safeNum(it.amount).toFixed(0)}</td>
-                        </tr>
-                      );
-                    })}
-                    <tr className="font-bold bg-gray-100">
-                      <td className="px-4 py-2 border text-left">TOTAL:</td>
-                      <td className="px-4 py-2 border text-center">{cat.totals.openingBTL.bottles}</td>
-                      <td className="px-4 py-2 border text-center">{cat.totals.openingBTL.remainder}</td>
-                      <td className="px-4 py-2 border text-center">{cat.totals.receivedBTL.bottles}</td>
-                      <td className="px-4 py-2 border text-center">{cat.totals.receivedBTL.remainder}</td>
-                      <td className="px-4 py-2 border text-center">{cat.totals.totalBTL.bottles}</td>
-                      <td className="px-4 py-2 border text-center">{cat.totals.totalBTL.remainder}</td>
-                      <td className="px-4 py-2 border text-center">{cat.totals.transferredBTL.bottles}</td>
-                      <td className="px-4 py-2 border text-center">{cat.totals.transferredBTL.remainder}</td>
-                      <td className="px-4 py-2 border text-center">{safeNum(cat.totals.sales["60 ml"] || 0)}</td>
-                      <td className="px-4 py-2 border text-center">{safeNum(cat.totals.sales["30 ml"] || 0)}</td>
-                      <td className="px-4 py-2 border text-center">
-                        {Object.entries(cat.totals.sales || {}).reduce(
-                          (sum, [k, v]) => (["30 ml", "60 ml"].includes(k.toLowerCase()) ? sum : sum + safeNum(v)),
-                          0
-                        )}
-                      </td>
-                      <td className="px-4 py-2 border text-center"></td>
-                      <td className="px-4 py-2 border text-center"></td>
-                      <td className="px-4 py-2 border text-center"></td>
-                      <td className="px-4 py-2 border text-center">{cat.totals.closingBTL.bottles}</td>
-                      <td className="px-4 py-2 border text-center">{cat.totals.closingBTL.remainder}</td>
-                      <td className="px-4 py-2 border text-right">{safeNum(cat.totals.amount).toFixed(0)}</td>
-                    </tr>
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
-            <div className="mt-4 text-right font-bold">Grand Total: {grandTotalAmount.toFixed(2)}</div>
-          </div>
-        );
-      case "item":
+      }
+
+      case "item": {
         const { items: itemItems } = reportData.data;
         return (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto text-sm">
             <table className="min-w-full bg-white border border-gray-300">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="px-4 py-2 border text-left">Item Name</th>
-                  <th className="px-4 py-2 border text-center">Type</th>
-                  <th className="px-4 py-2 border text-right">Quantity Sold</th>
+                  <th className="px-3 py-2 border text-left text-xs">Item Name</th>
+                  <th className="px-3 py-2 border text-center text-xs">Type</th>
+                  <th className="px-3 py-2 border text-right text-xs">Quantity Sold</th>
                 </tr>
               </thead>
               <tbody>
                 {itemItems.map((item, index) => (
                   <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
-                    <td className="px-4 py-2 border text-left">{item.name}</td>
-                    <td className="px-4 py-2 border text-center">{item.type}</td>
-                    <td className="px-4 py-2 border text-right">{item.quantity}</td>
+                    <td className="px-3 py-2 border text-left">{item.name}</td>
+                    <td className="px-3 py-2 border text-center">{item.type}</td>
+                    <td className="px-3 py-2 border text-right">{item.quantity}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         );
-      case "order":
+      }
+
+      case "order": {
         const {
           orders,
           totalBilledAmount,
@@ -2168,129 +1417,128 @@ const Report = () => {
           totalCafeAmount,
           paymentBreakdown,
         } = reportData.data;
+        const isCancelled = reportData.subtype === "cancelled";
+
         return (
-          <div className="overflow-x-auto">
-            {/* Summary Table */}
-            <h2 className="text-xl font-bold mb-4">Order Summary</h2>
-            <table className="min-w-full bg-white border border-gray-300 mb-6">
+          <div className="overflow-x-auto text-sm">
+            {/* Summary */}
+            <h2 className="text-base font-bold mb-2">Order Summary</h2>
+            <table className="min-w-full bg-white border border-gray-300 mb-4 text-sm">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="px-4 py-2 border text-left">Metric</th>
-                  <th className="px-4 py-2 border text-right">Value</th>
+                  <th className="px-3 py-2 border text-left text-xs">Metric</th>
+                  <th className="px-3 py-2 border text-right text-xs">Value</th>
                 </tr>
               </thead>
               <tbody>
                 <tr className="bg-gray-50">
-                  <td className="px-4 py-2 border text-left">Total Orders</td>
-                  <td className="px-4 py-2 border text-right">{orders.length}</td>
+                  <td className="px-3 py-2 border text-left">Total Orders</td>
+                  <td className="px-3 py-2 border text-right">{orders.length}</td>
                 </tr>
                 <tr>
-                  <td className="px-4 py-2 border text-left">Total Amount</td>
-                  <td className="px-4 py-2 border text-right">{totalBilledAmount.toFixed(2)}</td>
+                  <td className="px-3 py-2 border text-left">Total Amount</td>
+                  <td className="px-3 py-2 border text-right">{totalBilledAmount.toFixed(2)}</td>
                 </tr>
                 <tr className="bg-gray-50">
-                  <td className="px-4 py-2 border text-left">Bar Sales</td>
-                  <td className="px-4 py-2 border text-right">{totalBarAmount.toFixed(2)}</td>
+                  <td className="px-3 py-2 border text-left">Bar Sales</td>
+                  <td className="px-3 py-2 border text-right">{totalBarAmount.toFixed(2)}</td>
                 </tr>
                 <tr>
-                  <td className="px-4 py-2 border text-left">Cafe Sales</td>
-                  <td className="px-4 py-2 border text-right">{totalCafeAmount.toFixed(2)}</td>
+                  <td className="px-3 py-2 border text-left">Cafe Sales</td>
+                  <td className="px-3 py-2 border text-right">{totalCafeAmount.toFixed(2)}</td>
                 </tr>
                 <tr className="bg-gray-50">
-                  <td className="px-4 py-2 border text-left">CGST</td>
-                  <td className="px-4 py-2 border text-right">{totalCgst.toFixed(2)}</td>
+                  <td className="px-3 py-2 border text-left">CGST</td>
+                  <td className="px-3 py-2 border text-right">{totalCgst.toFixed(2)}</td>
                 </tr>
                 <tr>
-                  <td className="px-4 py-2 border text-left">SGST</td>
-                  <td className="px-4 py-2 border text-right">{totalSgst.toFixed(2)}</td>
+                  <td className="px-3 py-2 border text-left">SGST</td>
+                  <td className="px-3 py-2 border text-right">{totalSgst.toFixed(2)}</td>
                 </tr>
                 <tr className="bg-gray-50">
-                  <td className="px-4 py-2 border text-left">Service Tax</td>
-                  <td className="px-4 py-2 border text-right">{totalServiceTax.toFixed(2)}</td>
+                  <td className="px-3 py-2 border text-left">Service Tax</td>
+                  <td className="px-3 py-2 border text-right">{totalServiceTax.toFixed(2)}</td>
                 </tr>
               </tbody>
             </table>
 
-            {/* Payment Breakdown Table */}
-            <h3 className="text-lg font-semibold mb-2">Payment Breakdown</h3>
-            <table className="min-w-full bg-white border border-gray-300 mb-6">
+            {/* Payment Breakdown */}
+            <h3 className="text-sm font-semibold mb-2">Payment Breakdown</h3>
+            <table className="min-w-full bg-white border border-gray-300 mb-4">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="px-4 py-2 border text-left">Payment Method</th>
-                  <th className="px-4 py-2 border text-right">Amount</th>
+                  <th className="px-3 py-2 border text-left text-xs">Payment Method</th>
+                  <th className="px-3 py-2 border text-right text-xs">Amount</th>
                 </tr>
               </thead>
               <tbody>
                 {Object.entries(paymentBreakdown).map(([method, amount], index) => (
                   <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
-                    <td className="px-4 py-2 border text-left">{method}</td>
-                    <td className="px-4 py-2 border text-right">{amount.toFixed(2)}</td>
+                    <td className="px-3 py-2 border text-left">{method}</td>
+                    <td className="px-3 py-2 border text-right">{amount.toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
 
-            {/* Orders Table */}
-            <h2 className="text-xl font-bold mb-4">Orders</h2>
-            <table className="min-w-full bg-white border border-gray-300">
+            {/* Orders */}
+            <h2 className="text-base font-bold mb-2">Orders</h2>
+            <table className="min-w-full bg-white border border-gray-300 text-sm">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="px-4 py-2 border text-left">Order ID</th>
-                  <th className="px-4 py-2 border text-left">Customer</th>
-                  <th className="px-4 py-2 border text-left">Table</th>
+                  <th className="px-3 py-2 border text-left text-xs">Order ID</th>
+                  <th className="px-3 py-2 border text-left text-xs">Customer</th>
+                  <th className="px-3 py-2 border text-left text-xs">Table</th>
                   {institutionData?.institution === "bhuk2323" && (
-                    <th className="px-4 py-2 border text-left">Phone</th>
+                    <th className="px-3 py-2 border text-left text-xs">Phone</th>
                   )}
-                  <th className="px-4 py-2 border text-center">Date</th>
-                  <th className="px-4 py-2 border text-center">Time</th>
-                  <th className="px-4 py-2 border text-left">Payment Method</th>
-                  <th className="px-4 py-2 border text-right">Total</th>
-                  <th className="px-4 py-2 border text-right">CGST</th>
-                  <th className="px-4 py-2 border text-right">SGST</th>
-                  <th className="px-4 py-2 border text-right">Service Tax</th>
-                  <th className="px-4 py-2 border text-left">Items</th>
+                  <th className="px-3 py-2 border text-center text-xs">Date</th>
+                  <th className="px-3 py-2 border text-center text-xs">Time</th>
+                  <th className="px-3 py-2 border text-left text-xs">Payment Method</th>
+                  <th className="px-3 py-2 border text-right text-xs">Total</th>
+                  <th className="px-3 py-2 border text-right text-xs">CGST</th>
+                  <th className="px-3 py-2 border text-right text-xs">SGST</th>
+                  <th className="px-3 py-2 border text-right text-xs">Service Tax</th>
+                  <th className="px-3 py-2 border text-left text-xs">Items</th>
+                  {isCancelled && <th className="px-3 py-2 border text-left text-xs">Cancel Reason</th>}
                 </tr>
               </thead>
               <tbody>
                 {orders.map((order, index) => {
-                  const paymentMethod = order.paymentMethods
-                    ? Array.isArray(order.paymentMethods)
-                      ? order.paymentMethods.map((pm) => `${pm.method} (${pm.amount})`).join(", ")
-                      : Object.entries(order.paymentMethods)
-                          .map(([method, amount]) => `${method} (${amount})`)
-                          .join(", ")
-                    : order.paymentMethod || "N/A";
+                  const paymentMethod = getPaymentDisplay(order);
                   const itemsSummary = order.items
                     ? order.items
                         .map((item) => `${item.name || "N/A"} (Qty: ${item.quantity || 0})`)
                         .join(", ")
                     : "N/A";
+
                   return (
                     <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
-                      <td className="px-4 py-2 border text-left">{order.orderId}</td>
-                      <td className="px-4 py-2 border text-left">{order.name || "N/A"}</td>
-                      <td className="px-4 py-2 border text-left">{order.tableName || "N/A"}</td>
+                      <td className="px-3 py-2 border text-left">{order.orderId}</td>
+                      <td className="px-3 py-2 border text-left">{order.name || "N/A"}</td>
+                      <td className="px-3 py-2 border text-left">{order.tableName || "N/A"}</td>
                       {institutionData?.institution === "bhuk2323" && (
-                        <td className="px-4 py-2 border text-left">{order.phoneNumber || "N/A"}</td>
+                        <td className="px-3 py-2 border text-left">{order.phoneNumber || "N/A"}</td>
                       )}
-                      <td className="px-4 py-2 border text-center">{new Date(order.createdAt).toLocaleDateString()}</td>
-                      <td className="px-4 py-2 border text-center">
+                      <td className="px-3 py-2 border text-center">{new Date(order.createdAt).toLocaleDateString()}</td>
+                      <td className="px-3 py-2 border text-center">
                         {new Date(order.createdAt).toLocaleTimeString("en-US", {
                           hour: "numeric",
                           minute: "2-digit",
                           hour12: true,
                         })}
                       </td>
-                      <td className="px-4 py-2 border text-left">{paymentMethod}</td>
-                      <td className="px-4 py-2 border text-right">{order.totalAmount}</td>
-                      <td className="px-4 py-2 border text-right">
+                      <td className="px-3 py-2 border text-left">{paymentMethod}</td>
+                      <td className="px-3 py-2 border text-right">{safeNum(order.totalAmount).toFixed(2)}</td>
+                      <td className="px-3 py-2 border text-right">
                         {order.cgst ? `${(order.totalAmount * (order.cgst / 100)).toFixed(2)}` : "N/A"}
                       </td>
-                      <td className="px-4 py-2 border text-right">
+                      <td className="px-3 py-2 border text-right">
                         {order.sgst ? `${(order.totalAmount * (order.sgst / 100)).toFixed(2)}` : "N/A"}
                       </td>
-                      <td className="px-4 py-2 border text-right">{order.serviceTax || "N/A"}</td>
-                      <td className="px-4 py-2 border text-left">{itemsSummary}</td>
+                      <td className="px-3 py-2 border text-right">{order.serviceTax || "N/A"}</td>
+                      <td className="px-3 py-2 border text-left">{itemsSummary}</td>
+                      {isCancelled && <td className="px-3 py-2 border text-left">{order.cancelReason || "N/A"}</td>}
                     </tr>
                   );
                 })}
@@ -2298,34 +1546,173 @@ const Report = () => {
             </table>
           </div>
         );
-      case "itemId":
+      }
+
+      case "settlement": {
+        const {
+          orders,
+          totalBilledAmount,
+          totalCgst,
+          totalSgst,
+          totalServiceTax,
+          totalBarAmount,
+          totalCafeAmount,
+          paymentBreakdown,
+        } = reportData.data;
+
+        return (
+          <div className="overflow-x-auto text-sm">
+            {/* Summary */}
+            <h2 className="text-base font-bold mb-2">Settlement Summary</h2>
+            <table className="min-w-full bg-white border border-gray-300 mb-4 text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="px-3 py-2 border text-left text-xs">Metric</th>
+                  <th className="px-3 py-2 border text-right text-xs">Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="bg-gray-50">
+                  <td className="px-3 py-2 border text-left">Total Amount</td>
+                  <td className="px-3 py-2 border text-right">{totalBilledAmount.toFixed(2)}</td>
+                </tr>
+                <tr>
+                  <td className="px-3 py-2 border text-left">Bar Sales</td>
+                  <td className="px-3 py-2 border text-right">{totalBarAmount.toFixed(2)}</td>
+                </tr>
+                <tr className="bg-gray-50">
+                  <td className="px-3 py-2 border text-left">Cafe Sales</td>
+                  <td className="px-3 py-2 border text-right">{totalCafeAmount.toFixed(2)}</td>
+                </tr>
+                <tr>
+                  <td className="px-3 py-2 border text-left">CGST</td>
+                  <td className="px-3 py-2 border text-right">{totalCgst.toFixed(2)}</td>
+                </tr>
+                <tr className="bg-gray-50">
+                  <td className="px-3 py-2 border text-left">SGST</td>
+                  <td className="px-3 py-2 border text-right">{totalSgst.toFixed(2)}</td>
+                </tr>
+                <tr>
+                  <td className="px-3 py-2 border text-left">Service Tax</td>
+                  <td className="px-3 py-2 border text-right">{totalServiceTax.toFixed(2)}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Payment Breakdown */}
+            <h3 className="text-sm font-semibold mb-2">Payment Breakdown</h3>
+            <table className="min-w-full bg-white border border-gray-300 mb-4">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="px-3 py-2 border text-left text-xs">Payment Method</th>
+                  <th className="px-3 py-2 border text-right text-xs">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(paymentBreakdown).map(([method, amount], index) => (
+                  <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
+                    <td className="px-3 py-2 border text-left">{method}</td>
+                    <td className="px-3 py-2 border text-right">{amount.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Orders */}
+            <h2 className="text-base font-bold mb-2">Orders</h2>
+            <table className="min-w-full bg-white border border-gray-300 text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="px-3 py-2 border text-left text-xs">Order ID</th>
+                  <th className="px-3 py-2 border text-left text-xs">Customer</th>
+                  <th className="px-3 py-2 border text-left text-xs">Table</th>
+                  {institutionData?.institution === "bhuk2323" && (
+                    <th className="px-3 py-2 border text-left text-xs">Phone</th>
+                  )}
+                  <th className="px-3 py-2 border text-center text-xs">Date</th>
+                  <th className="px-3 py-2 border text-center text-xs">Time</th>
+                  <th className="px-3 py-2 border text-left text-xs">Payment Method</th>
+                  <th className="px-3 py-2 border text-right text-xs">Total</th>
+                  <th className="px-3 py-2 border text-right text-xs">CGST</th>
+                  <th className="px-3 py-2 border text-right text-xs">SGST</th>
+                  <th className="px-3 py-2 border text-right text-xs">Service Tax</th>
+                  <th className="px-3 py-2 border text-left text-xs">Items</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((order, index) => {
+                  const paymentMethod = getPaymentDisplay(order);
+                  const itemsSummary = order.items
+                    ? order.items
+                        .map((item) => `${item.name || "N/A"} (Qty: ${item.quantity || 0})`)
+                        .join(", ")
+                    : "N/A";
+
+                  return (
+                    <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
+                      <td className="px-3 py-2 border text-left">{order.orderId}</td>
+                      <td className="px-3 py-2 border text-left">{order.name || "N/A"}</td>
+                      <td className="px-3 py-2 border text-left">{order.tableName || "N/A"}</td>
+                      {institutionData?.institution === "bhuk2323" && (
+                        <td className="px-3 py-2 border text-left">{order.phoneNumber || "N/A"}</td>
+                      )}
+                      <td className="px-3 py-2 border text-center">{new Date(order.createdAt).toLocaleDateString()}</td>
+                      <td className="px-3 py-2 border text-center">
+                        {new Date(order.createdAt).toLocaleTimeString("en-US", {
+                          hour: "numeric",
+                          minute: "2-digit",
+                          hour12: true,
+                        })}
+                      </td>
+                      <td className="px-3 py-2 border text-left">{paymentMethod}</td>
+                      <td className="px-3 py-2 border text-right">{safeNum(order.totalAmount).toFixed(2)}</td>
+                      <td className="px-3 py-2 border text-right">
+                        {order.cgst ? `${(order.totalAmount * (order.cgst / 100)).toFixed(2)}` : "N/A"}
+                      </td>
+                      <td className="px-3 py-2 border text-right">
+                        {order.sgst ? `${(order.totalAmount * (order.sgst / 100)).toFixed(2)}` : "N/A"}
+                      </td>
+                      <td className="px-3 py-2 border text-right">{order.serviceTax || "N/A"}</td>
+                      <td className="px-3 py-2 border text-left">{itemsSummary}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+
+      case "itemId": {
         const itemIdData = reportData.data;
         return (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto text-sm">
             <table className="min-w-full bg-white border border-gray-300">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="px-4 py-2 border text-left">Shorthand Search</th>
-                  <th className="px-4 py-2 border text-left">Item Name</th>
-                  <th className="px-4 py-2 border text-left">Category</th>
-                  <th className="px-4 py-2 border text-right">Price</th>
-                  <th className="px-4 py-2 border text-left">Type</th>
+                  <th className="px-3 py-2 border text-left text-xs">Shorthand Search</th>
+                  <th className="px-3 py-2 border text-left text-xs">Item Name</th>
+                  <th className="px-3 py-2 border text-left text-xs">Category</th>
+                  <th className="px-3 py-2 border text-right text-xs">Price</th>
+                  <th className="px-3 py-2 border text-left text-xs">Type</th>
                 </tr>
               </thead>
               <tbody>
                 {itemIdData.map((item, index) => (
                   <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
-                    <td className="px-4 py-2 border text-left">{item["Shorthand Search"]}</td>
-                    <td className="px-4 py-2 border text-left">{item["Item Name"]}</td>
-                    <td className="px-4 py-2 border text-left">{item.Category}</td>
-                    <td className="px-4 py-2 border text-right">{item.Price}</td>
-                    <td className="px-4 py-2 border text-left">{item.Type}</td>
+                    <td className="px-3 py-2 border text-left">{item["Shorthand Search"]}</td>
+                    <td className="px-3 py-2 border text-left">{item["Item Name"]}</td>
+                    <td className="px-3 py-2 border text-left">{item.Category}</td>
+                    <td className="px-3 py-2 border text-right">{item.Price}</td>
+                    <td className="px-3 py-2 border text-left">{item.Type}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         );
+      }
+
       default:
         return null;
     }
@@ -2335,189 +1722,311 @@ const Report = () => {
     if (!selectedReport) return null;
 
     const isoDate = startDate.toISOString().slice(0, 10);
+    const buttons = [];
+
     switch (selectedReport) {
-      case "bar":
-        return (
-          <>
-            <Button
-              onClick={() => exportDailyReport(isoDate, stocks, allOrders, institutionData)}
-              className="bg-indigo-600 hover:bg-indigo-700"
-            >
-              PDF Bar Report
-            </Button>
-            <Button
-              onClick={() => exportBarExcel(isoDate, stocks, allOrders, institutionData)}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              Excel Bar Report
-            </Button>
-          </>
-        );
       case "cafe":
-        return (
-          <>
-            <Button
-              onClick={() => exportCafeDailyReport(isoDate, stocks, institutionData)}
-              className="bg-teal-600 hover:bg-teal-700"
-            >
-              PDF Cafe Report
-            </Button>
-            <Button
-              onClick={() => exportCafeExcel(isoDate, stocks, institutionData)}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              Excel Cafe Report
-            </Button>
-          </>
-        );
-      case "item":
-        return (
-          <>
-            <Button
-              onClick={() => exportItemPDF(startDate, endDate, institutionData, allOrders)}
-              className="bg-purple-600 hover:bg-purple-700"
-            >
-              PDF Item Report
-            </Button>
-            <Button
-              onClick={() => exportItemExcel(startDate, endDate, institutionData, allOrders)}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              Excel Item Report
-            </Button>
-          </>
-        );
-      case "order":
-        return (
-          <>
-            <Button
-              onClick={() => exportOrderPDF(startDate, endDate, institutionData, allOrders)}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              PDF Order Report
-            </Button>
-            <Button
-              onClick={() => exportOrderExcel(startDate, endDate, institutionData, allOrders)}
-              className="bg-emerald-600 hover:bg-emerald-700"
-            >
-              Excel Order Report
-            </Button>
-          </>
-        );
-      case "itemId":
-        return (
-          <Button
-            onClick={() => exportItemReferenceExcel(menuItems, institutionData)}
-            className="bg-indigo-600 hover:bg-indigo-700"
+        buttons.push(
+          <button
+            key="cafe-excel"
+            onClick={() => exportCafeExcel(reportData.data, institutionData, isoDate)}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700"
           >
-            Excel Item ID Reference
-          </Button>
+            <FileSpreadsheet className="w-3 h-3" />
+            Excel
+          </button>,
+          <button
+            key="cafe-pdf"
+            onClick={() => exportCafeDailyReport(reportData.data, institutionData, isoDate)}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            <FileText className="w-3 h-3" />
+            PDF
+          </button>
         );
+        break;
+
+      case "item":
+      case "beverage_item":
+      case "kitchen_item":
+        buttons.push(
+          <button
+            key="item-excel"
+            onClick={() => exportItemExcel(reportData.data, institutionData, startDate, endDate)}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+          >
+            <FileSpreadsheet className="w-3 h-3" />
+            Excel
+          </button>,
+          <button
+            key="item-pdf"
+            onClick={() => exportItemPDF(reportData.data, institutionData, startDate, endDate)}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            <FileText className="w-3 h-3" />
+            PDF
+          </button>
+        );
+        break;
+
+      case "order":
+      case "pending_orders":
+      case "cancelled_orders":
+        buttons.push(
+          <button
+            key="order-excel"
+            onClick={() => exportOrderExcel(reportData.data, institutionData, startDate, endDate)}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+          >
+            <FileSpreadsheet className="w-3 h-3" />
+            Excel
+          </button>,
+          <button
+            key="order-pdf"
+            onClick={() => exportOrderPDF(reportData.data, institutionData, startDate, endDate, reportData.subtype)}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            <FileText className="w-3 h-3" />
+            PDF
+          </button>
+        );
+        break;
+
+      case "settlement":
+        buttons.push(
+          <button
+            key="settlement-excel"
+            onClick={() => exportSettlementExcel(reportData.data, institutionData, startDate, endDate)}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+          >
+            <FileSpreadsheet className="w-3 h-3" />
+            Excel
+          </button>,
+          <button
+            key="settlement-pdf"
+            onClick={() => exportSettlementPDF(reportData.data, institutionData, startDate, endDate)}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            <FileText className="w-3 h-3" />
+            PDF
+          </button>
+        );
+        break;
+
+      case "itemId":
+        buttons.push(
+          <button
+            key="itemid-excel"
+            onClick={() => exportItemReferenceExcel(menuItems, institutionData)}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+          >
+            <FileSpreadsheet className="w-3 h-3" />
+            Excel
+          </button>
+        );
+        break;
+
       default:
         return null;
     }
+
+    return buttons;
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-8 p-6 sm:p-8 lg:p-10 bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
-      {/* Filters Sidebar */}
-      <div className="lg:w-1/4 bg-white p-6 rounded-xl shadow-md">
-        <h2 className="text-xl font-semibold text-indigo-700 mb-6">Filters</h2>
+    <div className="min-h-screen bg-gray-50 p-4">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-gray-900 mb-2">Report Generator</h1>
+          <p className="text-gray-600">Generate and export reports from different data sources</p>
+        </div>
 
-        <label className="block text-gray-600 font-medium text-sm mb-2">Choose Report:</label>
-        <select
-          value={selectedReport}
-          onChange={(e) => setSelectedReport(e.target.value)}
-          className="border border-gray-300 rounded-lg p-2.5 w-full bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors shadow-sm mb-6"
-        >
-          {reportOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-
-        {selectedReport && selectedReport !== "itemId" && (
-          <>
-            {/* Start Date */}
-            <div className="mb-4">
-              <label className="block text-gray-600 font-medium text-sm mb-2">Start Date:</label>
-              <div className="relative">
+        {/* Main Content */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          {/* Filters Header */}
+          <div className="border-b border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-gray-500" />
+                <h2 className="text-sm font-medium text-gray-900">Report Configuration</h2>
+                <button className="text-xs text-gray-500 hover:text-gray-700 ml-2">Hide</button>
+              </div>
+              <div className="flex gap-2">
                 <button
-                  onClick={() => setShowStartDatePicker(!showStartDatePicker)}
-                  className="border border-gray-300 rounded-lg p-2.5 bg-white w-full text-left focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors shadow-sm text-gray-800"
+                  onClick={() => window.location.reload()}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50"
                 >
-                  {startDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  <RefreshCw className="w-3 h-3" />
+                  Refresh
                 </button>
-                {showStartDatePicker && (
-                  <div className="absolute z-20 mt-2 bg-white shadow-2xl rounded-lg border border-gray-200">
-                    <DayPicker
-                      mode="single"
-                      selected={startDate}
-                      onSelect={(date) => handleDateSelection(date, setStartDate, setShowStartDatePicker)}
-                      fromDate={getDateLimits().minDate}
-                      toDate={getDateLimits().maxDate}
-                      className="p-4"
-                      classNames={{
-                        day: "text-gray-800 hover:bg-indigo-100 rounded-full",
-                        day_selected: "bg-indigo-600 text-white rounded-full",
-                        caption: "text-lg font-semibold text-gray-900",
-                        nav_button: "text-gray-600 hover:bg-gray-100 rounded-full p-1",
-                      }}
-                    />
-                  </div>
-                )}
+                <button className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800">Clear Filters</button>
               </div>
             </div>
 
-            {/* End Date */}
-            {["item", "order"].includes(selectedReport) && (
+            {/* Filter Controls */}
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+              {/* Report Type */}
               <div>
-                <label className="block text-gray-600 font-medium text-sm mb-2">End Date:</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Select Report Type</label>
                 <div className="relative">
-                  <button
-                    onClick={() => setShowEndDatePicker(!showEndDatePicker)}
-                    className="border border-gray-300 rounded-lg p-2.5 bg-white w-full text-left focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors shadow-sm text-gray-800"
+                  <select
+                    value={selectedReport}
+                    onChange={(e) => setSelectedReport(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
                   >
-                    {endDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                  </button>
-                  {showEndDatePicker && (
-                    <div className="absolute z-20 mt-2 bg-white shadow-2xl rounded-lg border border-gray-200">
+                    {reportOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-2.5 w-4 h-4 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* Start Date */}
+              {selectedReport && selectedReport !== "itemId" && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Start Date</label>
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowStartDatePicker(!showStartDatePicker)}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-left bg-white"
+                    >
+                      {startDate.toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </button>
+                    <Calendar className="absolute right-2 top-2.5 w-4 h-4 text-gray-400 pointer-events-none" />
+                  </div>
+                  {showStartDatePicker && (
+                    <div className="absolute z-20 mt-2 bg-white shadow-lg rounded-lg border border-gray-200">
                       <DayPicker
                         mode="single"
-                        selected={endDate}
-                        onSelect={(date) => handleDateSelection(date, setEndDate, setShowEndDatePicker)}
-                        fromDate={Math.max(startDate, getDateLimits().minDate)}
+                        selected={startDate}
+                        onSelect={(date) => handleDateSelection(date, setStartDate, setShowStartDatePicker)}
+                        fromDate={getDateLimits().minDate}
                         toDate={getDateLimits().maxDate}
-                        className="p-4"
-                        classNames={{
-                          day: "text-gray-800 hover:bg-indigo-100 rounded-full",
-                          day_selected: "bg-indigo-600 text-white rounded-full",
-                          caption: "text-lg font-semibold text-gray-900",
-                          nav_button: "text-gray-600 hover:bg-gray-100 rounded-full p-1",
-                        }}
+                        className="p-3"
                       />
                     </div>
                   )}
                 </div>
+              )}
+
+              {/* End Date */}
+              {selectedReport &&
+                ["item", "beverage_item", "kitchen_item", "order", "settlement", "pending_orders", "cancelled_orders"].includes(
+                  selectedReport
+                ) && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">End Date</label>
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowEndDatePicker(!showEndDatePicker)}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-left bg-white"
+                      >
+                        {endDate.toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </button>
+                      <Calendar className="absolute right-2 top-2.5 w-4 h-4 text-gray-400 pointer-events-none" />
+                    </div>
+                    {showEndDatePicker && (
+                      <div className="absolute z-20 mt-2 bg-white shadow-lg rounded-lg border border-gray-200">
+                        <DayPicker
+                          mode="single"
+                          selected={endDate}
+                          onSelect={(date) => handleDateSelection(date, setEndDate, setShowEndDatePicker)}
+                          fromDate={getDateLimits().minDate}
+                          toDate={getDateLimits().maxDate}
+                          className="p-3"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+              {/* Payment Filter */}
+              {["order", "settlement"].includes(selectedReport) && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Payment Method</label>
+                  <div className="relative">
+                    <select
+                      value={paymentFilter}
+                      onChange={(e) => setPaymentFilter(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
+                    >
+                      {paymentOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-2.5 w-4 h-4 text-gray-400 pointer-events-none" />
+                  </div>
+                </div>
+              )}
+
+              {/* Order Source Filter */}
+              {["order", "settlement", "pending_orders", "cancelled_orders"].includes(selectedReport) && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Order Source</label>
+                  <div className="relative">
+                    <select
+                      value={orderSourceFilter}
+                      onChange={(e) => setOrderSourceFilter(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
+                    >
+                      {orderSourceOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-2.5 w-4 h-4 text-gray-400 pointer-events-none" />
+                  </div>
+                </div>
+              )}
+
+              {/* Search Filter */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Search Filter</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search in data..."
+                    className="w-full px-3 py-2 pl-8 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-gray-400" />
+                </div>
               </div>
-            )}
-          </>
-        )}
-      </div>
 
-      {/* Preview Section */}
-      <div className="lg:w-3/4 flex flex-col">
-        <h1 className="text-3xl sm:text-4xl font-extrabold mb-6 text-indigo-700 tracking-tight">
-          {institutionData?.companyName || "Company"} Reports
-        </h1>
+              {/* Export Actions */}
+              <div className="flex items-end gap-2">{renderExportButtons()}</div>
+            </div>
+          </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-md overflow-y-auto max-h-[70vh]">
-          {renderPreview()}
-        </div>
-
-        <div className="flex flex-wrap justify-start gap-4 mt-6">
-          {renderExportButtons()}
+          {/* Report Preview */}
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-gray-500" />
+                <h3 className="text-sm font-medium text-gray-900">
+                  {selectedReport
+                    ? `${reportOptions.find((r) => r.value === selectedReport)?.label} Report`
+                    : "Select a Report Type"}
+                </h3>
+              </div>
+              {reportData && <span className="text-xs text-gray-500">Showing {getRecordCount()} records</span>}
+            </div>
+            <div className="border border-gray-200 rounded overflow-hidden">{renderPreview()}</div>
+          </div>
         </div>
       </div>
     </div>

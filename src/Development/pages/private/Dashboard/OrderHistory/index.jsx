@@ -18,11 +18,13 @@ import { toast } from "react-toastify";
 const OrderHistory = () => {
   const { institution } = useContext(Context).institutionData;
   const { institutionData } = useContext(Context);
+  const { userData } = useContext(Context);
+
   const [selectedOrderItems, setSelectedOrderItems] = useState([]);
+  const [selectedOrder, setSelectedOrder] = useState(null); // full order for modal/print
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [orders, setOrders] = useState([]);
   const [allOrders, setAllOrders] = useState([]);
-  const { userData } = useContext(Context);
   const [loader, setLoader] = useState(true);
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);
   const [staffList, setStaffList] = useState([]);
@@ -90,6 +92,12 @@ const OrderHistory = () => {
         return order.totalAmount || 0;
       }
     }
+  };
+
+  // Helper to normalize order source (supports orderSource or source)
+  const getOrderSource = (order) => {
+    if (!order) return "N/A";
+    return order.orderSource || order.source || "N/A";
   };
 
   const getDateLimits = () => {
@@ -239,7 +247,10 @@ const OrderHistory = () => {
   };
 
   const applyFilters = useCallback(() => {
-    if (allOrders.length === 0) return;
+    if (allOrders.length === 0) {
+      setOrders([]);
+      return;
+    }
 
     let filteredOrders = [...allOrders];
 
@@ -276,6 +287,8 @@ const OrderHistory = () => {
         const orderDate = new Date(order.createdAt);
         return orderDate.getFullYear() === selectedYear;
       });
+    } else if (filterType === "showAll") {
+      // no-op; use full list
     }
 
     if (!showMonthlySummaries) {
@@ -312,206 +325,16 @@ const OrderHistory = () => {
     setShowPrintBill(true);
   };
 
-const exportToExcel = () => {
-  const exportData = [];
+  const exportToExcel = () => {
+    const exportData = [];
 
-  // Add header row
-  exportData.push({
-    "Order ID": `${institutionData.companyName} Order Report`,
-    "Type": "",
-    "Name": "",
-    "Table": "",
-    "Phone Number": "",
-    "Total Orders": "",
-    "Total Amount": "",
-    "Revenue Amount": "",
-    "CGST": "",
-    "SGST": "",
-    "Service Tax": "",
-    "Date": "",
-    "Time": "",
-    "Download Link": "",
-    "Payment Method": "",
-    "Item Name": "",
-    "Quantity": "",
-    "Item Price": "",
-    "Item Total": ""
-  });
-
-  // Add summary row for total orders, total amount, and net revenue
-  exportData.push({
-    "Order ID": "Summary",
-    "Type": "Overall Totals",
-    "Name": "",
-    "Table": "",
-    "Phone Number": "",
-    "Total Orders": totalOrders,
-    "Total Amount": `${getCurrencySymbol('INR')}${totalAmount}`,
-    "Revenue Amount": `${getCurrencySymbol('INR')}${netRevenue}`,
-    "CGST": "",
-    "SGST": "",
-    "Service Tax": "",
-    "Date": "",
-    "Time": "",
-    "Download Link": "",
-    "Payment Method": "",
-    "Item Name": "",
-    "Quantity": "",
-    "Item Price": "",
-    "Item Total": ""
-  });
-
-  orders.forEach((order) => {
-    const isSummary = order.downloadLink !== undefined;
-    const orderRevenue = getRevenueFromOrder(order);
-
-    if (isSummary) {
-      // Monthly summary row
-      const summaryRow = {
-        "Order ID": order.orderId,
-        "Type": "Monthly Summary",
-        "Name": "",
-        "Table": "",
-        "Phone Number": institution === "bhuk2323" ? "N/A" : "",
-        "Total Orders": order.totalOrders || "N/A",
-        "Total Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.totalAmount}`,
-        "Revenue Amount": `${getCurrencySymbol(order.currency || 'INR')}${orderRevenue}`,
-        "CGST": order.cgst ? `${getCurrencySymbol(order.currency || 'INR')}${order.cgst}` : "",
-        "SGST": order.sgst ? `${getCurrencySymbol(order.currency || 'INR')}${order.sgst}` : "",
-        "Service Tax": order.serviceTax ? `${getCurrencySymbol(order.currency || 'INR')}${order.serviceTax}` : "",
-        "Date": formatDate(order.createdAt),
-        "Time": formatTime(order.createdAt),
-        "Download Link": order.downloadLink || "",
-        "Payment Method": getPaymentMethodForExport(order),
-        "Item Name": "",
-        "Quantity": "",
-        "Item Price": "",
-        "Item Total": ""
-      };
-      exportData.push(summaryRow);
-
-      // Add payment methods for summary
-      if (order.paymentMethods && typeof order.paymentMethods === 'object') {
-        const paymentMethods = Array.isArray(order.paymentMethods)
-          ? order.paymentMethods.map(pm => ({ method: pm.method, amount: pm.amount }))
-          : Object.entries(order.paymentMethods).map(([method, amount]) => ({ method, amount }));
-
-        paymentMethods.forEach(({ method, amount }) => {
-          const isComplementary = isComplementaryPayment(method);
-          exportData.push({
-            "Order ID": "",
-            "Type": "",
-            "Name": "",
-            "Table": "",
-            "Phone Number": "",
-            "Total Orders": "",
-            "Total Amount": "",
-            "Revenue Amount": "",
-            "CGST": "",
-            "SGST": "",
-            "Service Tax": "",
-            "Date": "",
-            "Time": "",
-            "Download Link": "",
-            "Payment Method": "",
-            "Item Name": `Payment Method: ${method}${isComplementary ? ' (Complementary)' : ''}`,
-            "Quantity": "",
-            "Item Price": "",
-            "Item Total": `${getCurrencySymbol(order.currency || 'INR')}${amount}`
-          });
-        });
-      }
-    } else {
-      // Regular order row
-      const mainOrderRow = {
-        "Order ID": order.orderId,
-        "Type": "Regular Order",
-        "Name": order.name || "N/A",
-        "Table": order.tableName || "N/A",
-        "Phone Number": institution === "bhuk2323" ? order.phoneNumber || "N/A" : "",
-        "Total Orders": "1",
-        "Total Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.totalAmount}`,
-        "Revenue Amount": `${getCurrencySymbol(order.currency || 'INR')}${orderRevenue}`,
-        "CGST": order.cgst ? `${order.cgst}%` : "",
-        "SGST": order.sgst ? `${order.sgst}%` : "",
-        "Service Tax": order.serviceTax ? `${getCurrencySymbol(order.currency || 'INR')}${order.serviceTax}` : "",
-        "Date": formatDate(order.createdAt),
-        "Time": formatTime(order.createdAt),
-        "Download Link": "",
-        "Payment Method": getPaymentMethodForExport(order),
-        "Item Name": "",
-        "Quantity": "",
-        "Item Price": "",
-        "Item Total": ""
-      };
-      exportData.push(mainOrderRow);
-
-      // Add items for regular order
-      if (order.items && Array.isArray(order.items)) {
-        order.items.forEach((item) => {
-          exportData.push({
-            "Order ID": "",
-            "Type": "",
-            "Name": "",
-            "Table": "",
-            "Phone Number": "",
-            "Total Orders": "",
-            "Total Amount": "",
-            "Revenue Amount": "",
-            "CGST": "",
-            "SGST": "",
-            "Service Tax": "",
-            "Date": "",
-            "Time": "",
-            "Download Link": "",
-            "Payment Method": "",
-            "Item Name": item.name || "N/A",
-            "Quantity": item.quantity || 0,
-            "Item Price": `${getCurrencySymbol(order.currency || 'INR')}${item.price || 0}`,
-            "Item Total": `${getCurrencySymbol(order.currency || 'INR')}${(item.price * item.quantity) || 0}`
-          });
-        });
-      }
-
-      // Add payment methods for regular order
-      if (order.paymentMethods && typeof order.paymentMethods === 'object') {
-        const paymentMethods = Array.isArray(order.paymentMethods)
-          ? order.paymentMethods.map(pm => ({ method: pm.method, amount: pm.amount }))
-          : Object.entries(order.paymentMethods).map(([method, amount]) => ({ method, amount }));
-
-        paymentMethods.forEach(({ method, amount }) => {
-          const isComplementary = isComplementaryPayment(method);
-          exportData.push({
-            "Order ID": "",
-            "Type": "",
-            "Name": "",
-            "Table": "",
-            "Phone Number": "",
-            "Total Orders": "",
-            "Total Amount": "",
-            "Revenue Amount": "",
-            "CGST": "",
-            "SGST": "",
-            "Service Tax": "",
-            "Date": "",
-            "Time": "",
-            "Download Link": "",
-            "Payment Method": "",
-            "Item Name": `Payment Method: ${method}${isComplementary ? ' (Complementary)' : ''}`,
-            "Quantity": "",
-            "Item Price": "",
-            "Item Total": `${getCurrencySymbol(order.currency || 'INR')}${amount}`
-          });
-        });
-      }
-    }
-
-    // Add empty row for separation
+    // Add header row
     exportData.push({
-      "Order ID": "",
+      "Order ID": `${institutionData.companyName} Order Report`,
       "Type": "",
       "Name": "",
       "Table": "",
+      "Order Source": "",
       "Phone Number": "",
       "Total Orders": "",
       "Total Amount": "",
@@ -528,192 +351,394 @@ const exportToExcel = () => {
       "Item Price": "",
       "Item Total": ""
     });
-  });
 
-  const worksheet = XLSX.utils.json_to_sheet(exportData);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, `${institutionData.companyName} Orders`);
+    // Add summary row for total orders, total amount, and net revenue
+    exportData.push({
+      "Order ID": "Summary",
+      "Type": "Overall Totals",
+      "Name": "",
+      "Table": "",
+      "Order Source": "",
+      "Phone Number": "",
+      "Total Orders": totalOrders,
+      "Total Amount": `${getCurrencySymbol('INR')}${totalAmount}`,
+      "Revenue Amount": `${getCurrencySymbol('INR')}${netRevenue}`,
+      "CGST": "",
+      "SGST": "",
+      "Service Tax": "",
+      "Date": "",
+      "Time": "",
+      "Download Link": "",
+      "Payment Method": "",
+      "Item Name": "",
+      "Quantity": "",
+      "Item Price": "",
+      "Item Total": ""
+    });
 
-  const maxWidth = 50;
-  const colWidths = {};
-  Object.keys(exportData[0]).forEach(key => {
-    colWidths[key] = Math.min(
-      Math.max(...exportData.map(row => row[key] ? row[key].toString().length : 0)),
-      maxWidth
-    );
-  });
-  worksheet["!cols"] = Object.keys(colWidths).map(key => ({ wch: colWidths[key] }));
+    orders.forEach((order) => {
+      const isSummary = order.downloadLink !== undefined;
+      const orderRevenue = getRevenueFromOrder(order);
 
-  XLSX.writeFile(workbook, `${institutionData.companyName}_orders_with_items.xlsx`);
-};
+      if (isSummary) {
+        // Monthly summary row
+        const summaryRow = {
+          "Order ID": order.orderId,
+          "Type": "Monthly Summary",
+          "Name": "",
+          "Table": "",
+          "Order Source": getOrderSource(order),
+          "Phone Number": institution === "bhuk2323" ? "N/A" : "",
+          "Total Orders": order.totalOrders || "N/A",
+          "Total Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.totalAmount}`,
+          "Revenue Amount": `${getCurrencySymbol(order.currency || 'INR')}${orderRevenue}`,
+          "CGST": order.cgst ? `${getCurrencySymbol(order.currency || 'INR')}${order.cgst}` : "",
+          "SGST": order.sgst ? `${getCurrencySymbol(order.currency || 'INR')}${order.sgst}` : "",
+          "Service Tax": order.serviceTax ? `${getCurrencySymbol(order.currency || 'INR')}${order.serviceTax}` : "",
+          "Date": formatDate(order.createdAt),
+          "Time": formatTime(order.createdAt),
+          "Download Link": order.downloadLink || "",
+          "Payment Method": getPaymentMethodForExport(order),
+          "Item Name": "",
+          "Quantity": "",
+          "Item Price": "",
+          "Item Total": ""
+        };
+        exportData.push(summaryRow);
 
-const exportToPDF = () => {
-  const doc = new jsPDF();
-  let yPos = 20;
-  const pageWidth = doc.internal.pageSize.width;
+        // Add payment methods for summary
+        if (order.paymentMethods && typeof order.paymentMethods === 'object') {
+          const paymentMethods = Array.isArray(order.paymentMethods)
+            ? order.paymentMethods.map(pm => ({ method: pm.method, amount: pm.amount }))
+            : Object.entries(order.paymentMethods).map(([method, amount]) => ({ method, amount }));
 
-  // Add centered company name heading
-  doc.setFontSize(14);
-  doc.setFont(undefined, 'bold');
-  const title = `${institutionData.companyName} Order Report`;
-  const titleWidth = doc.getTextWidth(title);
-  doc.text(title, (pageWidth - titleWidth) / 2, yPos);
-  yPos += 10;
+          paymentMethods.forEach(({ method, amount }) => {
+            const isComplementary = isComplementaryPayment(method);
+            exportData.push({
+              "Order ID": "",
+              "Type": "",
+              "Name": "",
+              "Table": "",
+              "Order Source": "",
+              "Phone Number": "",
+              "Total Orders": "",
+              "Total Amount": "",
+              "Revenue Amount": "",
+              "CGST": "",
+              "SGST": "",
+              "Service Tax": "",
+              "Date": "",
+              "Time": "",
+              "Download Link": "",
+              "Payment Method": "",
+              "Item Name": `Payment Method: ${method}${isComplementary ? ' (Complementary)' : ''}`,
+              "Quantity": "",
+              "Item Price": "",
+              "Item Total": `${getCurrencySymbol(order.currency || 'INR')}${amount}`
+            });
+          });
+        }
+      } else {
+        // Regular order row
+        const mainOrderRow = {
+          "Order ID": order.orderId,
+          "Type": "Regular Order",
+          "Name": order.name || "N/A",
+          "Table": order.tableName || "N/A",
+          "Order Source": getOrderSource(order),
+          "Phone Number": institution === "bhuk2323" ? order.phoneNumber || "N/A" : "",
+          "Total Orders": "1",
+          "Total Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.totalAmount}`,
+          "Revenue Amount": `${getCurrencySymbol(order.currency || 'INR')}${orderRevenue}`,
+          "CGST": order.cgst ? `${order.cgst}%` : "",
+          "SGST": order.sgst ? `${order.sgst}%` : "",
+          "Service Tax": order.serviceTax ? `${getCurrencySymbol(order.currency || 'INR')}${order.serviceTax}` : "",
+          "Date": formatDate(order.createdAt),
+          "Time": formatTime(order.createdAt),
+          "Download Link": "",
+          "Payment Method": getPaymentMethodForExport(order),
+          "Item Name": "",
+          "Quantity": "",
+          "Item Price": "",
+          "Item Total": ""
+        };
+        exportData.push(mainOrderRow);
 
-  // Add summary section for total orders, total amount, and net revenue
-  doc.setFontSize(12);
-  doc.setFont(undefined, 'bold');
-  doc.text("Overall Totals", 10, yPos);
-  yPos += 10;
-  doc.setFontSize(10);
-  doc.setFont(undefined, 'normal');
-  doc.text(`Total Orders: ${totalOrders}`, 10, yPos);
-  doc.text(`Total Amount: ${totalAmount}`, 80, yPos);
-  doc.text(`Revenue Amount: ${netRevenue}`, 150, yPos);
-  yPos += 10;
-  doc.setDrawColor(200);
-  doc.line(10, yPos, pageWidth - 10, yPos);
-  yPos += 10;
+        // Add items for regular order
+        if (order.items && Array.isArray(order.items)) {
+          order.items.forEach((item) => {
+            exportData.push({
+              "Order ID": "",
+              "Type": "",
+              "Name": "",
+              "Table": "",
+              "Order Source": "",
+              "Phone Number": "",
+              "Total Orders": "",
+              "Total Amount": "",
+              "Revenue Amount": "",
+              "CGST": "",
+              "SGST": "",
+              "Service Tax": "",
+              "Date": "",
+              "Time": "",
+              "Download Link": "",
+              "Payment Method": "",
+              "Item Name": item.name || "N/A",
+              "Quantity": item.quantity || 0,
+              "Item Price": `${getCurrencySymbol(order.currency || 'INR')}${item.price || 0}`,
+              "Item Total": `${getCurrencySymbol(order.currency || 'INR')}${(item.price * item.quantity) || 0}`
+            });
+          });
+        }
 
-  orders.forEach((order, index) => {
-    if (yPos > 250) {
-      doc.addPage();
-      yPos = 20;
-    }
+        // Add payment methods for regular order
+        if (order.paymentMethods && typeof order.paymentMethods === 'object') {
+          const paymentMethods = Array.isArray(order.paymentMethods)
+            ? order.paymentMethods.map(pm => ({ method: pm.method, amount: pm.amount }))
+            : Object.entries(order.paymentMethods).map(([method, amount]) => ({ method, amount }));
 
-    const orderRevenue = getRevenueFromOrder(order);
+          paymentMethods.forEach(({ method, amount }) => {
+            const isComplementary = isComplementaryPayment(method);
+            exportData.push({
+              "Order ID": "",
+              "Type": "",
+              "Name": "",
+              "Table": "",
+              "Order Source": "",
+              "Phone Number": "",
+              "Total Orders": "",
+              "Total Amount": "",
+              "Revenue Amount": "",
+              "CGST": "",
+              "SGST": "",
+              "Service Tax": "",
+              "Date": "",
+              "Time": "",
+              "Download Link": "",
+              "Payment Method": "",
+              "Item Name": `Payment Method: ${method}${isComplementary ? ' (Complementary)' : ''}`,
+              "Quantity": "",
+              "Item Price": "",
+              "Item Total": `${getCurrencySymbol(order.currency || 'INR')}${amount}`
+            });
+          });
+        }
+      }
+
+      // Add empty row for separation
+      exportData.push({
+        "Order ID": "",
+        "Type": "",
+        "Name": "",
+        "Table": "",
+        "Order Source": "",
+        "Phone Number": "",
+        "Total Orders": "",
+        "Total Amount": "",
+        "Revenue Amount": "",
+        "CGST": "",
+        "SGST": "",
+        "Service Tax": "",
+        "Date": "",
+        "Time": "",
+        "Download Link": "",
+        "Payment Method": "",
+        "Item Name": "",
+        "Quantity": "",
+        "Item Price": "",
+        "Item Total": ""
+      });
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, `${institutionData.companyName} Orders`);
+
+    const maxWidth = 50;
+    const colWidths = {};
+    Object.keys(exportData[0]).forEach(key => {
+      colWidths[key] = Math.min(
+        Math.max(...exportData.map(row => row[key] ? row[key].toString().length : 0)),
+        maxWidth
+      );
+    });
+    worksheet["!cols"] = Object.keys(colWidths).map(key => ({ wch: colWidths[key] }));
+
+    XLSX.writeFile(workbook, `${institutionData.companyName}_orders_with_items.xlsx`);
+  };
+
+  const exportToPDF = () => {
+    const doc = new jsPDF();
+    let yPos = 20;
+    const pageWidth = doc.internal.pageSize.width;
+
+    // Add centered company name heading
+    doc.setFontSize(14);
+    doc.setFont(undefined, 'bold');
+    const title = `${institutionData.companyName} Order Report`;
+    const titleWidth = doc.getTextWidth(title);
+    doc.text(title, (pageWidth - titleWidth) / 2, yPos);
+    yPos += 10;
+
+    // Add summary section for total orders, total amount, and net revenue
     doc.setFontSize(12);
     doc.setFont(undefined, 'bold');
+    doc.text("Overall Totals", 10, yPos);
+    yPos += 10;
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    doc.text(`Total Orders: ${totalOrders}`, 10, yPos);
+    doc.text(`Total Amount: ${totalAmount}`, 80, yPos);
+    doc.text(`Revenue Amount: ${netRevenue}`, 150, yPos);
+    yPos += 10;
+    doc.setDrawColor(200);
+    doc.line(10, yPos, pageWidth - 10, yPos);
+    yPos += 10;
 
-    const isSummary = order.downloadLink !== undefined;
-
-    if (isSummary) {
-      // Monthly summary section
-      doc.text(`Monthly Summary - ${order.orderId}`, 10, yPos);
-      yPos += 10;
-
-      doc.setFontSize(10);
-      doc.setFont(undefined, 'normal');
-      doc.text(`Total Orders: ${order.totalOrders || 'N/A'}`, 10, yPos);
-      doc.text(`Total Amount: ${order.totalAmount}`, 80, yPos);
-      doc.text(`Revenue Amount: ${orderRevenue}`, 150, yPos);
-      yPos += 7;
-      doc.text(`Date: ${formatDate(order.createdAt)}`, 10, yPos);
-      yPos += 7;
-      doc.text(`CGST: ${order.cgst ? `${order.cgst}` : 'N/A'}`, 10, yPos);
-      doc.text(`SGST: ${order.sgst ? `${order.sgst}` : 'N/A'}`, 80, yPos);
-      doc.text(`Service Tax: ${order.serviceTax ? `${order.serviceTax}` : 'N/A'}`, 150, yPos);
-      yPos += 7;
-      doc.text(`Download Link: ${order.downloadLink || 'N/A'}`, 10, yPos);
-      yPos += 10;
-
-      if (order.paymentMethods && typeof order.paymentMethods === 'object') {
-        const paymentData = Array.isArray(order.paymentMethods)
-          ? order.paymentMethods.map(pm => {
-              const isComplementary = isComplementaryPayment(pm.method);
-              return [`${pm.method}${isComplementary ? ' (Complementary)' : ''}`, `${pm.amount}`];
-            })
-          : Object.entries(order.paymentMethods).map(([method, amount]) => {
-              const isComplementary = isComplementaryPayment(method);
-              return [`${method}${isComplementary ? ' (Complementary)' : ''}`, `${amount}`];
-            });
-
-        doc.autoTable({
-          startY: yPos,
-          head: [["Payment Method", "Amount"]],
-          body: paymentData,
-          margin: { left: 10 },
-          tableWidth: 190
-        });
-        yPos = doc.lastAutoTable.finalY + 20;
+    orders.forEach((order, index) => {
+      if (yPos > 250) {
+        doc.addPage();
+        yPos = 20;
       }
-    } else {
-      // Regular order section
-      doc.text(`Order Details - ${order.orderId}`, 10, yPos);
-      yPos += 10;
 
-      doc.setFontSize(10);
-      doc.setFont(undefined, 'normal');
-      doc.text(`Customer: ${order.name || 'N/A'}`, 10, yPos);
-      doc.text(`Table: ${order.tableName || 'N/A'}`, 80, yPos);
-      doc.text(`Date: ${formatDate(order.createdAt)}`, 150, yPos);
-      yPos += 7;
-      doc.text(`Time: ${formatTime(order.createdAt)}`, 10, yPos);
-      yPos += 7;
-      if (institution === "bhuk2323") {
-        doc.text(`Phone: ${order.phoneNumber || "N/A"}`, 10, yPos);
+      const orderRevenue = getRevenueFromOrder(order);
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+
+      const isSummary = order.downloadLink !== undefined;
+
+      if (isSummary) {
+        // Monthly summary section
+        doc.text(`Monthly Summary - ${order.orderId}`, 10, yPos);
+        yPos += 10;
+
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'normal');
+        doc.text(`Total Orders: ${order.totalOrders || 'N/A'}`, 10, yPos);
+        doc.text(`Total Amount: ${order.totalAmount}`, 80, yPos);
+        doc.text(`Revenue Amount: ${orderRevenue}`, 150, yPos);
         yPos += 7;
-      }
-      doc.text(`Payment Method: ${formatPaymentMethod(order)}`, 10, yPos);
-      yPos += 7;
-      doc.text(`Total Amount: ${order.totalAmount}`, 10, yPos);
-      doc.text(`Revenue Amount: ${orderRevenue}`, 80, yPos);
-      yPos += 7;
+        doc.text(`Date: ${formatDate(order.createdAt)}`, 10, yPos);
+        yPos += 7;
+        doc.text(`Source: ${getOrderSource(order)}`, 10, yPos);
+        yPos += 7;
+        doc.text(`CGST: ${order.cgst ? `${order.cgst}` : 'N/A'}`, 10, yPos);
+        doc.text(`SGST: ${order.sgst ? `${order.sgst}` : 'N/A'}`, 80, yPos);
+        doc.text(`Service Tax: ${order.serviceTax ? `${order.serviceTax}` : 'N/A'}`, 150, yPos);
+        yPos += 7;
+        doc.text(`Download Link: ${order.downloadLink || 'N/A'}`, 10, yPos);
+        yPos += 10;
 
-      if (order.cgst || order.sgst || order.serviceTax) {
-        if (order.cgst) {
-          doc.text(`CGST: ${order.cgst}% (${(order.totalAmount * (order.cgst / 100)).toFixed(2)})`, 10, yPos);
+        if (order.paymentMethods && typeof order.paymentMethods === 'object') {
+          const paymentData = Array.isArray(order.paymentMethods)
+            ? order.paymentMethods.map(pm => {
+                const isComplementary = isComplementaryPayment(pm.method);
+                return [`${pm.method}${isComplementary ? ' (Complementary)' : ''}`, `${pm.amount}`];
+              })
+            : Object.entries(order.paymentMethods).map(([method, amount]) => {
+                const isComplementary = isComplementaryPayment(method);
+                return [`${method}${isComplementary ? ' (Complementary)' : ''}`, `${amount}`];
+              });
+
+          doc.autoTable({
+            startY: yPos,
+            head: [["Payment Method", "Amount"]],
+            body: paymentData,
+            margin: { left: 10 },
+            tableWidth: 190
+          });
+          yPos = doc.lastAutoTable.finalY + 20;
+        }
+      } else {
+        // Regular order section
+        doc.text(`Order Details - ${order.orderId}`, 10, yPos);
+        yPos += 10;
+
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'normal');
+        doc.text(`Customer: ${order.name || 'N/A'}`, 10, yPos);
+        doc.text(`Table: ${order.tableName || 'N/A'}`, 80, yPos);
+        doc.text(`Date: ${formatDate(order.createdAt)}`, 150, yPos);
+        yPos += 7;
+        doc.text(`Time: ${formatTime(order.createdAt)}`, 10, yPos);
+        yPos += 7;
+        if (institution === "bhuk2323") {
+          doc.text(`Phone: ${order.phoneNumber || "N/A"}`, 10, yPos);
           yPos += 7;
         }
-        if (order.sgst) {
-          doc.text(`SGST: ${order.sgst}% (${(order.totalAmount * (order.sgst / 100)).toFixed(2)})`, 10, yPos);
-          yPos += 7;
+        doc.text(`Source: ${getOrderSource(order)}`, 10, yPos);
+        yPos += 7;
+        doc.text(`Payment Method: ${formatPaymentMethod(order)}`, 10, yPos);
+        yPos += 7;
+        doc.text(`Total Amount: ${order.totalAmount}`, 10, yPos);
+        doc.text(`Revenue Amount: ${orderRevenue}`, 80, yPos);
+        yPos += 7;
+
+        if (order.cgst || order.sgst || order.serviceTax) {
+          if (order.cgst) {
+            doc.text(`CGST: ${order.cgst}% (${(order.totalAmount * (order.cgst / 100)).toFixed(2)})`, 10, yPos);
+            yPos += 7;
+          }
+          if (order.sgst) {
+            doc.text(`SGST: ${order.sgst}% (${(order.totalAmount * (order.sgst / 100)).toFixed(2)})`, 10, yPos);
+            yPos += 7;
+          }
+          if (order.serviceTax) {
+            doc.text(`Service Tax: ${order.serviceTax}`, 10, yPos);
+            yPos += 7;
+          }
         }
-        if (order.serviceTax) {
-          doc.text(`Service Tax: ${order.serviceTax}`, 10, yPos);
-          yPos += 7;
+
+        yPos += 5;
+
+        if (order.items && Array.isArray(order.items) && order.items.length > 0) {
+          doc.autoTable({
+            startY: yPos,
+            head: [["Item Name", "Quantity", "Price", "Total"]],
+            body: order.items.map((item) => [
+              item.name || "N/A",
+              item.quantity || 0,
+              `${item.price || 0}`,
+              `${(item.price * item.quantity) || 0}`
+            ]),
+            margin: { left: 10 },
+            tableWidth: 190
+          });
+          yPos = doc.lastAutoTable.finalY + 10;
+        }
+
+        if (order.paymentMethods && typeof order.paymentMethods === 'object') {
+          const paymentData = Array.isArray(order.paymentMethods)
+            ? order.paymentMethods.map(pm => {
+                const isComplementary = isComplementaryPayment(pm.method);
+                return [`${pm.method}${isComplementary ? ' (Complementary)' : ''}`, `${pm.amount}`];
+              })
+            : Object.entries(order.paymentMethods).map(([method, amount]) => {
+                const isComplementary = isComplementaryPayment(method);
+                return [`${method}${isComplementary ? ' (Complementary)' : ''}`, `${amount}`];
+              });
+
+          doc.autoTable({
+            startY: yPos,
+            head: [["Payment Method", "Amount"]],
+            body: paymentData,
+            margin: { left: 10 },
+            tableWidth: 190
+          });
+          yPos = doc.lastAutoTable.finalY + 20;
         }
       }
 
-      yPos += 5;
-
-      if (order.items && Array.isArray(order.items) && order.items.length > 0) {
-        doc.autoTable({
-          startY: yPos,
-          head: [["Item Name", "Quantity", "Price", "Total"]],
-          body: order.items.map((item) => [
-            item.name || "N/A",
-            item.quantity || 0,
-            `${item.price || 0}`,
-            `${(item.price * item.quantity) || 0}`
-          ]),
-          margin: { left: 10 },
-          tableWidth: 190
-        });
-        yPos = doc.lastAutoTable.finalY + 10;
+      if (index < orders.length - 1) {
+        doc.setDrawColor(200);
+        doc.line(10, yPos - 10, pageWidth - 10, yPos - 10);
+        yPos += 10;
       }
+    });
 
-      if (order.paymentMethods && typeof order.paymentMethods === 'object') {
-        const paymentData = Array.isArray(order.paymentMethods)
-          ? order.paymentMethods.map(pm => {
-              const isComplementary = isComplementaryPayment(pm.method);
-              return [`${pm.method}${isComplementary ? ' (Complementary)' : ''}`, `${pm.amount}`];
-            })
-          : Object.entries(order.paymentMethods).map(([method, amount]) => {
-              const isComplementary = isComplementaryPayment(method);
-              return [`${method}${isComplementary ? ' (Complementary)' : ''}`, `${amount}`];
-            });
-
-        doc.autoTable({
-          startY: yPos,
-          head: [["Payment Method", "Amount"]],
-          body: paymentData,
-          margin: { left: 10 },
-          tableWidth: 190
-        });
-        yPos = doc.lastAutoTable.finalY + 20;
-      }
-    }
-
-    if (index < orders.length - 1) {
-      doc.setDrawColor(200);
-      doc.line(10, yPos - 10, pageWidth - 10, yPos - 10);
-      yPos += 10;
-    }
-  });
-
-  doc.save(`${institutionData.companyName}_orders_with_items.pdf`);
-};
+    doc.save(`${institutionData.companyName}_orders_with_items.pdf`);
+  };
 
   const exportItemsReport = () => {
     const itemQuantities = {};
@@ -807,6 +832,7 @@ const exportToPDF = () => {
     "Name",
     institution === "bhuk2323" ? "Phone Number" : null,
     "Table",
+    "Order Source",
     "Payment Method",
     "Amount",
     "Revenue",
@@ -816,12 +842,14 @@ const exportToPDF = () => {
 
   const openOrderDetails = (order) => {
     setSelectedOrderItems(order.items || []);
+    setSelectedOrder(order || null);
     setShowOrderModal(true);
   };
 
   const closeOrderModal = () => {
     setShowOrderModal(false);
     setSelectedOrderItems([]);
+    setSelectedOrder(null);
   };
 
   const Loader = () => (
@@ -1051,6 +1079,7 @@ const exportToPDF = () => {
                   "Monthly Summary",
                   institution === "bhuk2323" ? "N/A" : null,
                   "N/A",
+                  getOrderSource(obj),
                   formatPaymentMethod(obj),
                   `₹${obj.totalAmount}`,
                   `₹${orderRevenue}`,
@@ -1073,6 +1102,7 @@ const exportToPDF = () => {
                 obj.name,
                 institution === "bhuk2323" ? obj.phoneNumber || "N/A" : null,
                 obj.tableName,
+                getOrderSource(obj),
                 formatPaymentMethod(obj),
                 `₹${obj.totalAmount}`,
                 `₹${orderRevenue}`,
@@ -1133,6 +1163,9 @@ const exportToPDF = () => {
                     </div>
                     <div className="text-xs text-gray-600 mb-2">
                       <span className="font-semibold">Payment:</span> {formatPaymentMethod(order)}
+                    </div>
+                    <div className="text-xs text-gray-600 mb-2">
+                      <span className="font-semibold">Source:</span> {getOrderSource(order)}
                     </div>
                     <div className="text-xs text-gray-600">
                       <span className="font-semibold">Date:</span>{" "}
@@ -1196,6 +1229,9 @@ const exportToPDF = () => {
                     <span className="font-semibold">Payment:</span>{" "}
                     {formatPaymentMethod(order)}
                   </div>
+                  <div className="text-xs text-gray-600 mb-2">
+                    <span className="font-semibold">Source:</span> {getOrderSource(order)}
+                  </div>
                   {userData.userType === "admin" && order.chefId && (
                     <div className="text-xs text-gray-600 mb-2">
                       <span className="font-semibold">Chef:</span>{" "}
@@ -1237,6 +1273,7 @@ const exportToPDF = () => {
           show={showOrderModal}
           onClose={closeOrderModal}
           orderItems={selectedOrderItems}
+          order={selectedOrder} // optional: modal can use .orderSource if desired
         />
         {showPrintBill && selectedPrintOrder && (
           <PrintOrderHistoryBill
@@ -1246,7 +1283,8 @@ const exportToPDF = () => {
               items: selectedPrintOrder.items || [],
               createdAt: selectedPrintOrder.createdAt,
               phoneNumber: institution === "bhuk2323" ? selectedPrintOrder.phoneNumber || "N/A" : undefined,
-              paymentMethods: selectedPrintOrder.paymentMethods
+              paymentMethods: selectedPrintOrder.paymentMethods,
+              orderSource: getOrderSource(selectedPrintOrder), // include source
             }}
             institutionData={institutionData}
             screenWidth={screenWidth}
