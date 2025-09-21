@@ -1,4 +1,3 @@
-
 "use client";
 import { useState, useEffect, useContext, useRef, useCallback } from "react";
 import { API } from "aws-amplify";
@@ -6,6 +5,7 @@ import { toast } from "react-toastify";
 import { ArrowRightLeft } from "lucide-react";
 import { Context } from "../../../../Context";
 import CancelConfirmModal from "./CancelConfirmModal";
+import MoveItemsModal from "./MoveItemsModal";
 
 const TabSelector = ({
   activeTab,
@@ -25,7 +25,9 @@ const TabSelector = ({
   const hasItems = localBillItems.length > 0;
   const { institutionData, userData } = useContext(Context);
   const [showSwapModal, setShowSwapModal] = useState(false);
+  const [showMoveItemsModal, setShowMoveItemsModal] = useState(false);
   const [destinationTable, setDestinationTable] = useState("");
+  const [selectedItems, setSelectedItems] = useState([]);
   const [availableTables, setAvailableTables] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -42,20 +44,86 @@ const TabSelector = ({
   useEffect(() => {
     if (tables && selectedTable) {
       const filtered = tables.filter(
-        (table) =>
-          table.id !== selectedTable.id &&
-          (!KOTByTable?.[table.id]?.items?.length)
+        (table) => table.id !== selectedTable.id
       );
       setAvailableTables(filtered);
     }
-  }, [tables, selectedTable, KOTByTable]);
+  }, [tables, selectedTable]);
 
   // Memoized handler for reason input changes
   const handleReasonChange = useCallback((e) => {
     setReason(e.target.value);
   }, []);
 
-  // Memoized handler for swapping tables
+  // Memoized handler for moving items
+  const handleMoveItems = useCallback(async () => {
+    if (!selectedTable || !destinationTable || selectedItems.length === 0) {
+      toast.error("Please select source table, destination table, and items to move");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await API.put("main", `/admin/move-items-table/${institutionData.institution}`, {
+        body: {
+          sourceTable: String(selectedTable.id),
+          destinationTable: String(destinationTable),
+          type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
+          items: selectedItems,
+        },
+      });
+      setKOTByTable((prev) => ({
+        ...prev,
+        [String(selectedTable.id)]: null,
+      }));
+      setLocalBillItems((prev) =>
+        prev.reduce((acc, item) => {
+          const movedItem = selectedItems.find((i) => i.itemId === item.itemId);
+          if (movedItem) {
+            const remainingQuantity = item.quantity - movedItem.quantity;
+            if (remainingQuantity > 0) {
+              acc.push({ ...item, quantity: remainingQuantity });
+            }
+          } else {
+            acc.push(item);
+          }
+          return acc;
+        }, [])
+      );
+      setIsLoading(false);
+      setShowMoveItemsModal(false);
+      toast.success(
+        `Items moved from Table ${selectedTable.id} to Table ${destinationTable}`
+      );
+
+      await fetchPendingOrders();
+      setDestinationTable("");
+      setSelectedItems([]);
+
+      const newSelectedTable = tables.find(
+        (table) => table.id === destinationTable
+      );
+      if (newSelectedTable) {
+        setSelectedTable(newSelectedTable);
+      }
+    } catch (error) {
+      setIsLoading(false);
+      console.error("Error moving items:", error);
+      toast.error("Failed to move items. Please try again.");
+    }
+  }, [
+    selectedTable,
+    destinationTable,
+    selectedItems,
+    institutionData,
+    setKOTByTable,
+    setLocalBillItems,
+    fetchPendingOrders,
+    tables,
+    setSelectedTable,
+  ]);
+
+  // Memoized handler for swapping entire tables
   const handleSwapTable = useCallback(async () => {
     if (!selectedTable || !destinationTable) {
       toast.error("Please select source and destination tables");
@@ -67,7 +135,7 @@ const TabSelector = ({
       await API.put("main", `/admin/swap-table/${institutionData.institution}`, {
         body: {
           sourceTable: String(selectedTable.id),
-          destinationTable: destinationTable,
+          destinationTable: String(destinationTable),
           type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
         },
       });
@@ -158,12 +226,16 @@ const TabSelector = ({
     setReason("");
   }, []);
 
+  // Modal for swapping entire tables
   const SwapModal = () => (
     <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white p-6 rounded-lg shadow-lg w-80 max-w-full">
-        <h2 className="text-lg font-semibold mb-4">Move Table</h2>
+        <h2 className="text-lg font-semibold mb-4 flex items-center">
+          <ArrowRightLeft className="w-5 h-5 mr-2" />
+          Move Table
+        </h2>
         <p className="mb-2 text-sm text-gray-600">
-          Move items from Table {selectedTable?.id} to another table
+          Move all items from Table {selectedTable?.id} to another table
         </p>
 
         <div className="mb-4">
@@ -182,7 +254,6 @@ const TabSelector = ({
           <select
             value={destinationTable}
             onChange={(e) => setDestinationTable(e.target.value)}
-            onKeyDown={(e) => console.log("Select key pressed:", e.key, "Code:", e.code)}
             className="w-full p-2 border rounded"
           >
             <option value="">Select a table</option>
@@ -238,6 +309,15 @@ const TabSelector = ({
               >
                 <ArrowRightLeft className="w-3 h-3 mr-1" />
                 Move
+              </button>
+              <button
+                onClick={() => setShowMoveItemsModal(true)}
+                className="flex items-center text-xs bg-white border border-gray-300 rounded px-2 py-1 hover:bg-gray-100"
+                title="Move Items"
+                disabled={!hasItems}
+              >
+                <ArrowRightLeft className="w-3 h-3 mr-1" />
+                Items
               </button>
               {hasItems && (
                 <button
@@ -298,6 +378,20 @@ const TabSelector = ({
       </div>
 
       {showSwapModal && <SwapModal />}
+      {showMoveItemsModal && (
+        <MoveItemsModal
+          selectedTable={selectedTable}
+          destinationTable={destinationTable}
+          setDestinationTable={setDestinationTable}
+          availableTables={availableTables}
+          localBillItems={localBillItems}
+          selectedItems={selectedItems}
+          setSelectedItems={setSelectedItems}
+          handleMoveItems={handleMoveItems}
+          setShowMoveItemsModal={setShowMoveItemsModal}
+          isLoading={isLoading}
+        />
+      )}
       {showCancelConfirm && (
         <CancelConfirmModal
           selectedTable={selectedTable}
