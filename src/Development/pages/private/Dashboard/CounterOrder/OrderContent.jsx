@@ -1,18 +1,5 @@
 "use client";
-import {
-  User,
-  Phone,
-  X,
-  MoveRight,
-  ChevronDown,
-  ChevronUp,
-  AlertTriangle,
-  Clock,
-  Bluetooth,
-  Printer,
-  Percent,
-  DollarSign
-} from "lucide-react";
+import { User, Phone, X, MoveRight, ChevronDown, ChevronUp, AlertTriangle, Clock, Bluetooth, Printer, Percent, DollarSign } from "lucide-react";
 import { useState, useEffect, useContext, useRef } from "react";
 import { toast } from "react-toastify";
 import { API } from "aws-amplify";
@@ -22,8 +9,9 @@ import PrintBill from "./PrintBill";
 import ReprintKOT from "./ReprintKOT";
 import data from "../../../../../Operation/data.json";
 import OrderPaymentModal from "./OrderPaymentModal";
-import StaffSelectionModal from "./StaffSelectionModal"
+import StaffSelectionModal from "./StaffSelectionModal";
 import DiscountSection from "./DiscountSection";
+import UnpaidOrderPaymentModal from "./UnpaidOrderPaymentModal";
 
 const OrderContent = ({
   selectedTable,
@@ -70,15 +58,15 @@ const OrderContent = ({
   setShowReprintKOT,
   unpaidOrders = [],
   settleUnpaidOrder,
-  // NEW DISCOUNT PROPS FROM PARENT
   discountData,
   setDiscountData,
 }) => {
   const { printerType, printerpaperSize } = data;
   const { staffData, fetchStaffData, setLoader, hotelBookings } = useContext(Context);
-   const screenWidth = window.innerWidth;
+  const screenWidth = window.innerWidth;
   const [orderRoomSelection, setOrderRoomSelection] = useState({});
   const [showOrderPaymentModal, setShowOrderPaymentModal] = useState(false);
+  const [showUnpaidOrderPaymentModal, setShowUnpaidOrderPaymentModal] = useState(false); // New state for UnpaidOrderPaymentModal
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [printMode, setPrintMode] = useState("local");
   const [showPrintBill, setShowPrintBill] = useState(false);
@@ -87,7 +75,6 @@ const OrderContent = ({
   const [movingItem, setMovingItem] = useState(null);
   const [targetOrderId, setTargetOrderId] = useState(null);
   const [isUnpaidOrdersOpen, setIsUnpaidOrdersOpen] = useState(false);
-  const [showSettleModal, setShowSettleModal] = useState(false);
   const [selectedUnpaidOrder, setSelectedUnpaidOrder] = useState(null);
 
   // Use refs to prevent input focus loss
@@ -96,45 +83,37 @@ const OrderContent = ({
   // Helper function to get current discount info
   const getCurrentDiscountInfo = () => {
     if (!selectedTable) return { method: "none", value: 0, amount: 0 };
-
     const tableIdStr = String(selectedTable.id);
     const tableDiscountData = discountData[tableIdStr];
-
     if (!tableDiscountData) return { method: "none", value: 0, amount: 0 };
-
     if (splitBillMode && selectedOrderId) {
       return tableDiscountData[selectedOrderId] || { method: "none", value: 0, amount: 0 };
     }
-
-    // For non-split bill, use the table-level discount or first order discount
     if (typeof tableDiscountData === 'object' && !tableDiscountData.method) {
-      // This is order-based discount data, get first order's discount
       const firstOrderId = Object.keys(tableDiscountData)[0];
       return tableDiscountData[firstOrderId] || { method: "none", value: 0, amount: 0 };
     }
-
     return tableDiscountData;
   };
 
   // Helper function to set discount info
   const setCurrentDiscountInfo = (discountInfo) => {
-  if (!selectedTable) return;
+    if (!selectedTable) return;
+    const tableIdStr = String(selectedTable.id);
+    setDiscountData((prev) => {
+      const newData = { ...prev };
+      if (splitBillMode && selectedOrderId) {
+        newData[tableIdStr] = {
+          ...newData[tableIdStr],
+          [selectedOrderId]: { ...discountInfo },
+        };
+      } else {
+        newData[tableIdStr] = { ...discountInfo };
+      }
+      return newData;
+    });
+  };
 
-  const tableIdStr = String(selectedTable.id);
-
-  setDiscountData((prev) => {
-    const newData = { ...prev };
-    if (splitBillMode && selectedOrderId) {
-      newData[tableIdStr] = {
-        ...newData[tableIdStr],
-        [selectedOrderId]: { ...discountInfo },
-      };
-    } else {
-      newData[tableIdStr] = { ...discountInfo };
-    }
-    return newData;
-  });
-};
   const totalKotQuantity = (kotcurrent?.items || kotcurrent?.billItems || []).reduce(
     (sum, item) => sum + item.quantity,
     0
@@ -177,17 +156,14 @@ const OrderContent = ({
     let kotData = JSON.parse(localStorage.getItem("kotOrders")) || {
       date: today,
       lastKOT: 0,
-      kotTables: {}
+      kotTables: {},
     };
-
     if (kotData.date !== today) {
       kotData = { date: today, lastKOT: 0, kotTables: {} };
     }
-
     if (kotData.kotTables[tableId]) {
       return kotData.kotTables[tableId];
     }
-
     const newKOT = kotData.lastKOT + 1;
     kotData.kotTables[tableId] = newKOT;
     kotData.lastKOT = newKOT;
@@ -198,74 +174,56 @@ const OrderContent = ({
   const handleUnpaidPaymentMethodChange = (order, value) => {
     const method = (value || "").toString().trim().toUpperCase();
     if (method === "ROOM") {
-      const firstBooking =
-        hotelBookings && hotelBookings.length > 0 ? hotelBookings[0] : null;
+      const firstBooking = hotelBookings && hotelBookings.length > 0 ? hotelBookings[0] : null;
       setOrderRoomSelection((prev) => ({
         ...prev,
-        [order.orderId]: firstBooking ? firstBooking.bookingId : ""
+        [order.orderId]: firstBooking ? firstBooking.bookingId : "",
       }));
+      handleSettleUnpaidOrder(order, method);
     } else {
-      handleSettleUnpaidOrder(order, method, null);
+      handleSettleUnpaidOrder(order, method);
     }
   };
 
   const handleProceedRoomSettlement = (order) => {
     const selectedBookingId = orderRoomSelection[order.orderId];
-    const booking =
-      (hotelBookings || []).find((b) => b.bookingId === selectedBookingId) ||
-      null;
-    const roomNumber = booking
-      ? String(booking.roomNumber)
-      : formatOrderTableLabel(order);
-    handleSettleUnpaidOrder(order, "ROOM", {
-      bookingId: selectedBookingId,
-      roomNumber
-    });
+    const booking = (hotelBookings || []).find((b) => b.bookingId === selectedBookingId) || null;
+    const roomNumber = booking ? String(booking.roomNumber) : formatOrderTableLabel(order);
+    handleSettleUnpaidOrder(order, "ROOM", { bookingId: selectedBookingId, roomNumber });
   };
 
-  // Enhanced discount calculation using current discount info
   const calculateTotals = (items) => {
     const billSubtotal = items.reduce((sum, item) => {
       const price = Number(item.price) || 0;
       const quantity = Number(item.quantity) || 0;
       return sum + price * quantity;
     }, 0);
-
     const taxableSubtotal = items.reduce((sum, item) => {
       const price = Number(item.price) || 0;
       const quantity = Number(item.quantity) || 0;
       return sum + (item.type !== "bar" ? price * quantity : 0);
     }, 0);
-
     const cgstRate = institutionData?.cgst ?? 2.5;
     const sgstRate = institutionData?.sgst ?? 2.5;
-    const serviceTaxRate =
-      institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0;
-
-    // Get current discount info
+    const serviceTaxRate = institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0;
     const discountInfo = getCurrentDiscountInfo();
     let discountAmount = 0;
     let discountPercentage = 0;
-
     if (discountInfo.method === "percentage" && discountInfo.value > 0) {
       discountPercentage = Math.min(Number(discountInfo.value), 100);
       discountAmount = (billSubtotal * discountPercentage) / 100;
     } else if (discountInfo.method === "amount" && discountInfo.value > 0) {
       discountAmount = Math.min(Number(discountInfo.value), billSubtotal);
     }
-
     const discountedSubtotal = billSubtotal - discountAmount;
     const discountedTaxableSubtotal = Math.max(0, taxableSubtotal - discountAmount);
-
     const cgst = (discountedTaxableSubtotal * cgstRate) / 100;
     const sgst = (discountedTaxableSubtotal * sgstRate) / 100;
     const serviceTax = (discountedSubtotal * serviceTaxRate) / 100;
-
     const finalTotal =
       institutionData?.cgst === 0 || institutionData?.sgst === 0
         ? Math.round(discountedSubtotal + serviceTax)
         : Math.round(discountedSubtotal + cgst + sgst + serviceTax);
-
     return {
       billSubtotal,
       taxableSubtotal,
@@ -280,37 +238,35 @@ const OrderContent = ({
     };
   };
 
-  // Handle discount method change without losing focus
   const handleDiscountMethodChange = (method) => {
     const currentInfo = getCurrentDiscountInfo();
     setCurrentDiscountInfo({
       method,
       value: method === "none" ? 0 : currentInfo.value,
-      amount: method === "none" ? 0 : currentInfo.amount
+      amount: method === "none" ? 0 : currentInfo.amount,
     });
   };
-const handleDiscountValueChange = (value) => {
-  const currentInfo = getCurrentDiscountInfo();
-  const newValue = Number(value) || 0;
-  let discountAmount = 0;
 
-  // Calculate discount amount based on the current method
-  if (currentInfo.method === "percentage") {
-    const items = splitBillMode
-      ? (orderGroups.find(g => g.orderId === selectedOrderId)?.items || [])
-      : localBillItems;
-    const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    discountAmount = (subtotal * newValue) / 100;
-  } else if (currentInfo.method === "amount") {
-    discountAmount = newValue;
-  }
+  const handleDiscountValueChange = (value) => {
+    const currentInfo = getCurrentDiscountInfo();
+    const newValue = Number(value) || 0;
+    let discountAmount = 0;
+    if (currentInfo.method === "percentage") {
+      const items = splitBillMode
+        ? (orderGroups.find((g) => g.orderId === selectedOrderId)?.items || [])
+        : localBillItems;
+      const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      discountAmount = (subtotal * newValue) / 100;
+    } else if (currentInfo.method === "amount") {
+      discountAmount = newValue;
+    }
+    setCurrentDiscountInfo({
+      method: currentInfo.method,
+      value: newValue,
+      amount: discountAmount,
+    });
+  };
 
-  setCurrentDiscountInfo({
-    method: currentInfo.method,
-    value: newValue,
-    amount: discountAmount,
-  });
-};
   const formatKOT = () => {
     const formatDateTime = () => {
       const now = new Date();
@@ -325,13 +281,11 @@ const handleDiscountValueChange = (value) => {
         })
         .replace(",", "");
     };
-
     const orderType = !isNaN(selectedTable?.id)
       ? "Dine In"
       : selectedTable?.id.toLowerCase().startsWith("takeaway")
       ? "Takeaway"
       : "Dine In";
-
     const kotNo = getKOTNumber(selectedTable?.id) || "N/A";
     const items = kotcurrent?.items || [];
     const totalQty = items.reduce((sum, item) => sum + item.quantity, 0);
@@ -340,7 +294,6 @@ const handleDiscountValueChange = (value) => {
     const headerFont = "\x1B\x4D\x00";
     const itemFont = printerpaperSize === "80" ? "\x1B\x4D\x00" : "\x1B\x4D\x01";
     const resetFont = "\x1D\x21\x00";
-
     let kot = "";
     kot += `\x1B\x61\x01${headerFont}`;
     kot += `KOT No: ${kotNo}\n`;
@@ -351,17 +304,13 @@ const handleDiscountValueChange = (value) => {
     kot += `${"-".repeat(lineWidth)}\n`;
     kot += `Item${" ".repeat(lineWidth - 4 - 3)}Qty\n`;
     kot += `${"-".repeat(lineWidth)}\n`;
-
     items.forEach((item) => {
       const itemName = item.itemName || item.name;
       const qty = item.quantity.toString().padStart(4, " ");
-
       if (itemName.length <= itemNameLength) {
         kot += `${itemName.padEnd(itemNameLength)}${qty}\n`;
       } else {
-        const chunks = itemName.match(
-          new RegExp(`.{1,${itemNameLength}}`, "g")
-        );
+        const chunks = itemName.match(new RegExp(`.{1,${itemNameLength}}`, "g"));
         chunks.forEach((chunk, index) => {
           if (index === 0) {
             kot += `${chunk.padEnd(itemNameLength)}${qty}\n`;
@@ -371,13 +320,11 @@ const handleDiscountValueChange = (value) => {
         });
       }
     });
-
     kot += `\x1B\x61\x01`;
     kot += `${"-".repeat(lineWidth)}\n`;
     kot += `Total Qty: ${totalQty}\n`;
     kot += `${"-".repeat(lineWidth)}\n`;
     kot += `${resetFont}\n\n\n`;
-
     return kot;
   };
 
@@ -385,11 +332,7 @@ const handleDiscountValueChange = (value) => {
     const textLength = text.length;
     if (textLength >= width) return text.substring(0, width);
     const padding = Math.floor((width - textLength) / 2);
-    return (
-      " ".repeat(padding) +
-      text +
-      " ".repeat(width - textLength - padding)
-    );
+    return " ".repeat(padding) + text + " ".repeat(width - textLength - padding);
   };
 
   const formatBill = (orderItems, customerId) => {
@@ -401,15 +344,12 @@ const handleDiscountValueChange = (value) => {
     const headerFont = printerpaperSize === "80" ? "\x1B\x4D\x00" : "\x1B\x4D\x00";
     const itemFont = printerpaperSize === "80" ? "\x1B\x4D\x00" : "\x1B\x4D\x01";
     const resetFont = "\x1D\x21\x00";
-
     const justifyBetween = (leftText, rightText, width = lineWidth) => {
       const totalLength = leftText.length + rightText.length;
-      if (totalLength >= width)
-        return `${leftText}${rightText}`.substring(0, width);
+      if (totalLength >= width) return `${leftText}${rightText}`.substring(0, width);
       const spaceBetween = width - totalLength;
       return `${leftText}${" ".repeat(spaceBetween)}${rightText}`;
     };
-
     const formatDateTime = () => {
       const now = new Date();
       return now
@@ -423,7 +363,6 @@ const handleDiscountValueChange = (value) => {
         })
         .replace(",", "");
     };
-
     const items = orderItems || localBillItems;
     const {
       billSubtotal,
@@ -436,33 +375,20 @@ const handleDiscountValueChange = (value) => {
       discountPercentage,
       discountMethod,
     } = calculateTotals(items);
-
-    const totalQty = items.reduce(
-      (sum, item) => sum + (Number(item.quantity) || 0),
-      0
-    );
-
+    const totalQty = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
     let bill = `\x1B\x61\x01${headerFont}`;
     bill += `${institutionData?.companyName || "The Chai Theka"}\n`;
     bill += `${institutionData?.Query_Address || "BhawaniPeth"}\n`;
-    bill += `Contact: ${
-      institutionData?.Query_PhoneNumber || "+917008120727"
-    }\n`;
+    bill += `Contact: ${institutionData?.Query_PhoneNumber || "+917008120727"}\n`;
     bill += `Date: ${formatDateTime()}\n`;
-    bill += `${
-      institutionData?.gstin ? `GSTIN: ${institutionData.gstin}\n` : ""
-    }`;
+    bill += `${institutionData?.gstin ? `GSTIN: ${institutionData.gstin}\n` : ""}`;
     bill += `Table: ${selectedTable?.id || "N/A"}\n`;
     if (splitBillMode && customerId) {
       bill += `Order ID: ${customerId}\n`;
     }
-    bill += `${resetFont}${itemFont}${centerText(
-      `-`.repeat(lineWidth),
-      lineWidth
-    )}\n`;
+    bill += `${resetFont}${itemFont}${centerText(`-`.repeat(lineWidth), lineWidth)}\n`;
     bill += `Item${" ".repeat(itemNameLength - 4)}Qty Rate Total\n`;
     bill += `${centerText(`-`.repeat(lineWidth), lineWidth)}\n`;
-
     items.forEach((item) => {
       const itemName = (item.itemName || item.name || "Unknown")
         .substring(0, itemNameLength)
@@ -476,66 +402,40 @@ const handleDiscountValueChange = (value) => {
       const total = (totalValue % 1 === 0 ? totalValue : totalValue.toFixed(2))
         .toString()
         .padStart(totalLength, " ");
-
       const line = `${itemName}${qty}${rate}${total}`;
       bill += `${line}\n`;
-
       if ((item.itemName || item.name || "").length > itemNameLength) {
-        const remaining = (item.itemName || item.name || "").substring(
-          itemNameLength
-        );
-        const chunks =
-          remaining.match(new RegExp(`.{1,${itemNameLength}}`, "g")) || [];
+        const remaining = (item.itemName || item.name || "").substring(itemNameLength);
+        const chunks = remaining.match(new RegExp(`.{1,${itemNameLength}}`, "g")) || [];
         chunks.forEach((chunk) => {
-          bill += `${chunk.padEnd(itemNameLength)}${" ".repeat(
-            lineWidth - itemNameLength
-          )}\n`;
+          bill += `${chunk.padEnd(itemNameLength)}${" ".repeat(lineWidth - itemNameLength)}\n`;
         });
       }
     });
-
     bill += `${resetFont}${centerText(`-`.repeat(lineWidth), lineWidth)}\n`;
     bill += `${justifyBetween("Total Qty:", `${totalQty}`)}\n`;
     bill += `${justifyBetween("Subtotal:", `₹${billSubtotal.toFixed(2)}`)}\n`;
-
-    // Enhanced discount display
     if (discountAmount > 0) {
       if (discountMethod === "percentage") {
-        bill += `${justifyBetween(
-          `Discount (${discountPercentage}%):`,
-          `₹${discountAmount.toFixed(2)}`
-        )}\n`;
+        bill += `${justifyBetween(`Discount (${discountPercentage}%):`, `₹${discountAmount.toFixed(2)}`)}\n`;
       } else if (discountMethod === "amount") {
-        bill += `${justifyBetween(
-          "Discount (Fixed):",
-          `₹${discountAmount.toFixed(2)}`
-        )}\n`;
+        bill += `${justifyBetween("Discount (Fixed):", `₹${discountAmount.toFixed(2)}`)}\n`;
       }
     }
-
     if (institutionData.cgst !== 0 && institutionData.sgst !== 0) {
       bill += `${justifyBetween("CGST:", `₹${cgst.toFixed(2)}`)}\n`;
       bill += `${justifyBetween("SGST:", `₹${sgst.toFixed(2)}`)}\n`;
     }
-
     if (serviceTax > 0) {
-      bill += `${justifyBetween(
-        `Service Tax (${institutionData?.serviceTax ?? 0}%):`,
-        `₹${serviceTax.toFixed(2)}`
-      )}\n`;
+      bill += `${justifyBetween(`Service Tax (${institutionData?.serviceTax ?? 0}%):`, `₹${serviceTax.toFixed(2)}`)}\n`;
     }
-
-    bill += `${justifyBetween(
-      "Total (Rounded):",
-      `₹${finalTotal.toFixed(2)}`
-    )}\n`;
+    bill += `${justifyBetween("Total (Rounded):", `₹${finalTotal.toFixed(2)}`)}\n`;
     bill += `${centerText(`-`.repeat(lineWidth), lineWidth)}\n`;
     bill += `Thanks for visiting!\n`;
     bill += `\x1B\x34`;
     bill += `Empower your business with tekkzy.com\n`;
     bill += `\x1B\x35`;
     bill += `${resetFont}\n\n\n`;
-
     return bill;
   };
 
@@ -545,16 +445,12 @@ const handleDiscountValueChange = (value) => {
         toast.error("Please select an order to print.");
         return;
       }
-      const selectedOrder = orderGroups.find(
-        (group) => group.orderId === selectedOrderId
-      );
+      const selectedOrder = orderGroups.find((group) => group.orderId === selectedOrderId);
       if (!selectedOrder || !selectedOrder.items.length) {
         toast.error("No items to print in selected order.");
         return;
       }
-
       await saveBill(selectedTable, selectedOrder.items, selectedOrderId);
-
       if (printMode === "bluetooth" && bluetoothConnected) {
         const billData = formatBill(selectedOrder.items, selectedOrderId);
         console.log("Attempting Bluetooth print for split Bill...");
@@ -581,9 +477,7 @@ const handleDiscountValueChange = (value) => {
         toast.error("No table selected.");
         return;
       }
-
       await saveBill(selectedTable);
-
       if (printMode === "bluetooth" && bluetoothConnected) {
         const billData = formatBill();
         console.log("Attempting Bluetooth print for Bill...");
@@ -600,7 +494,6 @@ const handleDiscountValueChange = (value) => {
         setShowPrintBill(true);
       }
     }
-
     setShowStaffSelectionModal(true);
   };
 
@@ -614,7 +507,6 @@ const handleDiscountValueChange = (value) => {
       toast.error("No table selected.");
       return;
     }
-
     setLoader(true);
     try {
       const tableIdStr = String(selectedTable.id);
@@ -624,7 +516,6 @@ const handleDiscountValueChange = (value) => {
         orderId: splitBillMode ? selectedOrderId : null,
         type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
       };
-
       await API.post("main", endpoint, { body });
       toast.success("Staff assigned to bill successfully.");
       setShowStaffSelectionModal(false);
@@ -632,7 +523,7 @@ const handleDiscountValueChange = (value) => {
       await fetchPendingOrders();
     } catch (error) {
       console.error("Error assigning staff to bill:", error);
-      } finally {
+    } finally {
       setLoader(false);
     }
   };
@@ -648,9 +539,7 @@ const handleDiscountValueChange = (value) => {
       toast.error("No table selected.");
       return;
     }
-
     const kotData = formatKOT();
-
     if (printMode === "bluetooth" && bluetoothConnected) {
       await saveKOT(selectedTable);
       console.log("Attempting Bluetooth print for KOT...");
@@ -676,29 +565,19 @@ const handleDiscountValueChange = (value) => {
       toast.error("No table selected.");
       return;
     }
-
     const tableIdStr = String(selectedTable.id);
     setLoader(true);
-
     try {
       const endpoint = orderId
         ? `/admin/orderId-save/${institutionData.institution}/${tableIdStr}/${orderId}`
         : `/admin/orders-items/${institutionData.institution}/${tableIdStr}`;
-
       const items = orderItems || localBillItems;
-      const { cgst, sgst, serviceTax, discountAmount, discountPercentage, discountMethod } =
-        calculateTotals(items);
-
-      // Get current discount info
+      const { cgst, sgst, serviceTax, discountAmount, discountPercentage, discountMethod } = calculateTotals(items);
       const discountInfo = getCurrentDiscountInfo();
-
       await API.put("main", endpoint, {
         body: {
           items,
-          serviceTaxPercentage:
-            institutionData?.serviceTax !== undefined
-              ? institutionData.serviceTax
-              : 0,
+          serviceTaxPercentage: institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0,
           cgstPercentage: institutionData?.cgst ?? 2.5,
           sgstPercentage: institutionData?.sgst ?? 2.5,
           discountMethod: discountInfo.method,
@@ -711,21 +590,17 @@ const handleDiscountValueChange = (value) => {
           type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
         },
       });
-
       if (orderId) {
         console.log("Order ID exists, skipping saveBill API calls.");
         setLoader(false);
         return;
       }
-
       const billEndpoint = orderId
         ? `/admin/orders-bill/${institutionData.institution}/${tableIdStr}/${orderId}`
         : `/admin/orders-bill/${institutionData.institution}/${tableIdStr}`;
-
       await API.post("main", billEndpoint, {
-        body: { items,type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe" },
+        body: { items, type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe" },
       });
-
       setLoader(false);
       await fetchTableData(tableIdStr);
     } catch (error) {
@@ -741,9 +616,7 @@ const handleDiscountValueChange = (value) => {
         toast.error("Please select an order to settle.");
         return;
       }
-      const selectedOrder = orderGroups.find(
-        (group) => group.orderId === selectedOrderId
-      );
+      const selectedOrder = orderGroups.find((group) => group.orderId === selectedOrderId);
       await saveBill(selectedTable, selectedOrder.items, selectedOrderId);
       setShowOrderPaymentModal(true);
     } else {
@@ -759,28 +632,29 @@ const handleDiscountValueChange = (value) => {
       bookingInfo: bookingInfo,
     };
     setSelectedUnpaidOrder(orderWithPayment);
-    setShowSettleModal(true);
+    if (normalizedMethod === "ROOM" && !bookingInfo) {
+      // For ROOM payment without bookingInfo, proceed to room selection
+      setShowUnpaidOrderPaymentModal(true);
+    } else {
+      // For other payment methods or ROOM with bookingInfo, open the modal
+      setShowUnpaidOrderPaymentModal(true);
+    }
   };
 
-  const confirmSettleOrder = async () => {
-    if (!selectedUnpaidOrder || !settleUnpaidOrder) {
+  const confirmSettleOrder = async (order, paymentMethod, settleBody) => {
+    if (!order || !settleUnpaidOrder) {
       toast.error("Unable to settle order. Please try again.");
       return;
     }
-
     try {
-      await settleUnpaidOrder(
-        selectedUnpaidOrder,
-        selectedUnpaidOrder.paymentMethod,
-        selectedUnpaidOrder.bookingInfo || null
-      );
-      toast.success(`Order #${selectedUnpaidOrder.orderId} settled successfully`);
-    } catch (error) {
-
-      toast.error("Failed to settle order. Please try again.");
-    } finally {
-      setShowSettleModal(false);
+      await settleUnpaidOrder(order, paymentMethod, settleBody);
+      toast.success(`Order #${order.orderId} settled successfully`);
+      setShowUnpaidOrderPaymentModal(false);
       setSelectedUnpaidOrder(null);
+      await fetchPendingOrders();
+      await fetchTableData(String(selectedTable.id));
+    } catch (error) {
+      toast.error("Failed to settle order. Please try again.");
     }
   };
 
@@ -789,9 +663,7 @@ const handleDiscountValueChange = (value) => {
       toast.error("Please select source and target orders.");
       return;
     }
-
     const moveQty = Math.min(quantity || 1, item.quantity);
-
     setOrderGroups((prevGroups) => {
       const updatedGroups = prevGroups.map((group) => {
         if (group.orderId === fromOrderId) {
@@ -804,23 +676,18 @@ const handleDiscountValueChange = (value) => {
             return {
               ...group,
               items: group.items.map((i) =>
-                i.itemId === item.itemId
-                  ? { ...i, quantity: i.quantity - moveQty }
-                  : i
+                i.itemId === item.itemId ? { ...i, quantity: i.quantity - moveQty } : i
               ),
             };
           }
         }
-
         if (group.orderId === toOrderId) {
           const existingItem = group.items.find((i) => i.itemId === item.itemId);
           if (existingItem) {
             return {
               ...group,
               items: group.items.map((i) =>
-                i.itemId === item.itemId
-                  ? { ...i, quantity: i.quantity + moveQty }
-                  : i
+                i.itemId === item.itemId ? { ...i, quantity: i.quantity + moveQty } : i
               ),
             };
           }
@@ -829,60 +696,45 @@ const handleDiscountValueChange = (value) => {
             items: [...group.items, { ...item, quantity: moveQty }],
           };
         }
-
         return group;
       });
       return updatedGroups;
     });
-
     setLoader(true);
     try {
       const tableIdStr = String(selectedTable.id);
       const { cgst, sgst, serviceTax, discountAmount } = calculateTotals([
         { ...item, quantity: moveQty },
       ]);
-
-      // Get current discount info
       const discountInfo = getCurrentDiscountInfo();
-
-      await API.post(
-        "main",
-        `/admin/move-items/${institutionData.institution}/${tableIdStr}`,
-        {
-          body: {
-            sourceOrderId: fromOrderId,
-            destinationOrderId: toOrderId,
-            items: [
-              {
-                itemId: item.itemId,
-                quantity: moveQty,
-                price: item.price,
-                itemName: item.itemName || item.name,
-              },
-            ],
-            serviceTaxPercentage:
-              institutionData?.serviceTax !== undefined
-                ? institutionData.serviceTax
-                : 0,
-            cgstPercentage: institutionData?.cgst ?? 2.5,
-            sgstPercentage: institutionData?.sgst ?? 2.5,
-            discountMethod: discountInfo.method,
-            discountValue: discountInfo.value,
-            discountAmount,
-            cgst,
-            sgst,
-            serviceTax,
-            type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
-          },
-        }
-      );
-
+      await API.post("main", `/admin/move-items/${institutionData.institution}/${tableIdStr}`, {
+        body: {
+          sourceOrderId: fromOrderId,
+          destinationOrderId: toOrderId,
+          items: [
+            {
+              itemId: item.itemId,
+              quantity: moveQty,
+              price: item.price,
+              itemName: item.itemName || item.name,
+            },
+          ],
+          serviceTaxPercentage: institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0,
+          cgstPercentage: institutionData?.cgst ?? 2.5,
+          sgstPercentage: institutionData?.sgst ?? 2.5,
+          discountMethod: discountInfo.method,
+          discountValue: discountInfo.value,
+          discountAmount,
+          cgst,
+          sgst,
+          serviceTax,
+          type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
+        },
+      });
       await fetchPendingOrders();
       setMovingItem(null);
       setTargetOrderId(null);
-      toast.success(
-        `${moveQty} item${moveQty > 1 ? "s" : ""} moved successfully`
-      );
+      toast.success(`${moveQty} item${moveQty > 1 ? "s" : ""} moved successfully`);
     } catch (error) {
       console.error("Error moving item between orders:", error);
       toast.error("Failed to move item. Please try again.");
@@ -893,7 +745,6 @@ const handleDiscountValueChange = (value) => {
 
   const handleUpdateItemQuantity = (tableId, itemId, newQuantity) => {
     if (newQuantity < 1) return handleRemoveItemFromKOT(tableId, itemId);
-
     if (activeTab === "KOT") {
       updateItemQuantity(tableId, itemId, newQuantity);
     } else if (splitBillMode) {
@@ -902,9 +753,7 @@ const handleDiscountValueChange = (value) => {
           if (group.orderId === selectedOrderId) {
             const updatedItems = group.items
               .map((item) =>
-                item.itemId === itemId
-                  ? { ...item, quantity: newQuantity }
-                  : item
+                item.itemId === itemId ? { ...item, quantity: newQuantity } : item
               )
               .filter((item) => item.quantity > 0);
             return { ...group, items: updatedItems };
@@ -930,9 +779,7 @@ const handleDiscountValueChange = (value) => {
       setOrderGroups((prevGroups) =>
         prevGroups.map((group) => {
           if (group.orderId === selectedOrderId) {
-            const updatedItems = group.items.filter(
-              (item) => item.itemId !== itemId
-            );
+            const updatedItems = group.items.filter((item) => item.itemId !== itemId);
             return { ...group, items: updatedItems };
           }
           return group;
@@ -945,7 +792,6 @@ const handleDiscountValueChange = (value) => {
 
   const renderOrderTabs = () => {
     if (!splitBillMode || !orderGroups.length) return null;
-
     return (
       <div className="flex border-b overflow-x-auto py-2 px-2">
         {orderGroups.map((group) => (
@@ -965,12 +811,8 @@ const handleDiscountValueChange = (value) => {
     );
   };
 
- 
-
-  // Render unpaid orders section
   const UnpaidOrdersSection = () => {
     if (tableUnpaidOrders.length === 0) return null;
-
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg mb-1">
         <div
@@ -983,7 +825,7 @@ const handleDiscountValueChange = (value) => {
               Unpaid Orders ({tableUnpaidOrders.length})
             </h3>
             <span className="bg-red-500 text-white px-2 py-1 rounded-full text-xs">
-              ₹
+              ₹{" "}
               {tableUnpaidOrders
                 .reduce((sum, order) => sum + (order.totalAmount || 0), 0)
                 .toFixed(2)}
@@ -995,7 +837,6 @@ const handleDiscountValueChange = (value) => {
             <ChevronDown className="w-5 h-5 text-red-500" />
           )}
         </div>
-
         {isUnpaidOrdersOpen && (
           <div className="px-3 pb-3 space-y-2">
             {tableUnpaidOrders.map((order, index) => (
@@ -1006,9 +847,7 @@ const handleDiscountValueChange = (value) => {
                 <div className="flex justify-between items-center">
                   <div className="space-y-1">
                     <div className="flex items-center space-x-2">
-                      <span className="font-medium text-sm">
-                        #{order.orderId}
-                      </span>
+                      <span className="font-medium text-sm">#{order.orderId}</span>
                       <span className="text-xs bg-gray-100 px-2 py-1 rounded">
                         Table {order.tableName}
                       </span>
@@ -1030,24 +869,13 @@ const handleDiscountValueChange = (value) => {
                     </div>
                   </div>
                   <div className="flex flex-col space-y-1">
-                    <select
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          handleUnpaidPaymentMethodChange(order, e.target.value);
-                          e.target.value = "";
-                        }
-                      }}
-                      className="text-xs border rounded px-2 py-1 bg-red-100 text-red-700 font-medium hover:bg-red-200 transition-colors"
-                      defaultValue=""
-                    >
-                      <option value="" disabled>
-                        Settle
-                      </option>
-                      <option value="cash">Cash</option>
-                      <option value="card">Card</option>
-                      <option value="upi">UPI</option>
-                      <option value="room">Hotel Bill</option>
-                    </select>
+                   <button
+  onClick={() => handleUnpaidPaymentMethodChange(order, "cash")} 
+  className="text-xs border rounded px-3 py-1.5 bg-red-100 text-red-700 font-medium hover:bg-red-200 transition-colors"
+>
+  Settle
+</button>
+
                   </div>
                 </div>
               </div>
@@ -1061,19 +889,16 @@ const handleDiscountValueChange = (value) => {
   const renderContent = () => {
     if (activeTab === "KOT") {
       const hasKOTItems = (kotcurrent?.items || []).length > 0;
-
       return (
         <>
           <div className="p-3">
             <UnpaidOrdersSection />
           </div>
-
           <div className="flex-1 overflow-y-auto p-2 sm:p-4 max-h-[30rem] max406:max-h-[15rem]">
             {(kotcurrent?.items || []).map((item) => (
               <ItemControls key={item.itemId} item={item} />
             ))}
           </div>
-
           <div className="p-2 sm:p-4 border-b space-y-2">
             <div className="flex gap-2">
               <div className="relative w-1/2">
@@ -1114,13 +939,11 @@ const handleDiscountValueChange = (value) => {
               </div>
             </div>
           </div>
-
           <div className="p-4 border-t space-y-2">
             <div className="flex justify-between font-bold text-sm sm:text-base mt-3 mb-3">
               <span>Total Items:</span>
               <span>{totalKotQuantity}</span>
             </div>
-
             {printerType !== "local" && (
               <button
                 onClick={() => setShowPrintModal(true)}
@@ -1129,7 +952,6 @@ const handleDiscountValueChange = (value) => {
                 Change Printer Mode
               </button>
             )}
-
             {institutionData.saveKot === "Yes" && (
               <button
                 onClick={async () => await saveKOT(selectedTable)}
@@ -1141,7 +963,6 @@ const handleDiscountValueChange = (value) => {
                 Save KOT
               </button>
             )}
-
             <button
               onClick={handlePrintKOT}
               className={`w-full py-2 ${
@@ -1151,12 +972,10 @@ const handleDiscountValueChange = (value) => {
             >
               Print KOT
             </button>
-
             {printerType !== "local" && (
               <p
                 className={`text-sm ${
-                  printMode === "local" ||
-                  (printMode === "bluetooth" && bluetoothConnected)
+                  printMode === "local" || (printMode === "bluetooth" && bluetoothConnected)
                     ? "text-green-500"
                     : "text-red-500"
                 }`}
@@ -1169,43 +988,26 @@ const handleDiscountValueChange = (value) => {
               </p>
             )}
           </div>
-
           {showPrintModal && <PrintModal />}
         </>
       );
     } else {
       if (splitBillMode) {
-        const selectedOrder = orderGroups.find(
-          (group) => group.orderId === selectedOrderId
-        );
+        const selectedOrder = orderGroups.find((group) => group.orderId === selectedOrderId);
         const orderItems = selectedOrder?.items || [];
-        const {
-          billSubtotal,
-          taxableSubtotal,
-          cgst,
-          sgst,
-          serviceTax,
-          finalTotal,
-          discountAmount,
-        } = calculateTotals(orderItems);
-
+        const { billSubtotal, taxableSubtotal, cgst, sgst, serviceTax, finalTotal, discountAmount } =
+          calculateTotals(orderItems);
         return (
           <>
             <div className="p-3">
               <UnpaidOrdersSection />
             </div>
-
             {renderOrderTabs()}
-
             <div className="flex-1 overflow-y-auto p-2 sm:p-4 max-h-[19rem] max406:max-h-[10rem]">
               {selectedOrderId ? (
                 orderItems.length > 0 ? (
                   orderItems.map((item) => (
-                    <ItemControls
-                      key={item.itemId}
-                      item={item}
-                      orderId={selectedOrderId}
-                    />
+                    <ItemControls key={item.itemId} item={item} orderId={selectedOrderId} />
                   ))
                 ) : (
                   <p className="text-sm text-gray-500">No items in this order</p>
@@ -1214,7 +1016,6 @@ const handleDiscountValueChange = (value) => {
                 <p className="text-sm text-gray-500">Please select an order</p>
               )}
             </div>
-
             <div className="p-2 sm:p-4 border-b space-y-3">
               <div className="flex gap-2">
                 <div className="relative w-1/2">
@@ -1238,24 +1039,20 @@ const handleDiscountValueChange = (value) => {
                   />
                 </div>
               </div>
-
-              {/* Enhanced Discount Section */}
-             <DiscountSection 
-  orderItems={orderItems} 
-  calculateTotals={calculateTotals}
-  getCurrentDiscountInfo={getCurrentDiscountInfo}
-  handleDiscountMethodChange={handleDiscountMethodChange}
-  handleDiscountValueChange={handleDiscountValueChange}
-  discountValueInputRef={discountValueInputRef}
-/>
+              <DiscountSection
+                orderItems={orderItems}
+                calculateTotals={calculateTotals}
+                getCurrentDiscountInfo={getCurrentDiscountInfo}
+                handleDiscountMethodChange={handleDiscountMethodChange}
+                handleDiscountValueChange={handleDiscountValueChange}
+                discountValueInputRef={discountValueInputRef}
+              />
             </div>
-
             <div className="border-t p-4 space-y-2">
               <div className="flex justify-between text-xs sm:text-sm">
                 <span>Subtotal:</span>
                 <span>₹{billSubtotal.toFixed(2)}</span>
               </div>
-
               {discountAmount > 0 && (
                 <div className="flex justify-between text-xs sm:text-sm text-red-600">
                   <span>
@@ -1268,50 +1065,39 @@ const handleDiscountValueChange = (value) => {
                   <span>-₹{discountAmount.toFixed(2)}</span>
                 </div>
               )}
-
               <div className="flex justify-between text-xs sm:text-sm">
                 <span>CGST ({institutionData?.cgst ?? 2.5}%):</span>
                 <span>₹{cgst.toFixed(2)}</span>
               </div>
-
               <div className="flex justify-between text-xs sm:text-sm">
                 <span>SGST ({institutionData?.sgst ?? 2.5}%):</span>
                 <span>₹{sgst.toFixed(2)}</span>
               </div>
-
               {serviceTax > 0 && (
                 <div className="flex justify-between text-xs sm:text-sm">
-                  <span>
-                    Service Tax ({institutionData?.serviceTax ?? 0}%):
-                  </span>
+                  <span>Service Tax ({institutionData?.serviceTax ?? 0}%):</span>
                   <span>₹{serviceTax.toFixed(2)}</span>
                 </div>
               )}
-
               <div className="flex justify-between font-bold text-sm sm:text-base border-t pt-2">
                 <span>Total:</span>
                 <span>₹{finalTotal.toFixed(2)}</span>
               </div>
             </div>
-
             <div className="p-4 mb-10 space-y-2">
               <button
                 onClick={handlePrintBill}
                 className={`w-full py-2 ${
-                  selectedOrderId && orderItems.length > 0
-                    ? "bg-blue-500"
-                    : "bg-gray-400"
+                  selectedOrderId && orderItems.length > 0 ? "bg-blue-500" : "bg-gray-400"
                 } text-white rounded-lg text-xs sm:text-sm`}
                 disabled={!selectedOrderId || orderItems.length === 0}
               >
                 Print Selected Order Bill
               </button>
-
               {printerType !== "local" && (
                 <p
                   className={`text-sm ${
-                    printMode === "local" ||
-                    (printMode === "bluetooth" && bluetoothConnected)
+                    printMode === "local" || (printMode === "bluetooth" && bluetoothConnected)
                       ? "text-green-500"
                       : "text-red-500"
                   }`}
@@ -1323,21 +1109,16 @@ const handleDiscountValueChange = (value) => {
                     : "Print Mode: Bluetooth - Not connected"}
                 </p>
               )}
-
               <button
                 onClick={handleSettleBill}
                 className={`w-full py-2 ${
-                  selectedOrderId && orderItems.length > 0
-                    ? "bg-green-500"
-                    : "bg-gray-400"
+                  selectedOrderId && orderItems.length > 0 ? "bg-green-500" : "bg-gray-400"
                 } text-white rounded-lg text-xs sm:text-sm`}
                 disabled={!selectedOrderId || orderItems.length === 0}
               >
                 Settle Selected Order
               </button>
-
-              {(institutionData.institution === "bhuk2323" ||
-                institutionData.reprintKot === "Yes") && (
+              {(institutionData.institution === "bhuk2323" || institutionData.reprintKot === "Yes") && (
                 <button
                   onClick={handleReprintKOT}
                   className={`w-full py-2 ${
@@ -1349,7 +1130,6 @@ const handleDiscountValueChange = (value) => {
                 </button>
               )}
             </div>
-
             {movingItem && <MoveItemModal />}
             {showReprintKOT && (
               <ReprintKOT
@@ -1365,49 +1145,39 @@ const handleDiscountValueChange = (value) => {
                 setShowReprintKOT={setShowReprintKOT}
               />
             )}
-            {showStaffSelectionModal && <StaffSelectionModal
-  showStaffSelectionModal={showStaffSelectionModal}
-  setShowStaffSelectionModal={setShowStaffSelectionModal}
-  selectedStaff={selectedStaff}
-  setSelectedStaff={setSelectedStaff}
-  staffData={staffData}
-  selectedTable={selectedTable}
-  institutionData={institutionData}
-  splitBillMode={splitBillMode}
-  selectedOrderId={selectedOrderId}
-  fetchPendingOrders={fetchPendingOrders}
-  setLoader={setLoader}
-/>}
+            {showStaffSelectionModal && (
+              <StaffSelectionModal
+                showStaffSelectionModal={showStaffSelectionModal}
+                setShowStaffSelectionModal={setShowStaffSelectionModal}
+                selectedStaff={selectedStaff}
+                setSelectedStaff={setSelectedStaff}
+                staffData={staffData}
+                selectedTable={selectedTable}
+                institutionData={institutionData}
+                splitBillMode={splitBillMode}
+                selectedOrderId={selectedOrderId}
+                fetchPendingOrders={fetchPendingOrders}
+                setLoader={setLoader}
+              />
+            )}
           </>
         );
       } else {
         const hasItems = localBillItems.length > 0;
-        const {
-          billSubtotal,
-          taxableSubtotal,
-          cgst,
-          sgst,
-          serviceTax,
-          finalTotal,
-          discountAmount,
-        } = calculateTotals(localBillItems);
-
+        const { billSubtotal, taxableSubtotal, cgst, sgst, serviceTax, finalTotal, discountAmount } =
+          calculateTotals(localBillItems);
         return (
           <>
             <div className="p-3">
               <UnpaidOrdersSection />
             </div>
-
             <div className="flex-1 overflow-y-auto p-2 sm:p-4 max-h-[19rem] max406:max-h-[10rem]">
               {localBillItems.length > 0 ? (
-                localBillItems.map((item) => (
-                  <ItemControls key={item.itemId} item={item} />
-                ))
+                localBillItems.map((item) => <ItemControls key={item.itemId} item={item} />)
               ) : (
                 <p className="text-sm text-gray-500">No bill items available</p>
               )}
             </div>
-
             <div className="p-2 sm:p-4 border-b space-y-3">
               <div className="flex gap-2">
                 <div className="relative w-1/2">
@@ -1447,24 +1217,20 @@ const handleDiscountValueChange = (value) => {
                   />
                 </div>
               </div>
-
-              {/* Enhanced Discount Section */}
-             <DiscountSection 
-  orderItems={localBillItems} 
-  calculateTotals={calculateTotals}
-  getCurrentDiscountInfo={getCurrentDiscountInfo}
-  handleDiscountMethodChange={handleDiscountMethodChange}
-  handleDiscountValueChange={handleDiscountValueChange}
-  discountValueInputRef={discountValueInputRef}
-/>
+              <DiscountSection
+                orderItems={localBillItems}
+                calculateTotals={calculateTotals}
+                getCurrentDiscountInfo={getCurrentDiscountInfo}
+                handleDiscountMethodChange={handleDiscountMethodChange}
+                handleDiscountValueChange={handleDiscountValueChange}
+                discountValueInputRef={discountValueInputRef}
+              />
             </div>
-
             <div className="border-t p-4 space-y-2">
               <div className="flex justify-between text-xs sm:text-sm">
                 <span>Subtotal:</span>
                 <span>₹{billSubtotal.toFixed(2)}</span>
               </div>
-
               {discountAmount > 0 && (
                 <div className="flex justify-between text-xs sm:text-sm text-red-600">
                   <span>
@@ -1477,32 +1243,25 @@ const handleDiscountValueChange = (value) => {
                   <span>-₹{discountAmount.toFixed(2)}</span>
                 </div>
               )}
-
               <div className="flex justify-between text-xs sm:text-sm">
                 <span>CGST ({institutionData?.cgst ?? 2.5}%):</span>
                 <span>₹{cgst.toFixed(2)}</span>
               </div>
-
               <div className="flex justify-between text-xs sm:text-sm">
                 <span>SGST ({institutionData?.sgst ?? 2.5}%):</span>
                 <span>₹{sgst.toFixed(2)}</span>
               </div>
-
               {serviceTax > 0 && (
                 <div className="flex justify-between text-xs sm:text-sm">
-                  <span>
-                    Service Tax ({institutionData?.serviceTax ?? 0}%):
-                  </span>
+                  <span>Service Tax ({institutionData?.serviceTax ?? 0}%):</span>
                   <span>₹{serviceTax.toFixed(2)}</span>
                 </div>
               )}
-
               <div className="flex justify-between font-bold text-sm sm:text-base border-t pt-2">
                 <span>Total:</span>
                 <span>₹{finalTotal.toFixed(2)}</span>
               </div>
             </div>
-
             <div className="p-4 mb-10 space-y-2">
               <button
                 onClick={handlePrintBill}
@@ -1513,12 +1272,10 @@ const handleDiscountValueChange = (value) => {
               >
                 Print Bill
               </button>
-
               {printerType !== "local" && (
                 <p
                   className={`text-sm ${
-                    printMode === "local" ||
-                    (printMode === "bluetooth" && bluetoothConnected)
+                    printMode === "local" || (printMode === "bluetooth" && bluetoothConnected)
                       ? "text-green-500"
                       : "text-red-500"
                   }`}
@@ -1530,7 +1287,6 @@ const handleDiscountValueChange = (value) => {
                     : "Print Mode: Bluetooth - Not connected"}
                 </p>
               )}
-
               <button
                 onClick={handleSettleBill}
                 className={`w-full py-2 ${
@@ -1540,9 +1296,7 @@ const handleDiscountValueChange = (value) => {
               >
                 Settle Payment
               </button>
-
-              {(institutionData.institution === "bhuk2323" ||
-                institutionData.reprintKot === "Yes") && (
+              {(institutionData.institution === "bhuk2323" || institutionData.reprintKot === "Yes") && (
                 <button
                   onClick={handleReprintKOT}
                   className={`w-full py-2 ${
@@ -1554,7 +1308,6 @@ const handleDiscountValueChange = (value) => {
                 </button>
               )}
             </div>
-
             {showReprintKOT && (
               <ReprintKOT
                 table={selectedTable}
@@ -1569,19 +1322,21 @@ const handleDiscountValueChange = (value) => {
                 setShowReprintKOT={setShowReprintKOT}
               />
             )}
-            {showStaffSelectionModal && <StaffSelectionModal
-  showStaffSelectionModal={showStaffSelectionModal}
-  setShowStaffSelectionModal={setShowStaffSelectionModal}
-  selectedStaff={selectedStaff}
-  setSelectedStaff={setSelectedStaff}
-  staffData={staffData}
-  selectedTable={selectedTable}
-  institutionData={institutionData}
-  splitBillMode={splitBillMode}
-  selectedOrderId={selectedOrderId}
-  fetchPendingOrders={fetchPendingOrders}
-  setLoader={setLoader}
-/>}
+            {showStaffSelectionModal && (
+              <StaffSelectionModal
+                showStaffSelectionModal={showStaffSelectionModal}
+                setShowStaffSelectionModal={setShowStaffSelectionModal}
+                selectedStaff={selectedStaff}
+                setSelectedStaff={setSelectedStaff}
+                staffData={staffData}
+                selectedTable={selectedTable}
+                institutionData={institutionData}
+                splitBillMode={splitBillMode}
+                selectedOrderId={selectedOrderId}
+                fetchPendingOrders={fetchPendingOrders}
+                setLoader={setLoader}
+              />
+            )}
           </>
         );
       }
@@ -1589,10 +1344,7 @@ const handleDiscountValueChange = (value) => {
   };
 
   const ItemControls = ({ item, orderId }) => (
-    <div
-      key={item.itemId}
-      className="flex items-center justify-between p-3 border-b group"
-    >
+    <div key={item.itemId} className="flex items-center justify-between p-3 border-b group">
       <div className="flex-1">
         <div className="flex justify-between">
           <p className="font-medium text-sm">{item.itemName || item.name}</p>
@@ -1609,9 +1361,7 @@ const handleDiscountValueChange = (value) => {
             </button>
           ) : (
             <button
-              onClick={() =>
-                handleRemoveItemFromKOT(selectedTable?.id, item.itemId)
-              }
+              onClick={() => handleRemoveItemFromKOT(selectedTable?.id, item.itemId)}
               className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
             >
               <X className="w-4 h-4" />
@@ -1622,11 +1372,7 @@ const handleDiscountValueChange = (value) => {
           <div className="flex items-center">
             <button
               onClick={() =>
-                handleUpdateItemQuantity(
-                  selectedTable?.id,
-                  item.itemId,
-                  item.quantity - 1
-                )
+                handleUpdateItemQuantity(selectedTable?.id, item.itemId, item.quantity - 1)
               }
               className="w-6 h-6 flex items-center justify-center border rounded"
             >
@@ -1635,20 +1381,14 @@ const handleDiscountValueChange = (value) => {
             <span className="mx-2 text-sm">{item.quantity}</span>
             <button
               onClick={() =>
-                handleUpdateItemQuantity(
-                  selectedTable?.id,
-                  item.itemId,
-                  item.quantity + 1
-                )
+                handleUpdateItemQuantity(selectedTable?.id, item.itemId, item.quantity + 1)
               }
               className="w-6 h-6 flex items-center justify-center border rounded"
             >
               +
             </button>
           </div>
-          <span className="text-sm">
-            ₹{(item.price * item.quantity).toFixed(2)}
-          </span>
+          <span className="text-sm">₹{(item.price * item.quantity).toFixed(2)}</span>
         </div>
         {splitBillMode && orderId && (
           <div className="mt-1">
@@ -1706,122 +1446,16 @@ const handleDiscountValueChange = (value) => {
     </div>
   );
 
-  const SettleModal = () => {
-    if (!showSettleModal || !selectedUnpaidOrder) return null;
-
-    const needsRoom = selectedUnpaidOrder.paymentMethod === "ROOM";
-    const hasRoom = !!selectedUnpaidOrder.bookingInfo?.roomNumber;
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-        <div className="bg-white rounded-lg shadow-xl p-6 w-80">
-          <h3 className="text-lg font-semibold mb-4 text-center">
-            Confirm Settlement
-          </h3>
-          <div className="space-y-2 mb-6">
-            <div className="flex justify-between">
-              <span className="text-sm text-gray-600">Order ID:</span>
-              <span className="text-sm font-medium">
-                #{selectedUnpaidOrder.orderId}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-gray-600">Table:</span>
-              <span className="text-sm font-medium">
-                {selectedUnpaidOrder.tableName}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-gray-600">Amount:</span>
-              <span className="text-sm font-bold text-green-600">
-                ₹{Number(selectedUnpaidOrder.totalAmount || 0).toFixed(2)}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-gray-600">Payment Method:</span>
-              <span className="text-sm font-medium capitalize">
-                {selectedUnpaidOrder.paymentMethod}
-              </span>
-            </div>
-            {needsRoom && (
-              <div className="mt-3">
-                <label className="block text-sm text-gray-600 mb-1">
-                  Select Room:
-                </label>
-                <select
-                  value={selectedUnpaidOrder.bookingInfo?.bookingId || ""}
-                  onChange={(e) => {
-                    const bookingId = e.target.value;
-                    const booking = (hotelBookings || []).find(
-                      (b) => b.bookingId === bookingId
-                    );
-                    setSelectedUnpaidOrder((prev) => ({
-                      ...prev,
-                      bookingInfo: booking
-                        ? {
-                            bookingId: booking.bookingId,
-                            roomNumber: booking.roomNumber,
-                          }
-                        : { bookingId: "", roomNumber: "" },
-                    }));
-                  }}
-                  className="w-full border rounded-md p-2 text-sm"
-                >
-                  <option value="" disabled>
-                    Select a room
-                  </option>
-                  {(hotelBookings || []).map((b) => (
-                    <option key={b.bookingId} value={b.bookingId}>
-                      Room {b.roomNumber}{" "}
-                      {b.guestName ? `— ${b.guestName}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-          <div className="flex space-x-3">
-            <button
-              onClick={() => {
-                setShowSettleModal(false);
-                setSelectedUnpaidOrder(null);
-              }}
-              className="flex-1 py-2 px-4 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={confirmSettleOrder}
-              disabled={needsRoom && !hasRoom}
-              className={`flex-1 py-2 px-4 rounded-md text-white transition-colors ${
-                needsRoom && !hasRoom
-                  ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-green-600 hover:bg-green-700"
-              }`}
-            >
-              Confirm
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
- const MoveItemModal = () => {
+  const MoveItemModal = () => {
     if (!movingItem) return null;
-
-    const otherOrders = orderGroups.filter(
-      (group) => group.orderId !== selectedOrderId
-    );
+    const otherOrders = orderGroups.filter((group) => group.orderId !== selectedOrderId);
     const [moveQuantity, setMoveQuantity] = useState(1);
     const maxQuantity = movingItem.quantity;
-
     useEffect(() => {
       if (otherOrders.length === 1 && !targetOrderId) {
         setTargetOrderId(otherOrders[0].orderId);
       }
     }, [otherOrders, targetOrderId]);
-
     return (
       <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white p-6 rounded-lg shadow-lg relative max-w-md w-full">
@@ -1842,21 +1476,15 @@ const handleDiscountValueChange = (value) => {
               <path d="M6 18L18 6M6 6l12 12"></path>
             </svg>
           </button>
-          <h2 className="text-lg font-semibold mb-4">
-            Move Item to Another Order
-          </h2>
-          <p className="mb-2">
-            Moving: {movingItem.itemName || movingItem.name}
-          </p>
+          <h2 className="text-lg font-semibold mb-4">Move Item to Another Order</h2>
+          <p className="mb-2">Moving: {movingItem.itemName || movingItem.name}</p>
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Select Quantity to Move:
             </label>
             <div className="flex items-center">
               <button
-                onClick={() =>
-                  setMoveQuantity((prev) => Math.max(1, prev - 1))
-                }
+                onClick={() => setMoveQuantity((prev) => Math.max(1, prev - 1))}
                 className="w-8 h-8 flex items-center justify-center border rounded-l"
                 disabled={moveQuantity <= 1}
               >
@@ -1876,23 +1504,17 @@ const handleDiscountValueChange = (value) => {
                 className="w-16 text-center border-t border-b h-8"
               />
               <button
-                onClick={() =>
-                  setMoveQuantity((prev) => Math.min(maxQuantity, prev + 1))
-                }
+                onClick={() => setMoveQuantity((prev) => Math.min(maxQuantity, prev + 1))}
                 className="w-8 h-8 flex items-center justify-center border rounded-r"
                 disabled={moveQuantity >= maxQuantity}
               >
                 +
               </button>
-              <span className="ml-2 text-sm text-gray-500">
-                of {maxQuantity} available
-              </span>
+              <span className="ml-2 text-sm text-gray-500">of {maxQuantity} available</span>
             </div>
           </div>
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700">
-              Select Target Order:
-            </label>
+            <label className="block text-sm font-medium text-gray-700">Select Target Order:</label>
             <select
               className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
               value={targetOrderId || ""}
@@ -1915,18 +1537,11 @@ const handleDiscountValueChange = (value) => {
             </button>
             <button
               onClick={() =>
-                moveItemBetweenOrders(
-                  movingItem,
-                  selectedOrderId,
-                  targetOrderId,
-                  moveQuantity
-                )
+                moveItemBetweenOrders(movingItem, selectedOrderId, targetOrderId, moveQuantity)
               }
               disabled={!targetOrderId}
               className={`px-4 py-2 ${
-                targetOrderId
-                  ? "bg-blue-600 hover:bg-blue-700"
-                  : "bg-gray-300"
+                targetOrderId ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-300"
               } border border-transparent rounded-md shadow-sm text-sm font-medium text-white`}
             >
               Move {moveQuantity} Item{moveQuantity > 1 ? "s" : ""}
@@ -1936,24 +1551,23 @@ const handleDiscountValueChange = (value) => {
       </div>
     );
   };
+
   return (
     <>
       <div className="flex-1 flex flex-col">{renderContent()}</div>
-      <SettleModal />
-    <StaffSelectionModal
-  showStaffSelectionModal={showStaffSelectionModal}
-  setShowStaffSelectionModal={setShowStaffSelectionModal}
-  selectedStaff={selectedStaff}
-  setSelectedStaff={setSelectedStaff}
-  staffData={staffData}
-  selectedTable={selectedTable}
-  institutionData={institutionData}
-  splitBillMode={splitBillMode}
-  selectedOrderId={selectedOrderId}
-  fetchPendingOrders={fetchPendingOrders}
-  setLoader={setLoader}
-/>
-      <MoveItemModal />
+      <StaffSelectionModal
+        showStaffSelectionModal={showStaffSelectionModal}
+        setShowStaffSelectionModal={setShowStaffSelectionModal}
+        selectedStaff={selectedStaff}
+        setSelectedStaff={setSelectedStaff}
+        staffData={staffData}
+        selectedTable={selectedTable}
+        institutionData={institutionData}
+        splitBillMode={splitBillMode}
+        selectedOrderId={selectedOrderId}
+        fetchPendingOrders={fetchPendingOrders}
+        setLoader={setLoader}
+      />
       {showOrderPaymentModal && (
         <OrderPaymentModal
           selectedTable={selectedTable}
@@ -1964,7 +1578,23 @@ const handleDiscountValueChange = (value) => {
           fetchTableData={fetchTableData}
           fetchPendingOrders={fetchPendingOrders}
           customerDetails={customerDetails}
-          // Pass discount props
+          discountData={discountData}
+          setDiscountData={setDiscountData}
+        />
+      )}
+      {showUnpaidOrderPaymentModal && selectedUnpaidOrder && (
+        <UnpaidOrderPaymentModal
+          selectedTable={selectedTable}
+          institutionData={institutionData}
+          onClose={() => {
+            setShowUnpaidOrderPaymentModal(false);
+            setSelectedUnpaidOrder(null);
+          }}
+          unpaidOrder={selectedUnpaidOrder}
+          settleUnpaidOrder={confirmSettleOrder}
+          fetchTableData={fetchTableData}
+          fetchPendingOrders={fetchPendingOrders}
+          customerDetails={customerDetails}
           discountData={discountData}
           setDiscountData={setDiscountData}
         />
@@ -1980,5 +1610,4 @@ const handleDiscountValueChange = (value) => {
   );
 };
 
-export default OrderContent; 
-    
+export default OrderContent;

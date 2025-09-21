@@ -190,7 +190,17 @@ const [tables, setTables] = useState([
     try {
       const kotnow = KOTByTable[tableIdStr] || { items: [], totalAmount: 0 };
       const { billSubtotal, taxableSubtotal, cgst, sgst, serviceTax, finalTotal } = calculateTotals(kotnow.items);
-
+    const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
+    // Resolve bookingId for hotel tables
+    let bookingid = null;
+   if (isHotelTable) {
+      const roomNumber = tableIdStr.replace(/^hotel/i, "");
+      const booking = hotelBookings?.find((b) => String(b.roomNumber) === String(roomNumber));
+      bookingid = booking?.bookingId;
+      if (!bookingid) {
+        console.warn(`No booking found for room number ${roomNumber}. Skipping amend-booking API call.`);
+      }
+    }
       await API.post("main", `/any/create-order/${institutionData.institution}`, {
         body: {
           type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
@@ -207,7 +217,13 @@ const [tables, setTables] = useState([
           tableOccupied: true
         },
       });
-
+if (isHotelTable) {
+       await API.put("frontdesk" `/offline/amend-booking/${bookingid}?institutionId=${institutionData.institution}`, {
+        body: {
+          restaurant_hold: true,
+        },
+      });
+    }
       await API.post("main", `/admin/orders-bill/${institutionData.institution}/${tableIdStr}`, {
         body: {
           name: customerDetails[tableIdStr]?.name || "",
@@ -584,74 +600,101 @@ const [tables, setTables] = useState([
   };
 
   // Function to handle settling an unpaid order
-  const settleUnpaidOrder = async (order, paymentMethod, bookingInfo = null) => {
-    if (!order || !paymentMethod) {
-      toast.error("Order or payment method not selected.");
-      return;
+const settleUnpaidOrder = async (order, paymentMethod, settleBody = null) => {
+  if (!order || !paymentMethod) {
+    toast.error("Order or payment method not selected.");
+    return;
+  }
+
+  setLoader(true);
+  try {
+    const tableIdStr = String(order.tableName);
+    let booking = null;
+
+    // Handle booking logic for hotel orders
+    if (settleBody?.bookingInfo && settleBody.bookingInfo.bookingId) {
+      booking = hotelBookings?.find((b) => String(b.bookingId) === String(settleBody.bookingInfo.bookingId)) || null;
+    } else {
+      const isHotelOrder = tableIdStr.toLowerCase().startsWith("hotel");
+      if (isHotelOrder) {
+        const roomNumber = tableIdStr.replace(/^hotel/i, "");
+        booking = hotelBookings?.find((b) => String(b.roomNumber) === String(roomNumber)) || null;
+      }
     }
 
-    setLoader(true);
-    try {
-      const tableIdStr = String(order.tableName);
-      let booking = null;
+    // Add hotel service if booking exists
+    if (booking) {
+      const items = order.items || [];
+      const totalFoodBill = items.reduce((sum, item) => sum + (item.type !== "bar" ? item.price * item.quantity : 0), 0);
+      const totalBarBill = items.reduce((sum, item) => sum + (item.type === "bar" ? item.price * item.quantity : 0), 0);
 
-      if (bookingInfo && bookingInfo.bookingId) {
-        booking = hotelBookings?.find((b) => String(b.bookingId) === String(bookingInfo.bookingId)) || null;
-      } else {
-        const isHotelOrder = tableIdStr.toLowerCase().startsWith("hotel");
-        if (isHotelOrder) {
-          const roomNumber = tableIdStr.replace(/^hotel/i, "");
-          booking = hotelBookings?.find((b) => String(b.roomNumber) === String(roomNumber)) || null;
-        }
+      const totals = calculateTotals(order.items || []);
+      const totalFoodBillWithGST = totalFoodBill + totals.cgst + totals.sgst;
+
+      await addHotelService(booking?.bookingId, {
+        [booking.roomNumber]: {
+          [new Date().toISOString().split("T")[0]]: [
+            {
+              food_charges: totalFoodBillWithGST,
+              extra_bed_charges: 0,
+              laundry_charges: 0,
+              manual_charges: 0,
+              minibar_charges: totalBarBill,
+              order_id: order.orderId,
+            },
+          ],
+        },
+      });
+    }
+
+    // Prepare the API body
+    const apiBody = {
+      paymentStatus: paymentMethod === "Void" ? false : true,
+      paymentMode: "offline",
+      type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
+      table: false,
+    };
+
+    // For partial payments, include paymentMethods array; otherwise, use single paymentMethod
+    if (settleBody?.paymentMethods && paymentMethod === "Multiple") {
+      apiBody.paymentMethods = settleBody.paymentMethods;
+      if (settleBody.narration) {
+        apiBody.narration = settleBody.narration;
       }
+    } else {
+      apiBody.paymentMethod = paymentMethod;
+      if (settleBody?.meta) {
+        apiBody.meta = settleBody.meta;
+      }
+      if (settleBody?.narration) {
+        apiBody.narration = settleBody.narration;
+      }
+    }
 
-      if (booking) {
-        const items = order.items || [];
-        const totalFoodBill = items.reduce((sum, item) => sum + (item.type !== "bar" ? item.price * item.quantity : 0), 0);
-        const totalBarBill = items.reduce((sum, item) => sum + (item.type === "bar" ? item.price * item.quantity : 0), 0);
-
-        // Call addHotelService with the bookingId we resolved
-        const totals = calculateTotals(order.items|| []);
-const totalFoodBillWithGST = totalFoodBill + totals.cgst + totals.sgst;
-await addHotelService(booking?.bookingId, {
-  [booking.roomNumber]: {
-    [new Date().toISOString().split("T")[0]]: [
+    // Make the API call to settle the order
+    await API.post(
+      "main",
+      `/admin/settle-bill-order/${institutionData.institution}/${tableIdStr}/${order.orderId}`,
       {
-        food_charges: totalFoodBillWithGST, // Include GST
-        extra_bed_charges: 0,
-        laundry_charges: 0,
-        manual_charges: 0,
-        minibar_charges: totalBarBill, // Bar items remain unchanged
-        order_id: order.orderId,
-      },
-    ],
-  },
-});
+        body: apiBody,
       }
+    );
 
-      await API.post(
-        "main",
-        `/admin/settle-bill-order/${institutionData.institution}/${tableIdStr}/${order.orderId}`,
-        {
-          body: {
-            paymentStatus: true,
-            paymentMode: "offline",
-            paymentMethod: paymentMethod,
-            table: false,
-            type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
-          },
-        }
-      );
-
-      toast.success(`Order ${order.orderId} settled successfully!`);
-      await fetchAllTableData(); // Refresh data
-    } catch (error) {
-      console.error("Error settling unpaid order:", error);
-      toast.error("Failed to settle order.");
-    } finally {
-      setLoader(false);
+    toast.success(`Order ${order.orderId} settled successfully!`);
+    await fetchAllTableData(); // Refresh data
+  } catch (error) {
+    console.error("Error settling unpaid order:", error);
+    let errorMessage = "Failed to settle order.";
+    if (error?.response?.data) {
+      const apiError = error.response.data;
+      if (apiError.message) errorMessage += ` - ${apiError.message}`;
+      if (apiError.error) errorMessage += `: ${apiError.error}`;
     }
-  };
+    toast.error(errorMessage);
+  } finally {
+    setLoader(false);
+  }
+};
 
   const processTableData = (tableId, tableInfo) => {
     if (!tableId || !tableInfo) return;
@@ -946,7 +989,19 @@ await addHotelService(booking?.bookingId, {
         : responseData.some(order => order.tableName === tableIdStr);
 
       const { billSubtotal, taxableSubtotal, cgst, sgst, serviceTax, finalTotal } = calculateTotals(tableDataForTable.mergedItems);
-
+const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
+    // Resolve bookingId for hotel tables
+    let bookingid = null;
+    let guestid=null;
+   if (isHotelTable) {
+      const roomNumber = tableIdStr.replace(/^hotel/i, "");
+      const booking = hotelBookings?.find((b) => String(b.roomNumber) === String(roomNumber));
+      bookingid = booking?.bookingId;
+      guestid=booking?.guest_id;
+      if (!bookingid) {
+        console.warn(`No booking found for room number ${roomNumber}. Skipping amend-booking API call.`);
+      }
+    }
       if (!hasExistingOrder) {
         await API.post("main", `/any/create-order/${institutionData.institution}`, {
           body: {
@@ -964,7 +1019,19 @@ await addHotelService(booking?.bookingId, {
             type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
           },
         });
-
+if (isHotelTable) {
+      await API.put("frontdesk", `/offline/amend-booking/${bookingid}?institutionId=${institutionData.institution}`, {
+         body: {
+        bookingData: {
+          booking_id: bookingid,    
+          restaurant_hold: true          
+        },
+        guestDetailsData: {
+          guest_id: guestid    
+        }
+      },
+      });
+    }
         await API.post("main", `/admin/orders-kot/${institutionData.institution}/${tableIdStr}`, {
           body: { items: tableDataForTable.mergedItems,type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe", }
         });

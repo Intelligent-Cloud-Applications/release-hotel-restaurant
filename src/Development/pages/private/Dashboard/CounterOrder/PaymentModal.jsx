@@ -40,15 +40,37 @@ const PaymentModal = ({
   const [showAddCompanyForm, setShowAddCompanyForm] = useState(false);
   const [error, setError] = useState(null);
   const [managementOptions, setManagementOptions] = useState([
-    { value: "Md Sir", label: "Md Sir" },
-    { value: "Staff", label: "Staff" },
-    { value: "Police Station", label: "Police Station" },
+   { value: "Md Sir", label: "Md Sir" },
+    { value: "GM Sir", label: "GM Sir" },
+    { value: "Md House", label: "Md House" },
+    { value: "House Guest", label: "House Guest" },
+    { value: "Room Compliment", label: "Room Compliment" },
+    { value: "Account Staff", label: "Account Staff" },
+    { value: "Md Guest", label: "Md Guest" },
+    { value: "F.O.M", label: "F.O.M" },
+    { value: "HK EXE", label: "HK EXE" },
+    { value: "HR Manager", label: "HR Manager" },
+    { value: "Guest Entartaintment", label: "Guest Entartaintment" },
+    { value: "Ac Manager", label: "Ac Manager" },
+    { value: "Maintanence Eng", label: "Maintanence Eng" },
+    { value: "EXE Chef", label: "EXE Chef" },
+    { value: "C.M.D Sir", label: "C.M.D Sir" },
+    { value: "Hotel Staff Food", label: "Hotel Staff Food" },
+    { value: "Store Keeper", label: "Store Keeper" },
+    { value: "Maintanence", label: "Maintanence" },
+    { value: "Sales Manager", label: "Sales Manager" },
+    { value: "F.O Executive", label: "F.O Executive" },
+    { value: "EDP", label: "EDP" },
+    { value: "F&B Manager", label: "F&B Manager" },
+    { value: "Town Thana", label: "Town Thana" },
+    { value: "Police Staff", label: "Police Staff" },
     { value: "custom", label: "Custom" },
   ]);
   const [customManagementInput, setCustomManagementInput] = useState("");
+  const [narration, setNarration] = useState("");
 
-  const paymentMethods = ["QR", "Cash", "Card", "BTC"];
-  const isPartialPayment = institutionData.paymentMethod === "partial";
+  const paymentMethods = ["QR", "Cash", "Card", "BTC", "Complementary", "Void"];
+  const [isPartialPayment, setIsPartialPayment] = useState(institutionData.paymentMethod === "partial");
 
   const isManagementSpecial = (() => {
     const inst = String(institutionData?.institution || "").trim();
@@ -149,33 +171,43 @@ const PaymentModal = ({
     }
   };
 
-const updateCompanyCredit = async (companyId, amount, name, orderId) => {
-  try {
-    const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
-    const creditData = {
-      date: {
-        amount: Number(amount),
-        name: name || "Unknown",
-        createdOn: new Date().toISOString().split("T")[0],
-        type: type, // Add type
-        orderId: orderId, // Add orderId
-      },
-    };
+  // ---- Updated: write credit using epoch-second key and require name ----
+  const updateCompanyCredit = async (companyId, amount, name, orderId) => {
+    try {
+      // enforce name for BTC credits
+      if (!name || String(name).trim() === "") {
+        throw new Error("Payer name is required for BTC/company credits.");
+      }
 
-    await API.patch("frontdesk", `/company`, {
-      body: {
-        credit: creditData,
-        institutionId: institutionData.institution,
-        company_id: companyId,
-      },
-    });
-    toast.success("Company credit updated successfully");
-  } catch (error) {
-    console.error("updateCompanyCredit error:", error);
-    toast.error("Failed to update company credit");
-    throw error;
-  }
-};
+      const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
+
+      // epoch seconds used as the dynamic key
+      const epochSec = Math.floor(Date.now() / 1000);
+
+      const creditData = {
+        [epochSec]: {
+          amount: Number(amount),
+          name: String(name).trim(),
+          createdOn: epochSec, // epoch seconds
+          type: type,
+          orderId: orderId,
+        },
+      };
+
+      await API.patch("frontdesk", `/company`, {
+        body: {
+          credit: creditData,
+          institutionId: institutionData.institution,
+          company_id: companyId,
+        },
+      });
+      toast.success("Company credit updated successfully");
+    } catch (error) {
+      console.error("updateCompanyCredit error:", error);
+      toast.error(error?.message || "Failed to update company credit");
+      throw error;
+    }
+  };
 
   // Fetch companies only when BTC is selected
   useEffect(() => {
@@ -186,7 +218,6 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
 
   // Handle new company form submission
   const handleAddCompany = async () => {
-    
     await createCompany({
       gstin: newCompany.gstin,
       name: newCompany.name,
@@ -364,8 +395,21 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
       setLoader(false);
       return;
     }
-    if (selectedPaymentMethod === "BTC" && !orderSource) {
-      toast.error("Please select a company for BTC payment.");
+    // Enforce payerName for BTC
+    if (selectedPaymentMethod === "BTC") {
+      if (!orderSource) {
+        toast.error("Please select a company for BTC payment.");
+        setLoader(false);
+        return;
+      }
+      if (!payerName || String(payerName).trim() === "") {
+        toast.error("Payer name is required for BTC payment.");
+        setLoader(false);
+        return;
+      }
+    }
+    if ((selectedPaymentMethod === "BTC" || selectedPaymentMethod === "Complementary") && !orderSource) {
+      toast.error(`Please select a ${selectedPaymentMethod === "BTC" ? "company" : "complementary option"}.`);
       setLoader(false);
       return;
     }
@@ -382,41 +426,41 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
         billLink = `https://manasrestaurant.tekkzy.com/receipt?orderIds=${selectedOrderId}`;
       }
       const customerPhone = customerDetails[selectedTable?.id]?.phone;
-      if (
-        customerPhone &&
-        billLink &&
-        (institutionData.institution === "bhuk2323" || institutionData.institution === "manas25")
-      ) {
-        try {
-          await API.post("main", `/admin/send-message/${institutionData.institution}`, {
-            body: {
-              customerName: customerDetails[selectedTable?.id]?.name || "",
-              customerPhone: `+91${customerPhone}`,
-              billLink: billLink,
-              companyName: institutionData.companyName,
-            },
-          });
-        } catch (msgError) {
-          console.error("Error sending message:", msgError);
-          setLoader(false);
-        }
-      }
+
       const settleBody = {
         paymentStatus: true,
         type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
         paymentMode: "offline",
         paymentMethod: selectedPaymentMethod,
         status: "delivered",
+        narration: narration,
       };
-      await API.post("main", `/admin/settle-bill/${institutionData.institution}/${tableIdStr}`, {
-        body: settleBody,
-      });
-      if (selectedPaymentMethod === "BTC") {
+      if (selectedPaymentMethod === "Complementary") {
+        settleBody.paymentMethod = "Complementary";
+        settleBody.meta = {
+          orderSource: orderSource === "custom" ? customManagementInput : orderSource,
+          payerName,
+          narration,
+        };
+      } else if (selectedPaymentMethod === "Void") {
+        settleBody.paymentStatus = false;
+        settleBody.paymentMode = null;
+        settleBody.paymentMethod = "Void";
+        settleBody.status = "voided";
+        settleBody.meta = {
+          payerName,
+          narration,
+        };
+      } else if (selectedPaymentMethod === "BTC") {
         settleBody.meta = {
           orderSource,
           payerName,
+          narration,
         };
+        // update company credit with epoch-second key
         await updateCompanyCredit(orderSource, totalBillAmount, payerName, selectedOrderId);
+      } else {
+        settleBody.narration = narration;
       }
       if (selectedPaymentMethod === "ROOM") {
         let totalFoodBill = localBillItems
@@ -426,22 +470,26 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
           .filter((item) => item.type === "bar")
           .reduce((total, item) => total + item.price * item.quantity, 0);
         const totals = calculateTotals(localBillItems || []);
-const totalFoodBillWithGST = totalFoodBill + totals.cgst + totals.sgst;
-await addHotelService(booking?.bookingId, {
-  [booking.roomNumber]: {
-    [new Date().toISOString().split("T")[0]]: [
-      {
-        food_charges: totalFoodBillWithGST, // Include GST
-        extra_bed_charges: 0,
-        laundry_charges: 0,
-        manual_charges: 0,
-        minibar_charges: totalBarBill, // Bar items remain unchanged
-        order_id: selectedOrderId,
-      },
-    ],
-  },
-});
+        const totalFoodBillWithGST = totalFoodBill + totals.cgst + totals.sgst;
+        await addHotelService(booking?.bookingId, {
+          [booking.roomNumber]: {
+            [new Date().toISOString().split("T")[0]]: [
+              {
+                food_charges: totalFoodBillWithGST, // Include GST
+                extra_bed_charges: 0,
+                laundry_charges: 0,
+                manual_charges: 0,
+                minibar_charges: totalBarBill, // Bar items remain unchanged
+                order_id: selectedOrderId,
+              },
+            ],
+          },
+        });
+        settleBody.meta = { narration };
       }
+      await API.post("main", `/admin/settle-bill/${institutionData.institution}/${tableIdStr}`, {
+        body: settleBody,
+      });
       await completePayment();
     } catch (error) {
       console.error("Payment Error:", error);
@@ -450,6 +498,8 @@ await addHotelService(booking?.bookingId, {
         const apiError = error.response.data;
         if (apiError.message) errorMessage += ` - ${apiError.message}`;
         if (apiError.error) errorMessage += `: ${apiError.error}`;
+      } else if (error?.message) {
+        errorMessage += ` - ${error.message}`;
       }
       toast.error(errorMessage);
       setLoader(false);
@@ -470,8 +520,9 @@ await addHotelService(booking?.bookingId, {
           type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
           paymentStatus: true,
           paymentMode: "offline",
-          paymentMethod: "Free",
+          paymentMethod: "Complementary",
           status: "delivered",
+          narration: narration,
           meta: {
             orderSource: orderSource === "custom" ? customManagementInput : orderSource,
             payerName,
@@ -512,9 +563,20 @@ await addHotelService(booking?.bookingId, {
     if (cardAmountFinal > 0) paymentMethodsPayload.push({ method: "Card", amount: cardAmountFinal });
     if (qrAmountFinal > 0) paymentMethodsPayload.push({ method: "QR", amount: qrAmountFinal });
     if (roomAmountFinal > 0) paymentMethodsPayload.push({ method: "ROOM", amount: roomAmountFinal });
+
+    let selectedOrderId = "";
+    if (extractedOrderIds.length > 0) {
+      selectedOrderId = extractedOrderIds[0].split(",")[0];
+    }
+
     if (btcAmountFinal > 0) {
       if (!orderSource) {
         toast.error("Please select a company for BTC payment.");
+        setLoader(false);
+        return;
+      }
+      if (!payerName || String(payerName).trim() === "") {
+        toast.error("Payer name is required for BTC payment.");
         setLoader(false);
         return;
       }
@@ -524,18 +586,17 @@ await addHotelService(booking?.bookingId, {
         meta: {
           orderSource,
           payerName,
+          narration,
         },
       });
-      await updateCompanyCredit(orderSource, btcAmountFinal, payerName, selectedOrderId);
+
+        await updateCompanyCredit(orderSource, btcAmountFinal, payerName, selectedOrderId);
     }
 
     setLoader(true);
     try {
       await saveBill();
-      let selectedOrderId = "";
-      if (extractedOrderIds.length > 0) {
-        selectedOrderId = extractedOrderIds[0].split(",")[0];
-      }
+
       const totalFoodBill = localBillItems
         .filter((item) => item.type !== "bar")
         .reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -544,28 +605,30 @@ await addHotelService(booking?.bookingId, {
         .reduce((sum, item) => sum + item.price * item.quantity, 0);
       if (roomAmountFinal > 0) {
         const totals = calculateTotals(localBillItems || []);
-const totalFoodBillWithGST = totalFoodBill + totals.cgst + totals.sgst;
-await addHotelService(booking?.bookingId, {
-  [booking.roomNumber]: {
-    [new Date().toISOString().split("T")[0]]: [
-      {
-        food_charges: totalFoodBillWithGST, // Include GST
-        extra_bed_charges: 0,
-        laundry_charges: 0,
-        manual_charges: 0,
-        minibar_charges: totalBarBill, // Bar items remain unchanged
-        order_id: selectedOrderId,
-      },
-    ],
-  },
-});
+        const totalFoodBillWithGST = totalFoodBill + totals.cgst + totals.sgst;
+        await addHotelService(booking?.bookingId, {
+          [booking.roomNumber]: {
+            [new Date().toISOString().split("T")[0]]: [
+              {
+                food_charges: totalFoodBillWithGST, // Include GST
+                extra_bed_charges: 0,
+                laundry_charges: 0,
+                manual_charges: 0,
+                minibar_charges: totalBarBill, // Bar items remain unchanged
+                order_id: selectedOrderId,
+              },
+            ],
+          },
+        });
       }
-      await API.post("main", `/admin/partial-settle-bill/${institutionData.institution}/${tableIdStr}`, {
+      await API.post("main", `/admin/settle-bill/${institutionData.institution}/${tableIdStr}`, {
         body: {
+          type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
           paymentStatus: true,
           paymentMode: "offline",
           paymentMethods: paymentMethodsPayload,
           status: "delivered",
+          narration: narration,
         },
       });
       await completePayment();
@@ -608,8 +671,8 @@ await addHotelService(booking?.bookingId, {
     ((cashAmount || 0) + (cardAmount || 0) + (qrAmount || 0) + (roomAmount || 0) + (selectedPaymentMethod === "BTC" ? totalBillAmount : 0));
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-      <div className="bg-white rounded-xl shadow-2xl p-6 w-96">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-auto flex items-center justify-center">
+      <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-[30rem] max-h-[90vh] overflow-y-auto">
         <h2 className="text-2xl font-bold text-center mb-4 text-gray-800">
           {isPartialPayment ? "Split Payment" : "Settle Bill"}
         </h2>
@@ -618,11 +681,10 @@ await addHotelService(booking?.bookingId, {
             Table: <strong>{selectedTable?.id}</strong>
           </p>
           {isPartialPayment && (
-            <p className="text-3xl font-bold text-green-600 mt-2">
-              ₹{totalBillAmount}
-            </p>
+            <p className="text-3xl font-bold text-green-600 mt-2">₹{totalBillAmount}</p>
           )}
         </div>
+
         {isPartialPayment ? (
           <div className="space-y-4">
             <div
@@ -660,19 +722,9 @@ await addHotelService(booking?.bookingId, {
                   placeholder="QR"
                 />
               </div>
-              {institutionData.integration === "HOTEL" && (
-                <div className="flex flex-col">
-                  <label className="text-gray-700 text-sm mb-1">Room</label>
-                  <input
-                    type="number"
-                    value={roomAmount === null ? "" : roomAmount}
-                    onChange={(e) => validateAmountInput(e.target.value, setRoomAmount)}
-                    className="w-full p-2 border rounded-md text-center"
-                    placeholder="Room"
-                  />
-                </div>
-              )}
+              
             </div>
+
             {selectedPaymentMethod === "BTC" && (
               <div className="mt-2">
                 <label className="text-gray-700 text-sm mb-1">Select Company</label>
@@ -693,13 +745,6 @@ await addHotelService(booking?.bookingId, {
                 {showAddCompanyForm && (
                   <div className="mt-2 p-3 border rounded-md bg-gray-50">
                     <h3 className="text-sm font-semibold mb-2">Add New Company</h3>
-                    {/* <input
-                      type="text"
-                      value={newCompany.gstin}
-                      onChange={(e) => setNewCompany({ ...newCompany, gstin: e.target.value })}
-                      className="w-full p-2 border rounded-md mb-2"
-                      placeholder="GSTIN"
-                    /> */}
                     <input
                       type="text"
                       value={newCompany.name}
@@ -728,10 +773,14 @@ await addHotelService(booking?.bookingId, {
                   value={payerName}
                   onChange={(e) => setPayerName(e.target.value)}
                   className="w-full p-2 border rounded-md mt-2"
-                  placeholder="Name (employee / payer)"
+                  placeholder="Name (employee / payer) *"
                 />
+                {selectedPaymentMethod === "BTC" && (!payerName || payerName.trim() === "") && (
+                  <div className="text-xs text-red-600 mt-1">Payer name is required for BTC payments.</div>
+                )}
               </div>
             )}
+
             {institutionData.integration === "HOTEL" && roomAmount > 0 && (
               <div className="flex flex-row gap-2 my-2">
                 <h3 className="text-sm font-semibold">Select Room:</h3>
@@ -757,13 +806,18 @@ await addHotelService(booking?.bookingId, {
               </div>
             )}
             <div className="text-center mt-2">
-              <p
+             <p
                 className={`font-semibold ${
                   remainingAmount === 0 ? "text-green-600" : "text-red-500"
                 }`}
               >
                 Remaining: ₹{remainingAmount}
               </p>
+            </div>
+            <div className="text-center mt-4">
+              <button onClick={() => setIsPartialPayment(false)} className="text-blue-600 hover:underline">
+                Switch to Single Payment
+              </button>
             </div>
           </div>
         ) : (
@@ -813,7 +867,7 @@ await addHotelService(booking?.bookingId, {
             ) : (
               <div>
                 <h3 className="font-semibold mb-3 text-gray-700">Choose Payment Method:</h3>
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   {paymentMethods.map((method) => (
                     <button
                       key={method}
@@ -840,6 +894,7 @@ await addHotelService(booking?.bookingId, {
                     </button>
                   )}
                 </div>
+
                 {selectedPaymentMethod === "BTC" && (
                   <div className="mt-3 space-y-2">
                     <div className="mt-2">
@@ -861,13 +916,6 @@ await addHotelService(booking?.bookingId, {
                       {showAddCompanyForm && (
                         <div className="mt-2 p-3 border rounded-md bg-gray-50">
                           <h3 className="text-sm font-semibold mb-2">Add New Company</h3>
-                          {/* <input
-                            type="text"
-                            value={newCompany.gstin}
-                            onChange={(e) => setNewCompany({ ...newCompany, gstin: e.target.value })}
-                            className="w-full p-2 border rounded-md mb-2"
-                            placeholder="GSTIN"
-                          /> */}
                           <input
                             type="text"
                             value={newCompany.name}
@@ -892,8 +940,9 @@ await addHotelService(booking?.bookingId, {
                         </div>
                       )}
                     </div>
+
                     <div className="flex flex-col">
-                      <label className="text-gray-700 text-sm mb-1">Name</label>
+                      <label className="text-gray-700 text-sm mb-1">Name *</label>
                       <input
                         type="text"
                         value={payerName}
@@ -901,12 +950,67 @@ await addHotelService(booking?.bookingId, {
                         className="w-full p-2 border rounded-md"
                         placeholder="Name (employee / payer)"
                       />
+                      {(!payerName || payerName.trim() === "") && (
+                        <div className="text-xs text-red-600 mt-1">Payer name is required for BTC payments.</div>
+                      )}
                     </div>
+
                     <div className="text-xs text-gray-600">
                       BTC payment will use the total bill amount (₹{totalBillAmount}). Company selection is required.
                     </div>
                   </div>
                 )}
+
+                {selectedPaymentMethod === "Complementary" && (
+                  <div className="space-y-3 mt-3">
+                    <h3 className="font-semibold mb-1 text-gray-700">Complementary Settlement</h3>
+                    <div className="mt-2">
+                      <label className="text-gray-700 text-sm mb-1">Select Complementary Option</label>
+                      <Select
+                        options={managementOptions}
+                        value={managementOptions.find((option) => option.value === orderSource) || null}
+                        onChange={(selected) => {
+                          setOrderSource(selected ? selected.value : "");
+                          if (selected && selected.value !== "custom") {
+                            setCustomManagementInput("");
+                          }
+                        }}
+                        placeholder="Select an option..."
+                        isClearable
+                        className="w-full"
+                      />
+                      {orderSource === "custom" && (
+                        <input
+                          type="text"
+                          value={customManagementInput}
+                          onChange={(e) => setCustomManagementInput(e.target.value)}
+                          className="w-full p-2 border rounded-md mt-2"
+                          placeholder="Enter custom option"
+                        />
+                      )}
+                    </div>
+                    <div className="flex flex-col">
+                      <label className="text-gray-700 text-sm mb-1">Name</label>
+                      <input
+                        type="text"
+                        value={payerName}
+                        onChange={(e) => setPayerName(e.target.value)}
+                        className="w-full p-2 border rounded-md"
+                        placeholder="Enter name (optional)"
+                      />
+                    </div>
+                    <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-3 py-2 rounded-md mt-2 text-sm">
+                      This will settle the bill as <strong>Complementary</strong>.
+                    </div>
+                  </div>
+                )}
+
+                {selectedPaymentMethod === "Void" && (
+                  <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded-md mt-3 text-sm">
+                    <strong>Warning:</strong> This will void the bill and clear the table without any payment.
+                  </div>
+                )}
+
                 {selectedPaymentMethod === "ROOM" && (
                   <div className="flex flex-row gap-2 my-2">
                     <h3 className="text-sm font-semibold">Select Room:</h3>
@@ -926,6 +1030,7 @@ await addHotelService(booking?.bookingId, {
                     </select>
                   </div>
                 )}
+
                 {selectedPaymentMethod === "ROOM" && (
                   <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-3 py-2 rounded-md mt-3 text-sm">
                     <strong>Note:</strong> Payment will be collected during hotel checkout.
@@ -933,8 +1038,24 @@ await addHotelService(booking?.bookingId, {
                 )}
               </div>
             )}
+            <div className="text-center mt-4">
+              <button onClick={() => setIsPartialPayment(true)} className="text-blue-600 hover:underline">
+                Switch to Partial Payment
+              </button>
+            </div>
           </div>
         )}
+
+        <div className="mt-4">
+          <label className="text-gray-700 text-sm mb-1">Narration (optional)</label>
+          <textarea
+            value={narration}
+            onChange={(e) => setNarration(e.target.value)}
+            className="w-full p-2 border rounded-md"
+            placeholder="Add any notes or narration here..."
+          />
+        </div>
+
         <div className={`flex justify-between mt-6 ${isPartialPayment ? "space-x-4" : ""}`}>
           <button
             onClick={onClose}
@@ -946,6 +1067,7 @@ await addHotelService(booking?.bookingId, {
           >
             Cancel
           </button>
+
           {isManagementSpecial ? (
             <button
               onClick={handleManagementFreeSettle}
@@ -957,7 +1079,7 @@ await addHotelService(booking?.bookingId, {
             <button
               onClick={isPartialPayment ? handlePartialPayment : handleSinglePayment}
               disabled={isPartialPayment ? remainingAmount !== 0 : false}
-              className={`px-4 py-2 rounded-md text-white ${
+               className={`px-4 py-2 rounded-md text-white ${
                 isPartialPayment
                   ? remainingAmount === 0
                     ? "flex-1 bg-green-600 hover:bg-green-700"
