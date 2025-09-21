@@ -1,5 +1,6 @@
 import React from "react";
 import { toast } from "react-toastify";
+import PropTypes from 'prop-types';
 import data from '../../../../../Operation/data.json';
 
 const ReprintKOT = ({
@@ -13,13 +14,32 @@ const ReprintKOT = ({
   tableData,
   printData,
   connected,
-  setShowReprintKOT 
+  setShowReprintKOT = () => {}, // Default to no-op function
 }) => {
   const { printerpaperSize } = data;
 
+  const formatDateTime = () => {
+    const now = new Date();
+    return now.toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }).replace(",", "");
+  };
+
   const getKOTNumber = (tableId) => {
+    if (!tableId) return "N/A";
     const today = new Date().toISOString().split("T")[0];
-    let kotData = JSON.parse(localStorage.getItem("kotOrders")) || { date: today, lastKOT: 0, kotTables: {} };
+    let kotData;
+    try {
+      kotData = JSON.parse(localStorage.getItem("kotOrders")) || { date: today, lastKOT: 0, kotTables: {} };
+    } catch (error) {
+      console.error("Error parsing kotOrders from localStorage:", error);
+      kotData = { date: today, lastKOT: 0, kotTables: {} };
+    }
     if (kotData.date !== today) {
       kotData = { date: today, lastKOT: 0, kotTables: {} };
     }
@@ -30,23 +50,26 @@ const ReprintKOT = ({
     kotData.kotTables[tableId] = newKOT;
     kotData.lastKOT = newKOT;
 
-    localStorage.setItem("kotOrders", JSON.stringify(kotData));
+    try {
+      localStorage.setItem("kotOrders", JSON.stringify(kotData));
+    } catch (error) {
+      console.error("Error saving kotOrders to localStorage:", error);
+    }
 
     return newKOT;
   };
 
   const reprintKOT = async () => {
-    const formatDateTime = () => {
-      const now = new Date();
-      return now.toLocaleString("en-IN", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-      }).replace(",", "");
-    };
+    if (!table || !table.id) {
+      // toast.error("Table information is missing. Cannot reprint KOT.");
+      if (typeof setShowReprintKOT === "function") {
+        setShowReprintKOT(false);
+      } else {
+        console.warn("setShowReprintKOT is not a function");
+      }
+      return;
+    }
+
     const orderType = !isNaN(table.id)
       ? "Dine In"
       : table.id.toLowerCase().startsWith("takeaway")
@@ -58,12 +81,16 @@ const ReprintKOT = ({
     const instruction = tableInstructions?.[tableIdStr] || tableData?.[tableIdStr]?.instruction || "";
 
     if (itemsToPrint.length === 0) {
-      toast.info("No bill items to reprint in KOT format.");
-      setShowReprintKOT(false); // Close the component if no items to print
+      // toast.info("No bill items to reprint in KOT format.");
+      if (typeof setShowReprintKOT === "function") {
+        setShowReprintKOT(false);
+      } else {
+        console.warn("setShowReprintKOT is not a function");
+      }
       return;
     }
 
-    const kotNo = getKOTNumber(table.id) || "N/A";
+    const kotNo = getKOTNumber(table.id);
 
     const printArea = document.createElement("div");
     printArea.id = "printArea";
@@ -78,6 +105,8 @@ const ReprintKOT = ({
       )
       .join("");
     const totalQty = itemsToPrint.reduce((sum, item) => sum + item.quantity, 0);
+
+    let style = null;
 
     if (printerpaperSize === "80") {
       printArea.innerHTML = `
@@ -98,7 +127,7 @@ const ReprintKOT = ({
             ${itemsHTML}
           </table>
           <div class="divider"></div>
-          ${institutionData.institution === "bhuk2323" ? `
+          ${institutionData?.institution === "bhuk2323" ? `
             <table class="table total">
               <tr><td><b>Total Qty:</b></td><td style="text-align:right;">${totalQty}</td></tr>
             </table>
@@ -112,7 +141,8 @@ const ReprintKOT = ({
       `;
       document.body.appendChild(printArea);
 
-      const style = document.createElement("style");
+      style = document.createElement("style");
+      style.id = "printStyle";
       style.innerHTML = `
         @media print {
           @page {
@@ -211,7 +241,7 @@ const ReprintKOT = ({
             ${itemsHTML}
           </table>
           <div class="divider"></div>
-          ${institutionData.institution === "bhuk2323" ? `
+          ${institutionData?.institution === "bhuk2323" ? `
             <table class="table total">
               <tr><td><b>Total Qty:</b></td><td style="text-align:right;">${totalQty}</td></tr>
             </table>
@@ -225,7 +255,8 @@ const ReprintKOT = ({
       `;
       document.body.appendChild(printArea);
 
-      const style = document.createElement("style");
+      style = document.createElement("style");
+      style.id = "printStyle";
       style.innerHTML = screenWidth <= 1025 ? `
         @media print {
           @page {
@@ -384,48 +415,50 @@ const ReprintKOT = ({
 
     if (connected && printData) {
       const kotData = formatKOT();
-      // await printData(kotData);
-      setShowReprintKOT(false); // Close the component after network printing
+      // await printData(kotData); // Uncomment if printData is implemented
+      if (typeof setShowReprintKOT === "function") {
+        setShowReprintKOT(false);
+      } else {
+        console.warn("setShowReprintKOT is not a function");
+      }
     } else {
       window.onbeforeprint = () => {
         // Optional: Any setup before print dialog opens
       };
 
       window.onafterprint = () => {
-        document.body.removeChild(printArea);
-        document.head.removeChild(style);
-        setShowReprintKOT(false); // Close the component after print or cancel
-        window.onbeforeprint = null; // Clean up event listener
-        window.onafterprint = null; // Clean up event listener
+        const existingPrintArea = document.getElementById("printArea");
+        if (existingPrintArea) document.body.removeChild(existingPrintArea);
+        if (style) document.head.removeChild(style);
+        if (typeof setShowReprintKOT === "function") {
+          setShowReprintKOT(false);
+        } else {
+          console.warn("setShowReprintKOT is not a function");
+        }
+        window.onbeforeprint = null;
+        window.onafterprint = null;
       };
 
       window.print();
     }
 
-    // Cleanup in case print dialog is dismissed without triggering onafterprint
     setTimeout(() => {
       const existingPrintArea = document.getElementById("printArea");
-      if (existingPrintArea) existingPrintArea.remove();
+      if (existingPrintArea) document.body.removeChild(existingPrintArea);
       const existingStyle = document.querySelector("style[id='printStyle']");
-      if (existingStyle) existingStyle.remove();
-      setShowReprintKOT(false); // Ensure component is closed
-    }, 5000); // Increased timeout to 5 seconds to account for slow user interaction
+      if (existingStyle) document.head.removeChild(existingStyle);
+      if (typeof setShowReprintKOT === "function") {
+        setShowReprintKOT(false);
+      } else {
+        console.warn("setShowReprintKOT is not a function");
+      }
+    }, 5000);
   };
 
   const formatKOT = () => {
-    const formatDateTime = () => {
-      const now = new Date();
-      return now.toLocaleString("en-IN", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-      }).replace(",", "");
-    };
+    if (!table || !table.id) return "";
     const orderType = !isNaN(table.id) ? "Dine In" : table.id.toLowerCase().startsWith("takeaway") ? "Takeaway" : "Dine In";
-    const kotNo = getKOTNumber(table.id) || "N/A";
+    const kotNo = getKOTNumber(table.id);
     const items = billItems || [];
     const totalQty = items.reduce((sum, item) => sum + item.quantity, 0);
     const tableIdStr = String(table.id);
@@ -472,7 +505,7 @@ const ReprintKOT = ({
     });
 
     kot += `${centerText(`-`.repeat(lineWidth))}\n`;
-    if (institutionData.institution === "bhuk2323") {
+    if (institutionData?.institution === "bhuk2323") {
       kot += `${centerText(`Total Qty: ${totalQty}`)}\n`;
     }
     if (instruction) {
@@ -483,12 +516,49 @@ const ReprintKOT = ({
     return kot;
   };
 
-  // Call reprintKOT immediately when component mounts
   React.useEffect(() => {
-    reprintKOT();
-  }, []); // Empty dependency array to run once on mount
+    console.log("ReprintKOT props:", { table, setShowReprintKOT, billItems });
+    async function executeReprint() {
+      try {
+        await reprintKOT();
+      } catch (error) {
+        console.error("Error in reprintKOT:", error);
+        // toast.error("Failed to reprint KOT. Please try again.");
+        if (typeof setShowReprintKOT === "function") {
+          setShowReprintKOT(false);
+        } else {
+          console.warn("setShowReprintKOT is not a function");
+        }
+      }
+    }
+    executeReprint();
+  }, []);
 
-  return null; // Component doesn't render anything visible
+  return null;
+};
+
+ReprintKOT.propTypes = {
+  table: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  }),
+  customerDetails: PropTypes.object,
+  billItems: PropTypes.arrayOf(
+    PropTypes.shape({
+      itemName: PropTypes.string,
+      name: PropTypes.string,
+      quantity: PropTypes.number.isRequired,
+    })
+  ),
+  institutionData: PropTypes.shape({
+    institution: PropTypes.string,
+  }),
+  saveKOT: PropTypes.func,
+  screenWidth: PropTypes.number,
+  tableInstructions: PropTypes.object,
+  tableData: PropTypes.object,
+  printData: PropTypes.func,
+  connected: PropTypes.bool,
+  setShowReprintKOT: PropTypes.func,
 };
 
 export default ReprintKOT;

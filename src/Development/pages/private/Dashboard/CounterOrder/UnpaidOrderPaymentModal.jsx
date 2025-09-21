@@ -76,6 +76,12 @@ const UnpaidOrderPaymentModal = ({
     return false;
   })();
 
+  // Utility function to get company ID by name
+  const getCompanyIdByName = (companyName) => {
+    const company = companies.find((c) => c.name === companyName);
+    return company ? company.company_id || company.companyId || company.id || "" : "";
+  };
+
   const fetchCompanies = async () => {
     setLoader(true);
     setError(null);
@@ -146,7 +152,7 @@ const UnpaidOrderPaymentModal = ({
       }
 
       setCompanies((prev) => [...(prev || []), newCompanyObj]);
-      setOrderSource(newCompanyObj.company_id || newCompanyObj.companyId || newCompanyObj.id || "");
+      setOrderSource(newCompanyObj.name || ""); // Set orderSource to company name
       setShowAddCompanyForm(false);
       setNewCompany({ gstin: "", name: "" });
       toast.success("Company added successfully");
@@ -161,10 +167,19 @@ const UnpaidOrderPaymentModal = ({
     }
   };
 
-  const updateCompanyCredit = async (companyId, amount, name, orderId) => {
+  const updateCompanyCredit = async (companyName, amount, name, orderId) => {
     try {
       if (!name || String(name).trim() === "") {
         throw new Error("Payer name is required for BTC/company credits.");
+      }
+      if (!companyName) {
+        throw new Error("Company name is required for BTC payment.");
+      }
+
+      // Find company ID based on company name
+      const companyId = getCompanyIdByName(companyName);
+      if (!companyId) {
+        throw new Error("Selected company not found.");
       }
 
       const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
@@ -177,6 +192,7 @@ const UnpaidOrderPaymentModal = ({
           createdOn: epochSec,
           type: type,
           orderId: orderId,
+          companyName: companyName, // Include company name for reference
         },
       };
 
@@ -270,9 +286,9 @@ const UnpaidOrderPaymentModal = ({
   };
 
   const companyOptions = (companies || []).map((company) => ({
-    value: company.company_id || company.companyId || company.id || company.name || "",
-    label: `${company.name || company.label || "Unnamed"}${company.gst_no ? ` — ${company.gst_no}` : ""}`,
-    raw: company,
+    value: company.name || "Unnamed", // Use company name as value
+    label: `${company.name || "Unnamed"}${company.gst_no ? ` — ${company.gst_no}` : ""}`,
+    raw: company, // Store full company object for access to ID
   }));
 
   const totalBillAmount = calculateTotals(unpaidOrder.items).totalWithTax;
@@ -318,6 +334,12 @@ const UnpaidOrderPaymentModal = ({
         setLoader(false);
         return;
       }
+      // Verify company exists for BTC
+      if (selectedPaymentMethod === "BTC" && !getCompanyIdByName(orderSource)) {
+        toast.error("Selected company not found.");
+        setLoader(false);
+        return;
+      }
     }
 
     try {
@@ -350,7 +372,7 @@ const UnpaidOrderPaymentModal = ({
       } else if (selectedPaymentMethod === "BTC") {
         settleBody.paymentMethod = "BTC";
         settleBody.meta = {
-          orderSource,
+          orderSource, // Use company name
           payerName,
           narration,
         };
@@ -440,6 +462,12 @@ const UnpaidOrderPaymentModal = ({
         setLoader(false);
         return;
       }
+      // Verify company exists
+      if (!getCompanyIdByName(orderSource)) {
+        toast.error("Selected company not found.");
+        setLoader(false);
+        return;
+      }
     }
 
     const paymentMethodsArray = [];
@@ -460,7 +488,7 @@ const UnpaidOrderPaymentModal = ({
         method: "BTC",
         amount: btcAmountFinal,
         meta: {
-          orderSource,
+          orderSource, // Use company name
           payerName,
           narration,
         },
@@ -565,7 +593,7 @@ const UnpaidOrderPaymentModal = ({
           <div className="space-y-4">
             <div
               className={`grid gap-2 ${
-                institutionData.integration === "HOTEL" ? "grid-cols-4" : "grid-cols-4"
+                institutionData.integration === "HOTEL" ? "grid-cols-5" : "grid-cols-4"
               }`}
             >
               <div className="flex flex-col">
@@ -598,7 +626,7 @@ const UnpaidOrderPaymentModal = ({
                   placeholder="QR"
                 />
               </div>
-              
+
             </div>
 
             {(btcAmount > 0 || selectedPaymentMethod === "BTC") && (

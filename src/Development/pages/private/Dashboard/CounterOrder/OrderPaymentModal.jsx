@@ -43,7 +43,7 @@ const OrderPaymentModal = ({
 
   // Management dropdown options
   const [managementOptions] = useState([
-      { value: "Md Sir", label: "Md Sir" },
+    { value: "Md Sir", label: "Md Sir" },
     { value: "GM Sir", label: "GM Sir" },
     { value: "Md House", label: "Md House" },
     { value: "House Guest", label: "House Guest" },
@@ -86,6 +86,12 @@ const OrderPaymentModal = ({
       return true;
     return false;
   })();
+
+  // Utility function to get company ID by name
+  const getCompanyIdByName = (companyName) => {
+    const company = companies.find((c) => c.name === companyName);
+    return company ? company.company_id || company.companyId || company.id || "" : "";
+  };
 
   // Robust fetchCompanies
   const fetchCompanies = async () => {
@@ -159,7 +165,7 @@ const OrderPaymentModal = ({
       }
 
       setCompanies((prev) => [...(prev || []), newCompanyObj]);
-      setOrderSource(newCompanyObj.company_id || newCompanyObj.companyId || newCompanyObj.id || "");
+      setOrderSource(newCompanyObj.name || ""); // Set orderSource to company name
       setShowAddCompanyForm(false);
       setNewCompany({ gstin: "", name: "" });
       toast.success("Company added successfully");
@@ -174,12 +180,13 @@ const OrderPaymentModal = ({
     }
   };
 
-  // Updated updateCompanyCredit with epoch-second key and name enforcement
-  const updateCompanyCredit = async (companyId, amount, name, orderId) => {
+  // Updated updateCompanyCredit to use company name
+  const updateCompanyCredit = async (companyName, amount, name, orderId) => {
     try {
       if (!name || String(name).trim() === "") {
         throw new Error("Payer name is required for BTC/company credits.");
       }
+     
 
       const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
       const epochSec = Math.floor(Date.now() / 1000);
@@ -191,6 +198,7 @@ const OrderPaymentModal = ({
           createdOn: epochSec,
           type: type,
           orderId: orderId,
+          companyName: companyName, // Include company name for reference
         },
       };
 
@@ -203,7 +211,7 @@ const OrderPaymentModal = ({
       });
       toast.success("Company credit updated successfully");
     } catch (error) {
-      console.error("updateCompanyCredit error:", err);
+      console.error("updateCompanyCredit error:", error);
       toast.error(error?.message || "Failed to update company credit");
       throw error;
     }
@@ -268,9 +276,9 @@ const OrderPaymentModal = ({
 
   // Defensive mapping for react-select options
   const companyOptions = (companies || []).map((company) => ({
-    value: company.company_id || company.companyId || company.id || company.name || "",
-    label: `${company.name || company.label || "Unnamed"}${company.gst_no ? ` — ${company.gst_no}` : ""}`,
-    raw: company,
+    value: company.name || "Unnamed", // Use company name as value
+    label: `${company.name || "Unnamed"}${company.gst_no ? ` — ${company.gst_no}` : ""}`,
+    raw: company, // Store full company object for access to ID
   }));
 
   // Calculate total bill amount for the specific order
@@ -324,6 +332,7 @@ const OrderPaymentModal = ({
         setLoader(false);
         return;
       }
+     
     }
 
     try {
@@ -355,7 +364,7 @@ const OrderPaymentModal = ({
         }
       }
 
-      // Prepare settle payload
+      // Prepare settle payload - now includes orderSource and payerName at top-level when applicable
       const settleBody = {
         paymentStatus: true,
         paymentMode: "offline",
@@ -363,35 +372,33 @@ const OrderPaymentModal = ({
         type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
         status: "delivered",
         narration: narration,
-        ...(booking && booking.roomNumber ? { room_number: "Hotel"+booking.roomNumber } : {}),
+        ...(booking && booking.roomNumber ? { room_number: "Hotel" + booking.roomNumber } : {}),
       };
 
+      // Add orderSource/payerName at top-level for relevant flows
       if (selectedPaymentMethod === "Complementary") {
         settleBody.paymentMethod = "Complementary";
-        settleBody.meta = {
-          orderSource: orderSource === "custom" ? customManagementInput : orderSource,
-          payerName,
-          narration,
-        };
+        settleBody.orderSource = orderSource === "custom" ? customManagementInput : orderSource;
+        settleBody.name = payerName;
       } else if (selectedPaymentMethod === "Void") {
         settleBody.paymentStatus = false;
         settleBody.paymentMode = null;
         settleBody.paymentMethod = "Void";
         settleBody.status = "voided";
-        settleBody.meta = {
-          payerName,
-          narration,
-        };
+        settleBody.orderSource = orderSource || "";
+        settleBody.name = payerName || "";
       } else if (selectedPaymentMethod === "BTC") {
-        settleBody.meta = {
-          orderSource,
-          payerName,
-          narration,
-        };
+        // For BTC put identifying fields at top-level and update company credit
+        settleBody.orderSource = orderSource; // Use company name
+        settleBody.name = payerName;
+        settleBody.narration = narration;
         await updateCompanyCredit(orderSource, totalBillAmount, payerName, selectedOrderId);
       } else if (selectedPaymentMethod === "ROOM") {
         settleBody.meta = { narration };
       } else {
+        // Generic offline payments - attach payerName/orderSource if present
+        if (orderSource) settleBody.orderSource = orderSource;
+        if (payerName) settleBody.name = payerName;
         settleBody.narration = narration;
       }
 
@@ -429,7 +436,8 @@ const OrderPaymentModal = ({
           },
         });
       }
-const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
+
+      const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
       await API.post(
         "main",
         `/admin/settle-bill-order/${institutionData.institution}/${tableIdStr}/${selectedOrderId}`,
@@ -437,19 +445,25 @@ const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
           body: settleBody,
         }
       );
- if (isHotelTable) {
-      await API.put("frontdesk", `/offline/amend-booking/${booking?.bookingId}?institutionId=${institutionData.institution}`, {
-         body: {
-        bookingData: {
-          booking_id: booking?.bookingId,    
-          restaurant_hold: false          
-        },
-        guestDetailsData: {
-          guest_id: booking?.guest_id 
-        }
-      },
-      });
-    }
+
+      if (isHotelTable) {
+        await API.put(
+          "frontdesk",
+          `/offline/amend-booking/${booking?.bookingId}?institutionId=${institutionData.institution}`,
+          {
+            body: {
+              bookingData: {
+                booking_id: booking?.bookingId,
+                restaurant_hold: false,
+              },
+              guestDetailsData: {
+                guest_id: booking?.guest_id,
+              },
+            },
+          }
+        );
+      }
+
       await completePayment();
     } catch (error) {
       console.error("Payment Error:", error);
@@ -489,10 +503,8 @@ const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
             paymentMethod: "Complementary",
             status: "delivered",
             narration: narration,
-            meta: {
-              orderSource: orderSource === "custom" ? customManagementInput : orderSource,
-              payerName,
-            },
+            orderSource: orderSource === "custom" ? customManagementInput : orderSource,
+            name: payerName,
           },
         }
       );
@@ -536,6 +548,7 @@ const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
         setLoader(false);
         return;
       }
+     
     }
 
     const paymentMethodsArray = [];
@@ -555,17 +568,12 @@ const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
       paymentMethodsArray.push({
         method: "BTC",
         amount: btcAmountFinal,
-        meta: {
-          orderSource,
-          payerName,
-          narration,
-        },
       });
       await updateCompanyCredit(orderSource, btcAmountFinal, payerName, selectedOrderId);
     }
 
     setLoader(true);
-const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
+    const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
     try {
       const totalFoodBill = matchedOrder.items
         .filter((item) => item.type !== "bar")
@@ -599,6 +607,7 @@ const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
         });
       }
 
+      // POST partial settle: include orderSource & payerName at top-level
       await API.post(
         "main",
         `/admin/settle-bill-order/${institutionData.institution}/${tableIdStr}/${selectedOrderId}`,
@@ -610,23 +619,30 @@ const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
             status: "delivered",
             type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
             narration: narration,
-            ...(booking && booking.roomNumber ? { room_number: "Hotel"+booking.roomNumber } : {}),
+            ...(booking && booking.roomNumber ? { room_number: "Hotel" + booking.roomNumber } : {}),
+            ...(orderSource ? { orderSource } : {}),
+            ...(payerName ? { name: payerName } : {}),
           },
         }
       );
- if (isHotelTable) {
-      await API.put("frontdesk", `/offline/amend-booking/${booking?.bookingId}?institutionId=${institutionData.institution}`, {
-         body: {
-        bookingData: {
-          booking_id: booking?.bookingId,    
-          restaurant_hold: false          
-        },
-        guestDetailsData: {
-          guest_id: booking?.guest_id 
-        }
-      },
-      });
-    }
+
+      if (isHotelTable) {
+        await API.put(
+          "frontdesk",
+          `/offline/amend-booking/${booking?.bookingId}?institutionId=${institutionData.institution}`,
+          {
+            body: {
+              bookingData: {
+                booking_id: booking?.bookingId,
+                restaurant_hold: false,
+              },
+              guestDetailsData: {
+                guest_id: booking?.guest_id,
+              },
+            },
+          }
+        );
+      }
       await completePayment();
     } catch (error) {
       console.error("Payment Error:", error);
@@ -688,7 +704,7 @@ const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
           <div className="space-y-4">
             <div
               className={`grid gap-2 ${
-                institutionData.integration === "HOTEL" ? "grid-cols-3" : "grid-cols-4"
+                institutionData.integration === "HOTEL" ? "grid-cols-4" : "grid-cols-5"
               }`}
             >
               {/* Cash Payment */}

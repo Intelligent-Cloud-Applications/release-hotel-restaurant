@@ -40,7 +40,7 @@ const PaymentModal = ({
   const [showAddCompanyForm, setShowAddCompanyForm] = useState(false);
   const [error, setError] = useState(null);
   const [managementOptions, setManagementOptions] = useState([
-   { value: "Md Sir", label: "Md Sir" },
+    { value: "Md Sir", label: "Md Sir" },
     { value: "GM Sir", label: "GM Sir" },
     { value: "Md House", label: "Md House" },
     { value: "House Guest", label: "House Guest" },
@@ -83,6 +83,12 @@ const PaymentModal = ({
       return true;
     return false;
   })();
+
+  // Utility function to get company ID by name
+  const getCompanyIdByName = (companyName) => {
+    const company = companies.find((c) => c.name === companyName);
+    return company ? company.company_id || company.companyId || company.id || "" : "";
+  };
 
   // ---------- Robust fetchCompanies ----------
   const fetchCompanies = async () => {
@@ -156,7 +162,7 @@ const PaymentModal = ({
       }
 
       setCompanies((prev) => [...(prev || []), newCompanyObj]);
-      setOrderSource(newCompanyObj.company_id || newCompanyObj.companyId || newCompanyObj.id || "");
+      setOrderSource(newCompanyObj.name || ""); // Set orderSource to company name
       setShowAddCompanyForm(false);
       setNewCompany({ gstin: "", name: "" });
       toast.success("Company added successfully");
@@ -172,16 +178,25 @@ const PaymentModal = ({
   };
 
   // ---- Updated: write credit using epoch-second key and require name ----
-  const updateCompanyCredit = async (companyId, amount, name, orderId) => {
+  const updateCompanyCredit = async (companyName, amount, name, orderId) => {
     try {
-      // enforce name for BTC credits
+      // Enforce name for BTC credits
       if (!name || String(name).trim() === "") {
         throw new Error("Payer name is required for BTC/company credits.");
+      }
+      if (!companyName) {
+        throw new Error("Company name is required for BTC payment.");
+      }
+
+      // Find company ID based on company name
+      const companyId = getCompanyIdByName(companyName);
+      if (!companyId) {
+        throw new Error("Selected company not found.");
       }
 
       const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
 
-      // epoch seconds used as the dynamic key
+      // Epoch seconds used as the dynamic key
       const epochSec = Math.floor(Date.now() / 1000);
 
       const creditData = {
@@ -191,6 +206,7 @@ const PaymentModal = ({
           createdOn: epochSec, // epoch seconds
           type: type,
           orderId: orderId,
+          companyName: companyName, // Include company name for reference
         },
       };
 
@@ -226,9 +242,9 @@ const PaymentModal = ({
 
   // Defensive mapping for react-select options
   const companyOptions = (companies || []).map((company) => ({
-    value: company.company_id || company.companyId || company.id || company.name || "",
-    label: `${company.name || company.label || "Unnamed"}${company.gst_no ? ` — ${company.gst_no}` : ""}`,
-    raw: company,
+    value: company.name || "Unnamed", // Use company name as value
+    label: `${company.name || "Unnamed"}${company.gst_no ? ` — ${company.gst_no}` : ""}`,
+    raw: company, // Store full company object for access to ID
   }));
 
   // Calculate totals
@@ -395,7 +411,7 @@ const PaymentModal = ({
       setLoader(false);
       return;
     }
-    // Enforce payerName for BTC
+    // Enforce payerName and company for BTC
     if (selectedPaymentMethod === "BTC") {
       if (!orderSource) {
         toast.error("Please select a company for BTC payment.");
@@ -434,35 +450,35 @@ const PaymentModal = ({
         paymentMethod: selectedPaymentMethod,
         status: "delivered",
         narration: narration,
-       ...(booking && booking.roomNumber ? { room_number: "Hotel"+booking.roomNumber } : {}),
+        ...(booking && booking.roomNumber ? { room_number: "Hotel" + booking.roomNumber } : {}),
       };
+
+      // --- Send orderSource and payerName as top-level fields ---
       if (selectedPaymentMethod === "Complementary") {
         settleBody.paymentMethod = "Complementary";
-        settleBody.meta = {
-          orderSource: orderSource === "custom" ? customManagementInput : orderSource,
-          payerName,
-          narration,
-        };
+        settleBody.orderSource = orderSource === "custom" ? customManagementInput : orderSource;
+        settleBody.name = payerName;
       } else if (selectedPaymentMethod === "Void") {
         settleBody.paymentStatus = false;
         settleBody.paymentMode = null;
         settleBody.paymentMethod = "Void";
         settleBody.status = "voided";
-        settleBody.meta = {
-          payerName,
-          narration,
-        };
+        settleBody.orderSource = orderSource || "";
+        settleBody.name = payerName || "";
       } else if (selectedPaymentMethod === "BTC") {
-        settleBody.meta = {
-          orderSource,
-          payerName,
-          narration,
-        };
-        // update company credit with epoch-second key
+        settleBody.orderSource = orderSource; // Use company name
+        settleBody.name = payerName;
+        settleBody.narration = narration;
+        // Update company credit with company name
         await updateCompanyCredit(orderSource, totalBillAmount, payerName, selectedOrderId);
+      } else if (selectedPaymentMethod === "ROOM") {
+        settleBody.narration = narration;
       } else {
+        if (orderSource) settleBody.orderSource = orderSource;
+        if (payerName) settleBody.name = payerName;
         settleBody.narration = narration;
       }
+
       if (selectedPaymentMethod === "ROOM") {
         let totalFoodBill = localBillItems
           .filter((item) => item.type !== "bar")
@@ -476,35 +492,39 @@ const PaymentModal = ({
           [booking.roomNumber]: {
             [new Date().toISOString().split("T")[0]]: [
               {
-                food_charges: totalFoodBillWithGST, // Include GST
+                food_charges: totalFoodBillWithGST,
                 extra_bed_charges: 0,
                 laundry_charges: 0,
                 manual_charges: 0,
-                minibar_charges: totalBarBill, // Bar items remain unchanged
+                minibar_charges: totalBarBill,
                 order_id: selectedOrderId,
               },
             ],
           },
         });
-        settleBody.meta = { narration };
       }
+
       const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
       await API.post("main", `/admin/settle-bill/${institutionData.institution}/${tableIdStr}`, {
         body: settleBody,
       });
-       if (isHotelTable) {
-      await API.put("frontdesk", `/offline/amend-booking/${booking?.bookingId}?institutionId=${institutionData.institution}`, {
-         body: {
-        bookingData: {
-          booking_id: booking?.bookingId,    
-          restaurant_hold: false          
-        },
-        guestDetailsData: {
-          guest_id: booking?.guest_id 
-        }
-      },
-      });
-    }
+      if (isHotelTable) {
+        await API.put(
+          "frontdesk",
+          `/offline/amend-booking/${booking?.bookingId}?institutionId=${institutionData.institution}`,
+          {
+            body: {
+              bookingData: {
+                booking_id: booking?.bookingId,
+                restaurant_hold: false,
+              },
+              guestDetailsData: {
+                guest_id: booking?.guest_id,
+              },
+            },
+          }
+        );
+      }
       await completePayment();
     } catch (error) {
       console.error("Payment Error:", error);
@@ -538,10 +558,8 @@ const PaymentModal = ({
           paymentMethod: "Complementary",
           status: "delivered",
           narration: narration,
-          meta: {
-            orderSource: orderSource === "custom" ? customManagementInput : orderSource,
-            payerName,
-          },
+          orderSource: orderSource === "custom" ? customManagementInput : orderSource,
+          name: payerName,
         },
       });
       await completePayment();
@@ -595,17 +613,14 @@ const PaymentModal = ({
         setLoader(false);
         return;
       }
+      
       paymentMethodsPayload.push({
         method: "BTC",
         amount: btcAmountFinal,
-        meta: {
-          orderSource,
-          payerName,
-          narration,
-        },
       });
 
-        await updateCompanyCredit(orderSource, btcAmountFinal, payerName, selectedOrderId);
+      // Update company credit
+      await updateCompanyCredit(orderSource, btcAmountFinal, payerName, selectedOrderId);
     }
 
     setLoader(true);
@@ -625,11 +640,11 @@ const PaymentModal = ({
           [booking.roomNumber]: {
             [new Date().toISOString().split("T")[0]]: [
               {
-                food_charges: totalFoodBillWithGST, // Include GST
+                food_charges: totalFoodBillWithGST,
                 extra_bed_charges: 0,
                 laundry_charges: 0,
                 manual_charges: 0,
-                minibar_charges: totalBarBill, // Bar items remain unchanged
+                minibar_charges: totalBarBill,
                 order_id: selectedOrderId,
               },
             ],
@@ -637,6 +652,7 @@ const PaymentModal = ({
         });
       }
       const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
+
       await API.post("main", `/admin/settle-bill/${institutionData.institution}/${tableIdStr}`, {
         body: {
           type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
@@ -645,22 +661,28 @@ const PaymentModal = ({
           paymentMethods: paymentMethodsPayload,
           status: "delivered",
           narration: narration,
-          ...(booking && booking.roomNumber ? { room_number: "Hotel"+booking.roomNumber } : {}),
+          ...(booking && booking.roomNumber ? { room_number: "Hotel" + booking.roomNumber } : {}),
+          ...(orderSource ? { orderSource } : {}),
+          ...(payerName ? { name: payerName } : {}),
         },
       });
-       if (isHotelTable) {
-      await API.put("frontdesk", `/offline/amend-booking/${booking?.bookingId}?institutionId=${institutionData.institution}`, {
-         body: {
-        bookingData: {
-          booking_id: booking?.bookingId,    
-          restaurant_hold: false          
-        },
-        guestDetailsData: {
-          guest_id: booking?.guest_id 
-        }
-      },
-      });
-    }
+      if (isHotelTable) {
+        await API.put(
+          "frontdesk",
+          `/offline/amend-booking/${booking?.bookingId}?institutionId=${institutionData.institution}`,
+          {
+            body: {
+              bookingData: {
+                booking_id: booking?.bookingId,
+                restaurant_hold: false,
+              },
+              guestDetailsData: {
+                guest_id: booking?.guest_id,
+              },
+            },
+          }
+        );
+      }
       await completePayment();
     } catch (error) {
       console.error("Payment Error:", error);
@@ -752,7 +774,6 @@ const PaymentModal = ({
                   placeholder="QR"
                 />
               </div>
-              
             </div>
 
             {selectedPaymentMethod === "BTC" && (
@@ -836,7 +857,7 @@ const PaymentModal = ({
               </div>
             )}
             <div className="text-center mt-2">
-             <p
+              <p
                 className={`font-semibold ${
                   remainingAmount === 0 ? "text-green-600" : "text-red-500"
                 }`}
@@ -1109,7 +1130,7 @@ const PaymentModal = ({
             <button
               onClick={isPartialPayment ? handlePartialPayment : handleSinglePayment}
               disabled={isPartialPayment ? remainingAmount !== 0 : false}
-               className={`px-4 py-2 rounded-md text-white ${
+              className={`px-4 py-2 rounded-md text-white ${
                 isPartialPayment
                   ? remainingAmount === 0
                     ? "flex-1 bg-green-600 hover:bg-green-700"

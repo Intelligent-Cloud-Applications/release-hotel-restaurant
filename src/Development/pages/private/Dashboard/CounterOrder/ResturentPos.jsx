@@ -613,7 +613,8 @@ const settleUnpaidOrder = async (order, paymentMethod, settleBody = null) => {
 
     // Handle booking logic for hotel orders
     if (settleBody?.bookingInfo && settleBody.bookingInfo.bookingId) {
-      booking = hotelBookings?.find((b) => String(b.bookingId) === String(settleBody.bookingInfo.bookingId)) || null;
+      booking =
+        hotelBookings?.find((b) => String(b.bookingId) === String(settleBody.bookingInfo.bookingId)) || null;
     } else {
       const isHotelOrder = tableIdStr.toLowerCase().startsWith("hotel");
       if (isHotelOrder) {
@@ -625,8 +626,14 @@ const settleUnpaidOrder = async (order, paymentMethod, settleBody = null) => {
     // Add hotel service if booking exists
     if (booking) {
       const items = order.items || [];
-      const totalFoodBill = items.reduce((sum, item) => sum + (item.type !== "bar" ? item.price * item.quantity : 0), 0);
-      const totalBarBill = items.reduce((sum, item) => sum + (item.type === "bar" ? item.price * item.quantity : 0), 0);
+      const totalFoodBill = items.reduce(
+        (sum, item) => sum + (item.type !== "bar" ? item.price * item.quantity : 0),
+        0
+      );
+      const totalBarBill = items.reduce(
+        (sum, item) => sum + (item.type === "bar" ? item.price * item.quantity : 0),
+        0
+      );
 
       const totals = calculateTotals(order.items || []);
       const totalFoodBillWithGST = totalFoodBill + totals.cgst + totals.sgst;
@@ -656,6 +663,35 @@ const settleUnpaidOrder = async (order, paymentMethod, settleBody = null) => {
       ...(booking && booking.roomNumber ? { room_number: "Hotel"+booking.roomNumber } : {}),
     };
 
+    // Helper: pull orderSource/payerName out of settleBody (either top-level or inside meta)
+    const extractField = (fieldName) => {
+      if (settleBody && settleBody[fieldName]) return settleBody[fieldName];
+      if (settleBody && settleBody.meta && settleBody.meta[fieldName]) return settleBody.meta[fieldName];
+      return undefined;
+    };
+
+    const orderSourceVal = extractField("orderSource");
+    const payerNameVal = extractField("payerName");
+
+    // Attach top-level orderSource/payerName if present
+    if (orderSourceVal !== undefined && orderSourceVal !== null && String(orderSourceVal).trim() !== "") {
+      apiBody.orderSource = orderSourceVal;
+    }
+    if (payerNameVal !== undefined && payerNameVal !== null && String(payerNameVal).trim() !== "") {
+      apiBody.name = payerNameVal;
+    }
+
+    // Preserve remaining meta keys (except orderSource/payerName) if any
+    if (settleBody?.meta && typeof settleBody.meta === "object") {
+      const remainingMeta = Object.keys(settleBody.meta).reduce((acc, k) => {
+        if (k !== "orderSource" && k !== "payerName") acc[k] = settleBody.meta[k];
+        return acc;
+      }, {});
+      if (Object.keys(remainingMeta).length > 0) {
+        apiBody.meta = remainingMeta;
+      }
+    }
+
     // For partial payments, include paymentMethods array; otherwise, use single paymentMethod
     if (settleBody?.paymentMethods && paymentMethod === "Multiple") {
       apiBody.paymentMethods = settleBody.paymentMethods;
@@ -664,9 +700,6 @@ const settleUnpaidOrder = async (order, paymentMethod, settleBody = null) => {
       }
     } else {
       apiBody.paymentMethod = paymentMethod;
-      if (settleBody?.meta) {
-        apiBody.meta = settleBody.meta;
-      }
       if (settleBody?.narration) {
         apiBody.narration = settleBody.narration;
       }
@@ -681,18 +714,23 @@ const settleUnpaidOrder = async (order, paymentMethod, settleBody = null) => {
         body: apiBody,
       }
     );
-    if (isHotelTable) {
-      await API.put("frontdesk", `/offline/amend-booking/${booking?.bookingId}?institutionId=${institutionData.institution}`, {
-        body: {
-          bookingData: {
-            booking_id: booking?.bookingId,
-            restaurant_hold: false,
+
+    if (isHotelTable && booking) {
+      await API.put(
+        "frontdesk",
+        `/offline/amend-booking/${booking?.bookingId}?institutionId=${institutionData.institution}`,
+        {
+          body: {
+            bookingData: {
+              booking_id: booking?.bookingId,
+              restaurant_hold: false,
+            },
+            guestDetailsData: {
+              guest_id: booking?.guest_id,
+            },
           },
-          guestDetailsData: {
-            guest_id: booking?.guest_id,
-          },
-        },
-      });
+        }
+      );
     }
 
     toast.success(`Order ${order.orderId} settled successfully!`);
@@ -710,6 +748,7 @@ const settleUnpaidOrder = async (order, paymentMethod, settleBody = null) => {
     setLoader(false);
   }
 };
+
 
   const processTableData = (tableId, tableInfo) => {
     if (!tableId || !tableInfo) return;
