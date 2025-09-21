@@ -42,6 +42,56 @@ const OrderHistory = () => {
   const [showPrintBill, setShowPrintBill] = useState(false); 
   const [selectedPrintOrder, setSelectedPrintOrder] = useState(null);
 
+  // Helper function to check if payment method is complementary
+  const isComplementaryPayment = (paymentMethod) => {
+    if (!paymentMethod) return false;
+    return paymentMethod.toLowerCase().includes('complementary') || 
+           paymentMethod.toLowerCase().includes('complimentary');
+  };
+
+  // Helper function to get revenue amount excluding complementary payments
+  const getRevenueFromOrder = (order) => {
+    if (order.downloadLink) {
+      // Monthly summary record - check paymentMethods object
+      if (order.paymentMethods && typeof order.paymentMethods === 'object') {
+        return Object.entries(order.paymentMethods).reduce((sum, [method, amount]) => {
+          if (isComplementaryPayment(method)) {
+            return sum; // Don't add complementary amount to revenue
+          }
+          return sum + (Number(amount) || 0);
+        }, 0);
+      } else {
+        // Monthly summary without paymentMethods breakdown - check if order itself is complementary
+        const orderPaymentMethod = order.paymentMethod || order.paymentMethodType || order.paymentType;
+        if (isComplementaryPayment(orderPaymentMethod)) {
+          return 0;
+        }
+        return order.totalAmount || 0;
+      }
+    } else {
+      // Regular order - handle both single payment method and array of payment methods
+      if (Array.isArray(order.paymentMethods)) {
+        // Handle array of payment methods
+        return order.paymentMethods.reduce((sum, methodEntry) => {
+          if (methodEntry?.method && typeof methodEntry.amount === "number") {
+            if (isComplementaryPayment(methodEntry.method)) {
+              return sum; // Don't add complementary amount to revenue
+            }
+            return sum + methodEntry.amount;
+          }
+          return sum;
+        }, 0);
+      } else {
+        // Handle single payment method
+        let paymentMethod = order.paymentMethod || order.paymentMethodType || order.paymentType;
+        if (isComplementaryPayment(paymentMethod)) {
+          return 0; // Don't add complementary orders to revenue
+        }
+        return order.totalAmount || 0;
+      }
+    }
+  };
+
   const getDateLimits = () => {
     const today = new Date();
     const twoMonthsAgo = new Date();
@@ -75,32 +125,48 @@ const OrderHistory = () => {
     if (order.paymentMethods) {
       if (Array.isArray(order.paymentMethods)) {
         return order.paymentMethods
-          .map(pm => `${pm.method} (${getCurrencySymbol(order.currency || 'INR')}${pm.amount})`)
+          .map(pm => {
+            const isComplementary = isComplementaryPayment(pm.method);
+            return `${pm.method}${isComplementary ? ' (Complementary)' : ''} (${getCurrencySymbol(order.currency || 'INR')}${pm.amount})`;
+          })
           .join(", ");
       }
       else if (typeof order.paymentMethods === 'object' && order.paymentMethods !== null) {
         return Object.entries(order.paymentMethods)
-          .map(([method, amount]) => `${method} (${getCurrencySymbol(order.currency || 'INR')}${amount})`)
+          .map(([method, amount]) => {
+            const isComplementary = isComplementaryPayment(method);
+            return `${method}${isComplementary ? ' (Complementary)' : ''} (${getCurrencySymbol(order.currency || 'INR')}${amount})`;
+          })
           .join(", ");
       }
     }
-    return order.paymentMethod || "N/A";
+    const paymentMethod = order.paymentMethod || "N/A";
+    const isComplementary = isComplementaryPayment(paymentMethod);
+    return `${paymentMethod}${isComplementary ? ' (Complementary)' : ''}`;
   };
 
   const getPaymentMethodForExport = (order) => {
     if (order.paymentMethods) {
       if (Array.isArray(order.paymentMethods)) {
         return order.paymentMethods
-          .map(pm => `${pm.method}: ${getCurrencySymbol(order.currency || 'INR')}${pm.amount}`)
+          .map(pm => {
+            const isComplementary = isComplementaryPayment(pm.method);
+            return `${pm.method}${isComplementary ? ' (Complementary)' : ''}: ${getCurrencySymbol(order.currency || 'INR')}${pm.amount}`;
+          })
           .join("; ");
       }
       else if (typeof order.paymentMethods === 'object' && order.paymentMethods !== null) {
         return Object.entries(order.paymentMethods)
-          .map(([method, amount]) => `${method}: ${getCurrencySymbol(order.currency || 'INR')}${amount}`)
+          .map(([method, amount]) => {
+            const isComplementary = isComplementaryPayment(method);
+            return `${method}${isComplementary ? ' (Complementary)' : ''}: ${getCurrencySymbol(order.currency || 'INR')}${amount}`;
+          })
           .join("; ");
       }
     }
-    return order.paymentMethod || "N/A";
+    const paymentMethod = order.paymentMethod || "N/A";
+    const isComplementary = isComplementaryPayment(paymentMethod);
+    return `${paymentMethod}${isComplementary ? ' (Complementary)' : ''}`;
   };
 
   const formatTime = (timestamp) => {
@@ -228,13 +294,17 @@ const OrderHistory = () => {
     return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
   };
 
-  const netRevenue = orders.reduce((sum, order) => sum + order.totalAmount, 0);
+  // Calculate revenue excluding complementary payments
+  const netRevenue = orders.reduce((sum, order) => sum + getRevenueFromOrder(order), 0);
+  const totalAmount = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+  
   const totalOrders = orders.reduce((sum, order) => {
     if (order.totalOrders !== undefined && order.downloadLink !== undefined) {
       return sum + Number(order.totalOrders);
     }
     return sum + 1;
   }, 0);
+  
   const avgOrderSize = totalOrders > 0 ? (netRevenue / totalOrders).toFixed(2) : 0;
 
   const handlePrintBill = (order) => {
@@ -254,6 +324,7 @@ const exportToExcel = () => {
     "Phone Number": "",
     "Total Orders": "",
     "Total Amount": "",
+    "Revenue Amount": "",
     "CGST": "",
     "SGST": "",
     "Service Tax": "",
@@ -267,7 +338,7 @@ const exportToExcel = () => {
     "Item Total": ""
   });
 
-  // Add summary row for total orders and net revenue
+  // Add summary row for total orders, total amount, and net revenue
   exportData.push({
     "Order ID": "Summary",
     "Type": "Overall Totals",
@@ -275,7 +346,8 @@ const exportToExcel = () => {
     "Table": "",
     "Phone Number": "",
     "Total Orders": totalOrders,
-    "Total Amount": `${getCurrencySymbol('INR')}${netRevenue}`,
+    "Total Amount": `${getCurrencySymbol('INR')}${totalAmount}`,
+    "Revenue Amount": `${getCurrencySymbol('INR')}${netRevenue}`,
     "CGST": "",
     "SGST": "",
     "Service Tax": "",
@@ -291,6 +363,7 @@ const exportToExcel = () => {
 
   orders.forEach((order) => {
     const isSummary = order.downloadLink !== undefined;
+    const orderRevenue = getRevenueFromOrder(order);
 
     if (isSummary) {
       // Monthly summary row
@@ -302,6 +375,7 @@ const exportToExcel = () => {
         "Phone Number": institution === "bhuk2323" ? "N/A" : "",
         "Total Orders": order.totalOrders || "N/A",
         "Total Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.totalAmount}`,
+        "Revenue Amount": `${getCurrencySymbol(order.currency || 'INR')}${orderRevenue}`,
         "CGST": order.cgst ? `${getCurrencySymbol(order.currency || 'INR')}${order.cgst}` : "",
         "SGST": order.sgst ? `${getCurrencySymbol(order.currency || 'INR')}${order.sgst}` : "",
         "Service Tax": order.serviceTax ? `${getCurrencySymbol(order.currency || 'INR')}${order.serviceTax}` : "",
@@ -323,6 +397,7 @@ const exportToExcel = () => {
           : Object.entries(order.paymentMethods).map(([method, amount]) => ({ method, amount }));
 
         paymentMethods.forEach(({ method, amount }) => {
+          const isComplementary = isComplementaryPayment(method);
           exportData.push({
             "Order ID": "",
             "Type": "",
@@ -331,6 +406,7 @@ const exportToExcel = () => {
             "Phone Number": "",
             "Total Orders": "",
             "Total Amount": "",
+            "Revenue Amount": "",
             "CGST": "",
             "SGST": "",
             "Service Tax": "",
@@ -338,7 +414,7 @@ const exportToExcel = () => {
             "Time": "",
             "Download Link": "",
             "Payment Method": "",
-            "Item Name": `Payment Method: ${method}`,
+            "Item Name": `Payment Method: ${method}${isComplementary ? ' (Complementary)' : ''}`,
             "Quantity": "",
             "Item Price": "",
             "Item Total": `${getCurrencySymbol(order.currency || 'INR')}${amount}`
@@ -355,6 +431,7 @@ const exportToExcel = () => {
         "Phone Number": institution === "bhuk2323" ? order.phoneNumber || "N/A" : "",
         "Total Orders": "1",
         "Total Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.totalAmount}`,
+        "Revenue Amount": `${getCurrencySymbol(order.currency || 'INR')}${orderRevenue}`,
         "CGST": order.cgst ? `${order.cgst}%` : "",
         "SGST": order.sgst ? `${order.sgst}%` : "",
         "Service Tax": order.serviceTax ? `${getCurrencySymbol(order.currency || 'INR')}${order.serviceTax}` : "",
@@ -380,6 +457,7 @@ const exportToExcel = () => {
             "Phone Number": "",
             "Total Orders": "",
             "Total Amount": "",
+            "Revenue Amount": "",
             "CGST": "",
             "SGST": "",
             "Service Tax": "",
@@ -402,6 +480,7 @@ const exportToExcel = () => {
           : Object.entries(order.paymentMethods).map(([method, amount]) => ({ method, amount }));
 
         paymentMethods.forEach(({ method, amount }) => {
+          const isComplementary = isComplementaryPayment(method);
           exportData.push({
             "Order ID": "",
             "Type": "",
@@ -410,6 +489,7 @@ const exportToExcel = () => {
             "Phone Number": "",
             "Total Orders": "",
             "Total Amount": "",
+            "Revenue Amount": "",
             "CGST": "",
             "SGST": "",
             "Service Tax": "",
@@ -417,7 +497,7 @@ const exportToExcel = () => {
             "Time": "",
             "Download Link": "",
             "Payment Method": "",
-            "Item Name": `Payment Method: ${method}`,
+            "Item Name": `Payment Method: ${method}${isComplementary ? ' (Complementary)' : ''}`,
             "Quantity": "",
             "Item Price": "",
             "Item Total": `${getCurrencySymbol(order.currency || 'INR')}${amount}`
@@ -435,6 +515,7 @@ const exportToExcel = () => {
       "Phone Number": "",
       "Total Orders": "",
       "Total Amount": "",
+      "Revenue Amount": "",
       "CGST": "",
       "SGST": "",
       "Service Tax": "",
@@ -479,7 +560,7 @@ const exportToPDF = () => {
   doc.text(title, (pageWidth - titleWidth) / 2, yPos);
   yPos += 10;
 
-  // Add summary section for total orders and net revenue
+  // Add summary section for total orders, total amount, and net revenue
   doc.setFontSize(12);
   doc.setFont(undefined, 'bold');
   doc.text("Overall Totals", 10, yPos);
@@ -487,7 +568,8 @@ const exportToPDF = () => {
   doc.setFontSize(10);
   doc.setFont(undefined, 'normal');
   doc.text(`Total Orders: ${totalOrders}`, 10, yPos);
-  doc.text(`Total Amount: ${netRevenue}`, 80, yPos);
+  doc.text(`Total Amount: ${totalAmount}`, 80, yPos);
+  doc.text(`Revenue Amount: ${netRevenue}`, 150, yPos);
   yPos += 10;
   doc.setDrawColor(200);
   doc.line(10, yPos, pageWidth - 10, yPos);
@@ -499,6 +581,7 @@ const exportToPDF = () => {
       yPos = 20;
     }
 
+    const orderRevenue = getRevenueFromOrder(order);
     doc.setFontSize(12);
     doc.setFont(undefined, 'bold');
 
@@ -513,7 +596,9 @@ const exportToPDF = () => {
       doc.setFont(undefined, 'normal');
       doc.text(`Total Orders: ${order.totalOrders || 'N/A'}`, 10, yPos);
       doc.text(`Total Amount: ${order.totalAmount}`, 80, yPos);
-      doc.text(`Date: ${formatDate(order.createdAt)}`, 150, yPos);
+      doc.text(`Revenue Amount: ${orderRevenue}`, 150, yPos);
+      yPos += 7;
+      doc.text(`Date: ${formatDate(order.createdAt)}`, 10, yPos);
       yPos += 7;
       doc.text(`CGST: ${order.cgst ? `${order.cgst}` : 'N/A'}`, 10, yPos);
       doc.text(`SGST: ${order.sgst ? `${order.sgst}` : 'N/A'}`, 80, yPos);
@@ -524,8 +609,14 @@ const exportToPDF = () => {
 
       if (order.paymentMethods && typeof order.paymentMethods === 'object') {
         const paymentData = Array.isArray(order.paymentMethods)
-          ? order.paymentMethods.map(pm => [pm.method, `${pm.amount}`])
-          : Object.entries(order.paymentMethods).map(([method, amount]) => [method, `${amount}`]);
+          ? order.paymentMethods.map(pm => {
+              const isComplementary = isComplementaryPayment(pm.method);
+              return [`${pm.method}${isComplementary ? ' (Complementary)' : ''}`, `${pm.amount}`];
+            })
+          : Object.entries(order.paymentMethods).map(([method, amount]) => {
+              const isComplementary = isComplementaryPayment(method);
+              return [`${method}${isComplementary ? ' (Complementary)' : ''}`, `${amount}`];
+            });
 
         doc.autoTable({
           startY: yPos,
@@ -556,6 +647,7 @@ const exportToPDF = () => {
       doc.text(`Payment Method: ${formatPaymentMethod(order)}`, 10, yPos);
       yPos += 7;
       doc.text(`Total Amount: ${order.totalAmount}`, 10, yPos);
+      doc.text(`Revenue Amount: ${orderRevenue}`, 80, yPos);
       yPos += 7;
 
       if (order.cgst || order.sgst || order.serviceTax) {
@@ -593,8 +685,14 @@ const exportToPDF = () => {
 
       if (order.paymentMethods && typeof order.paymentMethods === 'object') {
         const paymentData = Array.isArray(order.paymentMethods)
-          ? order.paymentMethods.map(pm => [pm.method, `${pm.amount}`])
-          : Object.entries(order.paymentMethods).map(([method, amount]) => [method, `${amount}`]);
+          ? order.paymentMethods.map(pm => {
+              const isComplementary = isComplementaryPayment(pm.method);
+              return [`${pm.method}${isComplementary ? ' (Complementary)' : ''}`, `${pm.amount}`];
+            })
+          : Object.entries(order.paymentMethods).map(([method, amount]) => {
+              const isComplementary = isComplementaryPayment(method);
+              return [`${method}${isComplementary ? ' (Complementary)' : ''}`, `${amount}`];
+            });
 
         doc.autoTable({
           startY: yPos,
@@ -711,6 +809,7 @@ const exportToPDF = () => {
     "Table",
     "Payment Method",
     "Amount",
+    "Revenue",
     "Date",
     "Actions"
   ].filter(item => item !== null);
@@ -746,16 +845,20 @@ const exportToPDF = () => {
           {institutionData.companyName} Item Report
         </h1>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-4 sm:p-6 rounded-lg shadow-md text-white">
+            <h3 className="text-sm sm:text-lg font-semibold">Total Amount</h3>
+            <p className="text-xl sm:text-2xl font-bold">₹{totalAmount}</p>
+          </div>
+          <div className="bg-gradient-to-r from-green-500 to-green-600 p-4 sm:p-6 rounded-lg shadow-md text-white">
             <h3 className="text-sm sm:text-lg font-semibold">Net Revenue</h3>
             <p className="text-xl sm:text-2xl font-bold">₹{netRevenue}</p>
           </div>
-          <div className="bg-gradient-to-r from-green-500 to-green-600 p-4 sm:p-6 rounded-lg shadow-md text-white">
+          <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-4 sm:p-6 rounded-lg shadow-md text-white">
             <h3 className="text-sm sm:text-lg font-semibold">Total Orders</h3>
             <p className="text-xl sm:text-2xl font-bold">{totalOrders}</p>
           </div>
-          <div className="bg-gradient-to-r from-purple-500 to-purple-600 p-4 sm:p-6 rounded-lg shadow-md text-white sm:col-span-2 lg:col-span-1">
+          <div className="bg-gradient-to-r from-purple-500 to-purple-600 p-4 sm:p-6 rounded-lg shadow-md text-white">
             <h3 className="text-sm sm:text-lg font-semibold">Avg Order Size</h3>
             <p className="text-xl sm:text-2xl font-bold">₹{avgOrderSize}</p>
           </div>
@@ -939,6 +1042,7 @@ const exportToPDF = () => {
             head={head}
             data={orders.map((obj, index) => {
               const isSummary = obj.downloadLink !== undefined;
+              const orderRevenue = getRevenueFromOrder(obj);
 
               if (isSummary) {
                 return [
@@ -949,6 +1053,7 @@ const exportToPDF = () => {
                   "N/A",
                   formatPaymentMethod(obj),
                   `₹${obj.totalAmount}`,
+                  `₹${orderRevenue}`,
                   formatDate(obj.createdAt),
                   <div className="flex gap-2">
                     <Button
@@ -970,6 +1075,7 @@ const exportToPDF = () => {
                 obj.tableName,
                 formatPaymentMethod(obj),
                 `₹${obj.totalAmount}`,
+                `₹${orderRevenue}`,
                 formatDate(obj.createdAt),
                 <div className="flex gap-2">
                   <Button
@@ -994,6 +1100,7 @@ const exportToPDF = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {orders.map((order) => {
               const isSummary = order.downloadLink !== undefined;
+              const orderRevenue = getRevenueFromOrder(order);
 
               if (isSummary) {
                 return (
@@ -1020,6 +1127,9 @@ const exportToPDF = () => {
                     </div>
                     <div className="text-sm text-gray-600 mb-2">
                       <span className="font-semibold">Total Amount:</span> ₹{order.totalAmount}
+                    </div>
+                    <div className="text-sm text-gray-600 mb-2">
+                      <span className="font-semibold">Revenue:</span> ₹{orderRevenue}
                     </div>
                     <div className="text-xs text-gray-600 mb-2">
                       <span className="font-semibold">Payment:</span> {formatPaymentMethod(order)}
@@ -1068,6 +1178,12 @@ const exportToPDF = () => {
                     <div>
                       <span className="text-xs font-semibold">Total Amount:</span>{" "}
                       ₹{order.totalAmount}
+                    </div>
+                  </div>
+                  <div className="flex justify-between text-sm text-gray-600 mb-2">
+                    <div>
+                      <span className="text-xs font-semibold">Revenue:</span>{" "}
+                      ₹{orderRevenue}
                     </div>
                   </div>
                   {institution === "bhuk2323" && (

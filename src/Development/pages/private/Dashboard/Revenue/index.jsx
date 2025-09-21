@@ -130,7 +130,14 @@ const RevenueDashboard = () => {
 
   const { summary, hourlyData, uniqueDates, uniqueMonths, filteredOrders, monthlySummaries } = processedData;
 
-  // Calculate payment methods considering both regular orders and monthly summaries
+  // Helper function to check if payment method is complementary
+  const isComplementaryPayment = (paymentMethod) => {
+    if (!paymentMethod) return false;
+    return paymentMethod.toLowerCase().includes('complementary') || 
+           paymentMethod.toLowerCase().includes('complimentary');
+  };
+
+  // Calculate payment methods with separate tracking for revenue and count
   const paymentMethodsWithAmount = filteredOrders.reduce((acc, order) => {
     if (order.paymentStatus === true) {
       if (order.downloadLink) {
@@ -138,21 +145,29 @@ const RevenueDashboard = () => {
         if (order.paymentMethods && typeof order.paymentMethods === 'object') {
           Object.entries(order.paymentMethods).forEach(([method, amount]) => {
             const methodName = method || 'Unknown';
+            const isComplementary = isComplementaryPayment(methodName);
+            
             if (!acc[methodName]) {
-              acc[methodName] = { count: 0, amount: 0, isSummary: false };
+              acc[methodName] = { count: 0, amount: 0, revenueAmount: 0, isSummary: false, isComplementary };
             }
             acc[methodName].amount += Number(amount) || 0;
-            // For monthly summaries, don't estimate order counts - leave as 0
+            acc[methodName].revenueAmount += isComplementary ? 0 : (Number(amount) || 0);
             acc[methodName].isSummary = true;
+            acc[methodName].isComplementary = isComplementary;
           });
         } else {
-          // Monthly summary without paymentMethods - treat as Cash
-          const methodName = 'Cash';
+          // Monthly summary without paymentMethods - treat as Cash or check if complementary
+          const orderPaymentMethod = order.paymentMethod || order.paymentMethodType || order.paymentType;
+          const methodName = orderPaymentMethod || 'Cash';
+          const isComplementary = isComplementaryPayment(methodName);
+          
           if (!acc[methodName]) {
-            acc[methodName] = { count: 0, amount: 0, isSummary: false };
+            acc[methodName] = { count: 0, amount: 0, revenueAmount: 0, isSummary: false, isComplementary };
           }
           acc[methodName].amount += order.totalAmount || 0;
+          acc[methodName].revenueAmount += isComplementary ? 0 : (order.totalAmount || 0);
           acc[methodName].isSummary = true;
+          acc[methodName].isComplementary = isComplementary;
         }
       } else {
         // Regular order - handle both single payment method and array of payment methods
@@ -161,11 +176,15 @@ const RevenueDashboard = () => {
           order.paymentMethods.forEach(methodEntry => {
             if (methodEntry?.method && typeof methodEntry.amount === "number") {
               const methodName = methodEntry.method || 'Cash';
+              const isComplementary = isComplementaryPayment(methodName);
+              
               if (!acc[methodName]) {
-                acc[methodName] = { count: 0, amount: 0, isSummary: false };
+                acc[methodName] = { count: 0, amount: 0, revenueAmount: 0, isSummary: false, isComplementary };
               }
               acc[methodName].count += 1;
               acc[methodName].amount += methodEntry.amount;
+              acc[methodName].revenueAmount += isComplementary ? 0 : methodEntry.amount;
+              acc[methodName].isComplementary = isComplementary;
             }
           });
         } else {
@@ -188,11 +207,15 @@ const RevenueDashboard = () => {
             }
           }
           
+          const isComplementary = isComplementaryPayment(methodName);
+          
           if (!acc[methodName]) {
-            acc[methodName] = { count: 0, amount: 0, isSummary: false };
+            acc[methodName] = { count: 0, amount: 0, revenueAmount: 0, isSummary: false, isComplementary };
           }
           acc[methodName].count += 1;
           acc[methodName].amount += order.totalAmount || 0;
+          acc[methodName].revenueAmount += isComplementary ? 0 : (order.totalAmount || 0);
+          acc[methodName].isComplementary = isComplementary;
         }
       }
     }
@@ -200,11 +223,13 @@ const RevenueDashboard = () => {
   }, {});
 
   const paymentMethodsData = Object.entries(paymentMethodsWithAmount).map(
-    ([name, { count, amount, isSummary }]) => ({
+    ([name, { count, amount, revenueAmount, isSummary, isComplementary }]) => ({
       name,
       value: isSummary ? null : count, // null for summary payment methods
       amount,
-      isSummary
+      revenueAmount,
+      isSummary,
+      isComplementary
     })
   );
 
@@ -214,7 +239,9 @@ const RevenueDashboard = () => {
       name: 'Cash',
       value: summary.totalOrders,
       amount: summary.totalRevenue,
-      isSummary: false
+      revenueAmount: summary.totalRevenue,
+      isSummary: false,
+      isComplementary: false
     });
   }
 
@@ -235,8 +262,11 @@ const RevenueDashboard = () => {
         acc[key].revenue += order.totalAmount || 0;
         acc[key].orders += order.totalOrders || 0;
       } else {
-        // Regular order
-        acc[key].revenue += order.totalAmount || 0;
+        // Regular order - exclude complementary from revenue
+        const orderPaymentMethod = order.paymentMethod || order.paymentMethodType || order.paymentType;
+        const revenue = isComplementaryPayment(orderPaymentMethod) ? 0 : (order.totalAmount || 0);
+        
+        acc[key].revenue += revenue;
         acc[key].orders += 1;
       }
       
@@ -272,7 +302,6 @@ const RevenueDashboard = () => {
             ))}
           </div>
           
-
 
           {timeFrame === "today" && (
             <CustomDropdown
@@ -409,14 +438,16 @@ const RevenueDashboard = () => {
                   <th className="text-left py-2">Payment Method</th>
                   <th className="text-right py-2">Orders</th>
                   <th className="text-right py-2">Total Amount</th>
+                  <th className="text-right py-2">Revenue Amount</th>
                 </tr>
               </thead>
               <tbody>
-                {paymentMethodsData.map(({ name, value, amount, isSummary }) => (
+                {paymentMethodsData.map(({ name, value, amount, revenueAmount, isSummary, isComplementary }) => (
                   <tr key={name} className="border-b">
                     <td className="py-2">
                       {name}
                       {isSummary && <span className="text-xs text-gray-500 ml-2">(Summary)</span>}
+                      {isComplementary && <span className="text-xs text-orange-500 ml-2">(Complementary)</span>}
                     </td>
                     <td className="text-right">
                       {value !== null ? value : '-'}
@@ -425,11 +456,19 @@ const RevenueDashboard = () => {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2
                     })}</td>
+                    <td className="text-right">₹{revenueAmount.toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2
+                    })}</td>
                   </tr>
                 ))}
                 <tr className="border-b font-bold">
                   <td className="py-2">Total</td>
                   <td className="text-right">{summary.totalOrders}</td>
+                  <td className="text-right">₹{paymentMethodsData.reduce((sum, method) => sum + method.amount, 0).toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                  })}</td>
                   <td className="text-right">₹{summary.totalRevenue.toLocaleString(undefined, {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2
@@ -440,8 +479,6 @@ const RevenueDashboard = () => {
           </div>
         </div>
       </div>
-
-
 
       {/* Monthly Summaries Section */}
       {monthlySummaries.length > 0 && (

@@ -24,13 +24,12 @@ const routes = [
   { path: 'stockmanagement', label: '', icon: MdInventory2, allowedUserTypes: ['admin'] },
   { path: 'qrmanage', label: '', icon: MdQrCodeScanner, allowedUserTypes: ['admin'], requiresOwnerRole: true },
   { path: 'room-details', label: '', icon: FaHotel, allowedUserTypes: ['admin', 'waiter'] },
-  { path: 'day-end', label: '', icon: IoMdTimer, allowedUserTypes: ['admin', 'waiter'] },
+  { path: 'day-end', label: '', icon: IoMdTimer, allowedUserTypes: ['admin', 'waiter'], requiresBarIntegration: true },
   { path: 'revenue', label: '', icon: RiMoneyRupeeCircleFill, allowedUserTypes: ['admin'] },
   { path: 'orderhistory', label: '', icon: RiBillLine, allowedUserTypes: ['admin'] },
   { path: 'report', label: '', icon: TbReportSearch, allowedUserTypes: ['admin'] },
   { path: 'profile', label: '', icon: CgProfile, allowedUserTypes: ['member', 'admin', 'chef', 'waiter'] },
 ];
-
 
 const SideBar = () => {
   const { userData, items, institutionData } = useContext(Context);
@@ -41,16 +40,19 @@ const SideBar = () => {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const userType = userData?.userType;
   const role = userData?.role;
-  const { institution } = institutionData;
+  const { institution, bar_integration } = institutionData;
   const location = useLocation();
 
   // Helper function to check if route should be displayed
   const shouldDisplayRoute = (route) => {
     const hasUserType = route.allowedUserTypes.includes(userType);
-    // Only check role for routes that specifically require owner role
-    // For other routes, just check user type
+    // Check for owner role if required
     if (route.requiresOwnerRole) {
       return hasUserType && role === 'owner';
+    }
+    // Check for bar integration for day-end route
+    if (route.requiresBarIntegration) {
+      return hasUserType && bar_integration === "Yes";
     }
     return hasUserType;
   };
@@ -66,32 +68,6 @@ const SideBar = () => {
     }
   };
 
-  // const fetchPendingOrdersCount = async () => {
-  //   try {
-  //     const orders = await API.get("main", `/admin/list-orders/${institution}`, {});
-  //     const pendingCount = orders.filter(order => 
-  //       order.status === "pending" && 
-  //       !(order.verify && order.paymentStatus)
-  //     ).length;
-  //     setPendingOrdersCount(pendingCount);
-  //   } catch (error) {
-  //     console.error("Error fetching pending orders:", error);
-  //   }
-  // };
-
-  // const fetchOrdersCount = async () => {
-  //   try {
-  //     const orders = await API.get("main", `/admin/list-orders/${institution}`, {});
-  //     const pendingCount = orders.filter(order => 
-  //       order.status === "pending" && 
-  //       (order.verify || order.paymentStatus)
-  //     ).length;
-  //     setTotalOrdersCount(pendingCount);
-  //   } catch (error) {
-  //     console.error("Error fetching orders count:", error);
-  //   }
-  // };
-
   const fetchOutOfStockCount = () => {
     if (items) {
       const outOfStockItems = items.filter(item => item.outOfStock === true);
@@ -100,8 +76,6 @@ const SideBar = () => {
   };
 
   useEffect(() => {
-    // fetchPendingOrdersCount();
-    // fetchOrdersCount();
     fetchOutOfStockCount();
     const unsubscribe = subscribe(() => {
       // fetchPendingOrdersCount();
@@ -122,7 +96,7 @@ const SideBar = () => {
                   key={index}
                   to={`/dashboard/${item.path}`}
                   className={`relative flex items-center p-2 rounded-lg hover:bg-gray-200 transition-colors ${
-                   location.pathname === `/dashboard/${item.path}` ? 'bg-gray-300' : ''
+                    location.pathname === `/dashboard/${item.path}` ? 'bg-gray-300' : ''
                   }`}
                 >
                   <item.icon className="text-xl" />
@@ -145,18 +119,17 @@ const SideBar = () => {
                 </Link>
               )
             ))}
-            
             <button onClick={toggleFullScreen} className="text-gray-600 hover:text-black text-xl ml-2">
               {isFullScreen ? <FiMinimize /> : <FiMaximize />}
             </button>
-             <Link
-    to="/logout"
-    className="flex items-center p-2 mt-4 text-red-600 hover:bg-red-100 transition-colors rounded-lg"
-  >
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h5a2 2 0 012 2v1" />
-    </svg>
-  </Link>
+            <Link
+              to="/logout"
+              className="flex items-center p-2 mt-4 text-red-600 hover:bg-red-100 transition-colors rounded-lg"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h5a2 2 0 012 2v1" />
+              </svg>
+            </Link>
           </Sidebar.ItemGroup>
         </Sidebar.Items>
       </Sidebar>
@@ -169,22 +142,38 @@ const SideBar = () => {
                 key={index}
                 to={`/dashboard/${item.path}`}
                 className={`relative flex flex-col items-center ${
-                 location.pathname === `/dashboard/${item.path}` ? 'text-blue-600' : 'text-gray-600'
+                  location.pathname === `/dashboard/${item.path}` ? 'text-blue-600' : 'text-gray-600'
                 }`}
               >
                 <item.icon className="text-xl" />
                 <span className="text-xs">{item.label}</span>
+                {item.path === "pendingorders" && pendingOrdersCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold px-1 py-0.5 rounded-full">
+                    {pendingOrdersCount}
+                  </span>
+                )}
+                {item.path === "orders" && totalOrdersCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-xs font-bold px-1 py-0.5 rounded-full">
+                    {totalOrdersCount}
+                  </span>
+                )}
+                {item.path === "item" && outOfStockCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold px-1 py-0.5 rounded-full">
+                    {outOfStockCount}
+                  </span>
+                )}
               </Link>
             )
           ))}
           <Link
-    to="/logout"
-    className="flex flex-col items-center text-red-600"
-  >
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h5a2 2 0 012 2v1" />
-    </svg>
-  </Link>
+            to="/logout"
+            className="flex flex-col items-center text-red-600"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h5a2 2 0 012 2v1" />
+            </svg>
+            <span className="text-xs">Logout</span>
+          </Link>
         </div>
       </div>
     </div>
