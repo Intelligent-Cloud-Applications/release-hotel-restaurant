@@ -150,45 +150,43 @@ const PaymentModal = ({
     }
   };
 
-  // ---- Updated: write credit using dateinopaque and require name ----
-const updateCompanyCredit = async (companyId, amount, name, orderId) => {
-  try {
-    // enforce name for BTC credits
-    if (!name || String(name).trim() === "") {
-      throw new Error("Payer name is required for BTC/company credits.");
+  // ---- Updated: write credit using epoch-second key and require name ----
+  const updateCompanyCredit = async (companyId, amount, name, orderId) => {
+    try {
+      // enforce name for BTC credits
+      if (!name || String(name).trim() === "") {
+        throw new Error("Payer name is required for BTC/company credits.");
+      }
+
+      const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
+
+      // epoch seconds used as the dynamic key
+      const epochSec = Math.floor(Date.now() / 1000);
+
+      const creditData = {
+        [epochSec]: {
+          amount: Number(amount),
+          name: String(name).trim(),
+          createdOn: epochSec, // epoch seconds
+          type: type,
+          orderId: orderId,
+        },
+      };
+
+      await API.patch("frontdesk", `/company`, {
+        body: {
+          credit: creditData,
+          institutionId: institutionData.institution,
+          company_id: companyId,
+        },
+      });
+      toast.success("Company credit updated successfully");
+    } catch (error) {
+      console.error("updateCompanyCredit error:", error);
+      toast.error(error?.message || "Failed to update company credit");
+      throw error;
     }
-
-    const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
-
-    // epoch seconds used as the key
-    const epochSec = Math.floor(Date.now() / 1000);
-
-    const creditData = {
-      // dynamic key: epoch seconds
-      [epochSec]: {
-        amount: Number(amount),
-        name: String(name).trim(),
-        createdOn: epochSec, // still keep createdOn inside if helpful
-        type: type,
-        orderId: orderId,
-      },
-    };
-
-    await API.patch("frontdesk", `/company`, {
-      body: {
-        credit: creditData,
-        institutionId: institutionData.institution,
-        company_id: companyId,
-      },
-    });
-    toast.success("Company credit updated successfully");
-  } catch (error) {
-    console.error("updateCompanyCredit error:", error);
-    toast.error(error?.message || "Failed to update company credit");
-    throw error;
-  }
-};
-
+  };
 
   // Fetch companies only when BTC is selected
   useEffect(() => {
@@ -407,14 +405,14 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
         billLink = `https://manasrestaurant.tekkzy.com/receipt?orderIds=${selectedOrderId}`;
       }
       const customerPhone = customerDetails[selectedTable?.id]?.phone;
-      
+
       const settleBody = {
         paymentStatus: true,
         type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
         paymentMode: "offline",
         paymentMethod: selectedPaymentMethod,
         status: "delivered",
-        narration:  narration ,
+        narration: narration,
       };
       if (selectedPaymentMethod === "Complementary") {
         settleBody.paymentMethod = "Complementary";
@@ -438,10 +436,10 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
           payerName,
           narration,
         };
-        // update company credit with new shape (dateinopaque)
+        // update company credit with epoch-second key
         await updateCompanyCredit(orderSource, totalBillAmount, payerName, selectedOrderId);
       } else {
-        settleBody.narration =  narration ;
+        settleBody.narration = narration;
       }
       if (selectedPaymentMethod === "ROOM") {
         let totalFoodBill = localBillItems
@@ -609,7 +607,7 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
           paymentMode: "offline",
           paymentMethods: paymentMethodsPayload,
           status: "delivered",
-          narration: narration ,
+          narration: narration,
         },
       });
       await completePayment();
@@ -652,8 +650,8 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
     ((cashAmount || 0) + (cardAmount || 0) + (qrAmount || 0) + (roomAmount || 0) + (selectedPaymentMethod === "BTC" ? totalBillAmount : 0));
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-      <div className="bg-white rounded-xl shadow-2xl p-6 w-[30rem]">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-auto flex items-center justify-center">
+      <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-[30rem] max-h-[90vh] overflow-y-auto">
         <h2 className="text-2xl font-bold text-center mb-4 text-gray-800">
           {isPartialPayment ? "Split Payment" : "Settle Bill"}
         </h2>
@@ -662,11 +660,10 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
             Table: <strong>{selectedTable?.id}</strong>
           </p>
           {isPartialPayment && (
-            <p className="text-3xl font-bold text-green-600 mt-2">
-              ₹{totalBillAmount}
-            </p>
+            <p className="text-3xl font-bold text-green-600 mt-2">₹{totalBillAmount}</p>
           )}
         </div>
+
         {isPartialPayment ? (
           <div className="space-y-4">
             <div
@@ -706,6 +703,7 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
               </div>
               
             </div>
+
             {selectedPaymentMethod === "BTC" && (
               <div className="mt-2">
                 <label className="text-gray-700 text-sm mb-1">Select Company</label>
@@ -756,12 +754,12 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
                   className="w-full p-2 border rounded-md mt-2"
                   placeholder="Name (employee / payer) *"
                 />
-                {/* small required hint */}
                 {selectedPaymentMethod === "BTC" && (!payerName || payerName.trim() === "") && (
                   <div className="text-xs text-red-600 mt-1">Payer name is required for BTC payments.</div>
                 )}
               </div>
             )}
+
             {institutionData.integration === "HOTEL" && roomAmount > 0 && (
               <div className="flex flex-row gap-2 my-2">
                 <h3 className="text-sm font-semibold">Select Room:</h3>
@@ -787,7 +785,7 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
               </div>
             )}
             <div className="text-center mt-2">
-              <p
+             <p
                 className={`font-semibold ${
                   remainingAmount === 0 ? "text-green-600" : "text-red-500"
                 }`}
@@ -875,6 +873,7 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
                     </button>
                   )}
                 </div>
+
                 {selectedPaymentMethod === "BTC" && (
                   <div className="mt-3 space-y-2">
                     <div className="mt-2">
@@ -920,6 +919,7 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
                         </div>
                       )}
                     </div>
+
                     <div className="flex flex-col">
                       <label className="text-gray-700 text-sm mb-1">Name *</label>
                       <input
@@ -933,11 +933,13 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
                         <div className="text-xs text-red-600 mt-1">Payer name is required for BTC payments.</div>
                       )}
                     </div>
+
                     <div className="text-xs text-gray-600">
                       BTC payment will use the total bill amount (₹{totalBillAmount}). Company selection is required.
                     </div>
                   </div>
                 )}
+
                 {selectedPaymentMethod === "Complementary" && (
                   <div className="space-y-3 mt-3">
                     <h3 className="font-semibold mb-1 text-gray-700">Complementary Settlement</h3>
@@ -981,11 +983,13 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
                     </div>
                   </div>
                 )}
+
                 {selectedPaymentMethod === "Void" && (
                   <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded-md mt-3 text-sm">
                     <strong>Warning:</strong> This will void the bill and clear the table without any payment.
                   </div>
                 )}
+
                 {selectedPaymentMethod === "ROOM" && (
                   <div className="flex flex-row gap-2 my-2">
                     <h3 className="text-sm font-semibold">Select Room:</h3>
@@ -1005,6 +1009,7 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
                     </select>
                   </div>
                 )}
+
                 {selectedPaymentMethod === "ROOM" && (
                   <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-3 py-2 rounded-md mt-3 text-sm">
                     <strong>Note:</strong> Payment will be collected during hotel checkout.
@@ -1019,6 +1024,7 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
             </div>
           </div>
         )}
+
         <div className="mt-4">
           <label className="text-gray-700 text-sm mb-1">Narration (optional)</label>
           <textarea
@@ -1028,6 +1034,7 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
             placeholder="Add any notes or narration here..."
           />
         </div>
+
         <div className={`flex justify-between mt-6 ${isPartialPayment ? "space-x-4" : ""}`}>
           <button
             onClick={onClose}
@@ -1039,6 +1046,7 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
           >
             Cancel
           </button>
+
           {isManagementSpecial ? (
             <button
               onClick={handleManagementFreeSettle}
@@ -1050,7 +1058,7 @@ const updateCompanyCredit = async (companyId, amount, name, orderId) => {
             <button
               onClick={isPartialPayment ? handlePartialPayment : handleSinglePayment}
               disabled={isPartialPayment ? remainingAmount !== 0 : false}
-              className={`px-4 py-2 rounded-md text-white ${
+               className={`px-4 py-2 rounded-md text-white ${
                 isPartialPayment
                   ? remainingAmount === 0
                     ? "flex-1 bg-green-600 hover:bg-green-700"
