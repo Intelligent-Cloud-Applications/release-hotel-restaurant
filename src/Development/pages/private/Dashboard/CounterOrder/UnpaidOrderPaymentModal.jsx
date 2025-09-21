@@ -61,7 +61,7 @@ const UnpaidOrderPaymentModal = ({
     { value: "Police Staff", label: "Police Staff" },
     { value: "custom", label: "Custom" },
   ];
-  
+
   const [customManagementInput, setCustomManagementInput] = useState("");
   const paymentMethods = ["QR", "Cash", "Card", "BTC", "Complementary", "Void"];
 
@@ -220,8 +220,6 @@ const UnpaidOrderPaymentModal = ({
       .filter((item) => item.type !== "bar")
       .reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-    // Apply discount from discountData
-    const tableIdStr = String(selectedTable.id);
     const discountInfo = discountData[tableIdStr]?.[unpaidOrder.orderId] || { method: "none", value: 0, amount: 0 };
     let discountAmount = 0;
     let discountPercentage = 0;
@@ -255,10 +253,10 @@ const UnpaidOrderPaymentModal = ({
   };
 
   useEffect(() => {
-    if (selectedPaymentMethod === "BTC") {
+    if (selectedPaymentMethod === "BTC" || btcAmount > 0) {
       fetchCompanies();
     }
-  }, [selectedPaymentMethod]);
+  }, [selectedPaymentMethod, btcAmount]);
 
   const handleAddCompany = async () => {
     if (!newCompany.name) {
@@ -298,37 +296,44 @@ const UnpaidOrderPaymentModal = ({
     setAmount(numValue);
   };
 
-  const handleSinglePayment = async () => {
+  const handlePayment = async (paymentMethod, isManagementFree = false) => {
     setLoader(true);
 
-    if (!selectedPaymentMethod) {
+    if (!selectedPaymentMethod && !isManagementFree) {
       toast.error("Please select a payment method.");
       setLoader(false);
       return;
     }
 
-    if (selectedPaymentMethod === "BTC" || selectedPaymentMethod === "Complementary") {
+    if (selectedPaymentMethod === "BTC" || selectedPaymentMethod === "Complementary" || isManagementFree) {
       if (!orderSource) {
-        toast.error(`Please select a ${selectedPaymentMethod === "BTC" ? "company" : "complementary option"}.`);
+        toast.error(
+          `Please select a ${isManagementFree ? "management option" : selectedPaymentMethod === "BTC" ? "company" : "complementary option"}.`
+        );
         setLoader(false);
         return;
       }
       if (!payerName || String(payerName).trim() === "") {
-        toast.error(`Payer name is required for ${selectedPaymentMethod} payment.`);
+        toast.error(`Payer name is required for ${isManagementFree ? "management free" : selectedPaymentMethod} payment.`);
         setLoader(false);
         return;
       }
     }
 
     try {
-     
-
       const settleBody = {
-        paymentMethod: selectedPaymentMethod,
-        narration: narration,
+        narration,
       };
 
-      if (selectedPaymentMethod === "Complementary") {
+      if (isManagementFree) {
+        settleBody.paymentMethod = "Complementary";
+        settleBody.meta = {
+          orderSource: orderSource === "custom" ? customManagementInput : orderSource,
+          payerName,
+          narration,
+        };
+        paymentMethod = "Free";
+      } else if (selectedPaymentMethod === "Complementary") {
         settleBody.paymentMethod = "Complementary";
         settleBody.meta = {
           orderSource: orderSource === "custom" ? customManagementInput : orderSource,
@@ -343,6 +348,7 @@ const UnpaidOrderPaymentModal = ({
           narration,
         };
       } else if (selectedPaymentMethod === "BTC") {
+        settleBody.paymentMethod = "BTC";
         settleBody.meta = {
           orderSource,
           payerName,
@@ -350,87 +356,60 @@ const UnpaidOrderPaymentModal = ({
         };
         await updateCompanyCredit(orderSource, totalBillAmount, payerName, unpaidOrder.orderId);
       } else if (selectedPaymentMethod === "ROOM") {
+        settleBody.paymentMethod = "ROOM";
         settleBody.meta = { narration };
         settleBody.bookingInfo = booking ? { bookingId: booking.bookingId, roomNumber: booking.roomNumber } : null;
+      } else {
+        settleBody.paymentMethod = selectedPaymentMethod;
       }
 
-      if (selectedPaymentMethod === "ROOM") {
-        if (!booking?.bookingId) {
+      if (selectedPaymentMethod === "ROOM" || isManagementFree) {
+        if (!booking?.bookingId && selectedPaymentMethod === "ROOM") {
           toast.error("Please select a room for hotel billing.");
           setLoader(false);
           return;
         }
 
-        let totalFoodBill = unpaidOrder.items
-          .filter((item) => item.type !== "bar")
-          .reduce((total, item) => total + item.price * item.quantity, 0);
+        if (booking) {
+          const totalFoodBill = unpaidOrder.items
+            .filter((item) => item.type !== "bar")
+            .reduce((total, item) => total + item.price * item.quantity, 0);
 
-        let totalBarBill = unpaidOrder.items
-          .filter((item) => item.type === "bar")
-          .reduce((total, item) => total + item.price * item.quantity, 0);
+          const totalBarBill = unpaidOrder.items
+            .filter((item) => item.type === "bar")
+            .reduce((total, item) => total + item.price * item.quantity, 0);
 
-        const totals = calculateTotals(unpaidOrder.items);
-        const totalFoodBillWithGST = totalFoodBill + totals.cgst + totals.sgst;
+          const totals = calculateTotals(unpaidOrder.items);
+          const totalFoodBillWithGST = totalFoodBill + totals.cgst + totals.sgst;
 
-        await addHotelService(booking.bookingId, {
-          [booking.roomNumber]: {
-            [new Date().toISOString().split("T")[0]]: [
-              {
-                food_charges: totalFoodBillWithGST,
-                extra_bed_charges: 0,
-                laundry_charges: 0,
-                manual_charges: 0,
-                minibar_charges: totalBarBill,
-                order_id: unpaidOrder.orderId,
-              },
-            ],
-          },
-        });
+          await addHotelService(booking.bookingId, {
+            [booking.roomNumber]: {
+              [new Date().toISOString().split("T")[0]]: [
+                {
+                  food_charges: totalFoodBillWithGST,
+                  extra_bed_charges: 0,
+                  laundry_charges: 0,
+                  manual_charges: 0,
+                  minibar_charges: totalBarBill,
+                  order_id: unpaidOrder.orderId,
+                },
+              ],
+            },
+          });
+        }
       }
 
-      await settleUnpaidOrder(unpaidOrder, selectedPaymentMethod, settleBody);
+      await settleUnpaidOrder(unpaidOrder, paymentMethod, settleBody);
       await completePayment();
     } catch (error) {
       console.error("Payment Error:", error);
-      let errorMessage = "Failed to process payment.";
+      let errorMessage = isManagementFree ? "Failed to process management free payment." : "Failed to process payment.";
       if (error?.response?.data) {
         const apiError = error.response.data;
         if (apiError.message) errorMessage += ` - ${apiError.message}`;
         if (apiError.error) errorMessage += `: ${apiError.error}`;
       } else if (error?.message) {
         errorMessage += ` - ${error.message}`;
-      }
-      toast.error(errorMessage);
-      setLoader(false);
-    }
-  };
-
-  const handleManagementFreeSettle = async () => {
-    if (!orderSource) {
-      toast.error("Please select or enter a management option.");
-      return;
-    }
-
-    setLoader(true);
-    try {
-      const settleBody = {
-        paymentMethod: "Complementary",
-        narration: narration,
-        meta: {
-          orderSource: orderSource === "custom" ? customManagementInput : orderSource,
-          payerName,
-        },
-      };
-
-      await settleUnpaidOrder(unpaidOrder, "Free", settleBody);
-      await completePayment();
-    } catch (error) {
-      console.error("Management Free Payment Error:", error);
-      let errorMessage = "Failed to process management free payment.";
-      if (error?.response?.data) {
-        const apiError = error.response.data;
-        if (apiError.message) errorMessage += ` - ${apiError.message}`;
-        if (apiError.error) errorMessage += `: ${apiError.error}`;
       }
       toast.error(errorMessage);
       setLoader(false);
@@ -492,22 +471,23 @@ const UnpaidOrderPaymentModal = ({
     setLoader(true);
 
     try {
-      const totalFoodBill = unpaidOrder.items
-        .filter((item) => item.type !== "bar")
-        .reduce((sum, item) => sum + item.price * item.quantity, 0);
-
-      const totalBarBill = unpaidOrder.items
-        .filter((item) => item.type === "bar")
-        .reduce((sum, item) => sum + item.price * item.quantity, 0);
-
       if (roomAmountFinal > 0) {
         if (!booking?.bookingId) {
           toast.error("Please select a room for hotel billing.");
           setLoader(false);
           return;
         }
+        const totalFoodBill = unpaidOrder.items
+          .filter((item) => item.type !== "bar")
+          .reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+        const totalBarBill = unpaidOrder.items
+          .filter((item) => item.type === "bar")
+          .reduce((sum, item) => sum + item.price * item.quantity, 0);
+
         const totals = calculateTotals(unpaidOrder.items);
         const totalFoodBillWithGST = totalFoodBill + totals.cgst + totals.sgst;
+
         await addHotelService(booking.bookingId, {
           [booking.roomNumber]: {
             [new Date().toISOString().split("T")[0]]: [
@@ -526,8 +506,12 @@ const UnpaidOrderPaymentModal = ({
 
       const settleBody = {
         paymentMethods: paymentMethodsArray,
-        narration: narration,
+        narration,
       };
+
+      if (roomAmountFinal > 0) {
+        settleBody.bookingInfo = booking ? { bookingId: booking.bookingId, roomNumber: booking.roomNumber } : null;
+      }
 
       await settleUnpaidOrder(unpaidOrder, "Multiple", settleBody);
       await completePayment();
@@ -581,7 +565,7 @@ const UnpaidOrderPaymentModal = ({
           <div className="space-y-4">
             <div
               className={`grid gap-2 ${
-                institutionData.integration === "HOTEL" ? "grid-cols-3" : "grid-cols-4"
+                institutionData.integration === "HOTEL" ? "grid-cols-4" : "grid-cols-4"
               }`}
             >
               <div className="flex flex-col">
@@ -614,10 +598,10 @@ const UnpaidOrderPaymentModal = ({
                   placeholder="QR"
                 />
               </div>
-            
+              
             </div>
 
-            {btcAmount > 0 && (
+            {(btcAmount > 0 || selectedPaymentMethod === "BTC") && (
               <div className="mt-2">
                 <label className="text-gray-700 text-sm mb-1">Select Company</label>
                 <Select
@@ -984,14 +968,14 @@ const UnpaidOrderPaymentModal = ({
           </button>
           {isManagementSpecial ? (
             <button
-              onClick={handleManagementFreeSettle}
+              onClick={() => handlePayment("Free", true)}
               className="px-4 py-2 rounded-md text-white bg-green-700 hover:bg-green-800"
             >
               Confirm Free Settlement
             </button>
           ) : (
             <button
-              onClick={isPartialPayment ? handlePartialPayment : handleSinglePayment}
+              onClick={isPartialPayment ? handlePartialPayment : () => handlePayment(selectedPaymentMethod)}
               disabled={isPartialPayment ? remainingAmount !== 0 : !selectedPaymentMethod}
               className={`px-4 py-2 rounded-md text-white ${
                 isPartialPayment
