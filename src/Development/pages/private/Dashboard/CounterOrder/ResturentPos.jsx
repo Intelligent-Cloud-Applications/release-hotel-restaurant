@@ -653,6 +653,7 @@ const settleUnpaidOrder = async (order, paymentMethod, settleBody = null) => {
       paymentMode: "offline",
       type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
       table: false,
+      ...(booking && booking.roomNumber ? { room_number: "Hotel"+booking.roomNumber } : {}),
     };
 
     // For partial payments, include paymentMethods array; otherwise, use single paymentMethod
@@ -671,6 +672,7 @@ const settleUnpaidOrder = async (order, paymentMethod, settleBody = null) => {
       }
     }
 
+    const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
     // Make the API call to settle the order
     await API.post(
       "main",
@@ -679,6 +681,19 @@ const settleUnpaidOrder = async (order, paymentMethod, settleBody = null) => {
         body: apiBody,
       }
     );
+    if (isHotelTable) {
+      await API.put("frontdesk", `/offline/amend-booking/${booking?.bookingId}?institutionId=${institutionData.institution}`, {
+        body: {
+          bookingData: {
+            booking_id: booking?.bookingId,
+            restaurant_hold: false,
+          },
+          guestDetailsData: {
+            guest_id: booking?.guest_id,
+          },
+        },
+      });
+    }
 
     toast.success(`Order ${order.orderId} settled successfully!`);
     await fetchAllTableData(); // Refresh data

@@ -363,6 +363,7 @@ const OrderPaymentModal = ({
         type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
         status: "delivered",
         narration: narration,
+        ...(booking && booking.roomNumber ? { room_number: "Hotel"+booking.roomNumber } : {}),
       };
 
       if (selectedPaymentMethod === "Complementary") {
@@ -428,7 +429,7 @@ const OrderPaymentModal = ({
           },
         });
       }
-
+const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
       await API.post(
         "main",
         `/admin/settle-bill-order/${institutionData.institution}/${tableIdStr}/${selectedOrderId}`,
@@ -436,7 +437,19 @@ const OrderPaymentModal = ({
           body: settleBody,
         }
       );
-
+ if (isHotelTable) {
+      await API.put("frontdesk", `/offline/amend-booking/${booking?.bookingId}?institutionId=${institutionData.institution}`, {
+         body: {
+        bookingData: {
+          booking_id: booking?.bookingId,    
+          restaurant_hold: false          
+        },
+        guestDetailsData: {
+          guest_id: booking?.guest_id 
+        }
+      },
+      });
+    }
       await completePayment();
     } catch (error) {
       console.error("Payment Error:", error);
@@ -552,7 +565,7 @@ const OrderPaymentModal = ({
     }
 
     setLoader(true);
-
+const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
     try {
       const totalFoodBill = matchedOrder.items
         .filter((item) => item.type !== "bar")
@@ -597,10 +610,23 @@ const OrderPaymentModal = ({
             status: "delivered",
             type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
             narration: narration,
+            ...(booking && booking.roomNumber ? { room_number: "Hotel"+booking.roomNumber } : {}),
           },
         }
       );
-
+ if (isHotelTable) {
+      await API.put("frontdesk", `/offline/amend-booking/${booking?.bookingId}?institutionId=${institutionData.institution}`, {
+         body: {
+        bookingData: {
+          booking_id: booking?.bookingId,    
+          restaurant_hold: false          
+        },
+        guestDetailsData: {
+          guest_id: booking?.guest_id 
+        }
+      },
+      });
+    }
       await completePayment();
     } catch (error) {
       console.error("Payment Error:", error);
