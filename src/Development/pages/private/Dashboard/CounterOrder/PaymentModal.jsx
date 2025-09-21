@@ -40,9 +40,30 @@ const PaymentModal = ({
   const [showAddCompanyForm, setShowAddCompanyForm] = useState(false);
   const [error, setError] = useState(null);
   const [managementOptions, setManagementOptions] = useState([
-    { value: "Md Sir", label: "Md Sir" },
-    { value: "Staff", label: "Staff" },
-    { value: "Police Station", label: "Police Station" },
+   { value: "Md Sir", label: "Md Sir" },
+    { value: "GM Sir", label: "GM Sir" },
+    { value: "Md House", label: "Md House" },
+    { value: "House Guest", label: "House Guest" },
+    { value: "Room Compliment", label: "Room Compliment" },
+    { value: "Account Staff", label: "Account Staff" },
+    { value: "Md Guest", label: "Md Guest" },
+    { value: "F.O.M", label: "F.O.M" },
+    { value: "HK EXE", label: "HK EXE" },
+    { value: "HR Manager", label: "HR Manager" },
+    { value: "Guest Entartaintment", label: "Guest Entartaintment" },
+    { value: "Ac Manager", label: "Ac Manager" },
+    { value: "Maintanence Eng", label: "Maintanence Eng" },
+    { value: "EXE Chef", label: "EXE Chef" },
+    { value: "C.M.D Sir", label: "C.M.D Sir" },
+    { value: "Hotel Staff Food", label: "Hotel Staff Food" },
+    { value: "Store Keeper", label: "Store Keeper" },
+    { value: "Maintanence", label: "Maintanence" },
+    { value: "Sales Manager", label: "Sales Manager" },
+    { value: "F.O Executive", label: "F.O Executive" },
+    { value: "EDP", label: "EDP" },
+    { value: "F&B Manager", label: "F&B Manager" },
+    { value: "Town Thana", label: "Town Thana" },
+    { value: "Police Staff", label: "Police Staff" },
     { value: "custom", label: "Custom" },
   ]);
   const [customManagementInput, setCustomManagementInput] = useState("");
@@ -499,7 +520,7 @@ const PaymentModal = ({
           type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
           paymentStatus: true,
           paymentMode: "offline",
-          paymentMethod: "Free",
+          paymentMethod: "Complementary",
           status: "delivered",
           narration: narration,
           meta: {
