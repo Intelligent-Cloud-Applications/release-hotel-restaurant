@@ -35,6 +35,7 @@ const OrderPaymentModal = ({
   // Management-specific / BTC payer fields
   const [orderSource, setOrderSource] = useState("");
   const [payerName, setPayerName] = useState("");
+  const [narration, setNarration] = useState("");
   const [companies, setCompanies] = useState([]);
   const [newCompany, setNewCompany] = useState({ gstin: "", name: "" });
   const [showAddCompanyForm, setShowAddCompanyForm] = useState(false);
@@ -50,8 +51,8 @@ const OrderPaymentModal = ({
   ]);
   const [customManagementInput, setCustomManagementInput] = useState("");
 
-  const paymentMethods = ["QR", "Cash", "Card", "BTC"];
-  const isPartialPayment = institutionData.paymentMethod === "partial";
+  const paymentMethods = ["QR", "Cash", "Card", "BTC", "Complementary", "Void"];
+  const [isPartialPayment, setIsPartialPayment] = useState(institutionData.paymentMethod === "partial");
 
   // Detect special management institutions
   const isManagementSpecial = (() => {
@@ -66,7 +67,7 @@ const OrderPaymentModal = ({
     return false;
   })();
 
-  // ---------- Robust fetchCompanies ----------
+  // Robust fetchCompanies
   const fetchCompanies = async () => {
     setLoader(true);
     setError(null);
@@ -107,7 +108,7 @@ const OrderPaymentModal = ({
     }
   };
 
-  // ---------- Robust createCompany ----------
+  // Robust createCompany
   const createCompany = async (payload) => {
     setLoader(true);
     setError(null);
@@ -153,17 +154,26 @@ const OrderPaymentModal = ({
     }
   };
 
-  // ---------- Update Company Credit ----------
+  // Updated updateCompanyCredit with epoch-second key and name enforcement
   const updateCompanyCredit = async (companyId, amount, name, orderId) => {
     try {
+      if (!name || String(name).trim() === "") {
+        throw new Error("Payer name is required for BTC/company credits.");
+      }
+
       const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
+      const epochSec = Math.floor(Date.now() / 1000);
+
       const creditData = {
-        amount: Number(amount),
-        date: new Date().toISOString().split("T")[0],
-        name: name || "Unknown",
-        type: type,
-        orderId: orderId,
+        [epochSec]: {
+          amount: Number(amount),
+          name: String(name).trim(),
+          createdOn: epochSec,
+          type: type,
+          orderId: orderId,
+        },
       };
+
       await API.patch("frontdesk", `/company`, {
         body: {
           credit: creditData,
@@ -173,13 +183,13 @@ const OrderPaymentModal = ({
       });
       toast.success("Company credit updated successfully");
     } catch (error) {
-      console.error("updateCompanyCredit error:", error);
-      toast.error("Failed to update company credit");
+      console.error("updateCompanyCredit error:", err);
+      toast.error(error?.message || "Failed to update company credit");
       throw error;
     }
   };
 
-  // ---------- Calculate Totals ----------
+  // Calculate Totals
   const calculateTotals = (items) => {
     if (!items || !Array.isArray(items)) {
       return {
@@ -226,8 +236,8 @@ const OrderPaymentModal = ({
 
   // Handle new company form submission
   const handleAddCompany = async () => {
-    if (!newCompany.gstin || !newCompany.name) {
-      toast.error("Please provide both GSTIN and Company Name");
+    if (!newCompany.name) {
+      toast.error("Please provide a Company Name");
       return;
     }
     await createCompany({
@@ -251,6 +261,15 @@ const OrderPaymentModal = ({
     setTotalBillAmount(totals.totalWithTax);
   }, [matchedOrder, institutionData]);
 
+  // Hotel auto-select
+  useEffect(() => {
+    if (institutionData.integration === "HOTEL" && tableIdStr.toLowerCase().startsWith("hotel")) {
+      const roomNumber = tableIdStr.replace(/^hotel/i, "");
+      const matchingBooking = hotelBookings.find((b) => String(b.roomNumber) === roomNumber);
+      setBooking(matchingBooking || null);
+    }
+  }, [tableIdStr, hotelBookings, institutionData.integration]);
+
   // Validate amount input for partial payment
   const validateAmountInput = (value, setAmount) => {
     const numValue = value === null || value === "" ? null : Number(value);
@@ -273,11 +292,18 @@ const OrderPaymentModal = ({
       return;
     }
 
-    // If BTC selected, require orderSource
-    if (selectedPaymentMethod === "BTC" && !orderSource) {
-      toast.error("Please select a company for BTC payment.");
-      setLoader(false);
-      return;
+    // Enforce payerName for BTC and Complementary
+    if (selectedPaymentMethod === "BTC" || selectedPaymentMethod === "Complementary") {
+      if (!orderSource) {
+        toast.error(`Please select a ${selectedPaymentMethod === "BTC" ? "company" : "complementary option"}.`);
+        setLoader(false);
+        return;
+      }
+      if (!payerName || String(payerName).trim() === "") {
+        toast.error(`Payer name is required for ${selectedPaymentMethod} payment.`);
+        setLoader(false);
+        return;
+      }
     }
 
     try {
@@ -309,22 +335,43 @@ const OrderPaymentModal = ({
         }
       }
 
-      // Prepare settle payload, include meta if BTC
+      // Prepare settle payload
       const settleBody = {
         paymentStatus: true,
         paymentMode: "offline",
         paymentMethod: selectedPaymentMethod,
         type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
         status: "delivered",
+        narration: narration,
       };
 
-      if (selectedPaymentMethod === "BTC") {
+      if (selectedPaymentMethod === "Complementary") {
+        settleBody.paymentMethod = "Complementary";
+        settleBody.meta = {
+          orderSource: orderSource === "custom" ? customManagementInput : orderSource,
+          payerName,
+          narration,
+        };
+      } else if (selectedPaymentMethod === "Void") {
+        settleBody.paymentStatus = false;
+        settleBody.paymentMode = null;
+        settleBody.paymentMethod = "Void";
+        settleBody.status = "voided";
+        settleBody.meta = {
+          payerName,
+          narration,
+        };
+      } else if (selectedPaymentMethod === "BTC") {
         settleBody.meta = {
           orderSource,
           payerName,
+          narration,
         };
-        // Update company credit for BTC payment
         await updateCompanyCredit(orderSource, totalBillAmount, payerName, selectedOrderId);
+      } else if (selectedPaymentMethod === "ROOM") {
+        settleBody.meta = { narration };
+      } else {
+        settleBody.narration = narration;
       }
 
       // Handle hotel room billing
@@ -380,6 +427,8 @@ const OrderPaymentModal = ({
         const apiError = error.response.data;
         if (apiError.message) errorMessage += ` - ${apiError.message}`;
         if (apiError.error) errorMessage += `: ${apiError.error}`;
+      } else if (error?.message) {
+        errorMessage += ` - ${error.message}`;
       }
 
       toast.error(errorMessage);
@@ -406,6 +455,7 @@ const OrderPaymentModal = ({
             paymentMode: "offline",
             paymentMethod: "Free",
             status: "delivered",
+            narration: narration,
             meta: {
               orderSource: orderSource === "custom" ? customManagementInput : orderSource,
               payerName,
@@ -442,10 +492,17 @@ const OrderPaymentModal = ({
       return;
     }
 
-    if (btcAmountFinal > 0 && !orderSource) {
-      toast.error("Please select a company for BTC payment.");
-      setLoader(false);
-      return;
+    if (btcAmountFinal > 0) {
+      if (!orderSource) {
+        toast.error("Please select a company for BTC payment.");
+        setLoader(false);
+        return;
+      }
+      if (!payerName || String(payerName).trim() === "") {
+        toast.error("Payer name is required for BTC payment.");
+        setLoader(false);
+        return;
+      }
     }
 
     const paymentMethodsArray = [];
@@ -468,6 +525,7 @@ const OrderPaymentModal = ({
         meta: {
           orderSource,
           payerName,
+          narration,
         },
       });
       await updateCompanyCredit(orderSource, btcAmountFinal, payerName, selectedOrderId);
@@ -510,7 +568,7 @@ const OrderPaymentModal = ({
 
       await API.post(
         "main",
-        `/admin/partial-settle-bill-order/${institutionData.institution}/${tableIdStr}/${selectedOrderId}`,
+        `/admin/settle-bill-order/${institutionData.institution}/${tableIdStr}/${selectedOrderId}`,
         {
           body: {
             paymentStatus: true,
@@ -518,6 +576,7 @@ const OrderPaymentModal = ({
             paymentMethods: paymentMethodsArray,
             status: "delivered",
             type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
+            narration: narration,
           },
         }
       );
@@ -556,8 +615,8 @@ const OrderPaymentModal = ({
     ((cashAmount || 0) + (cardAmount || 0) + (qrAmount || 0) + (roomAmount || 0) + (btcAmount || 0));
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-      <div className="bg-white rounded-xl shadow-2xl p-6 w-96">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-auto flex items-center justify-center">
+      <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-[30rem] max-h-[90vh] overflow-y-auto">
         <h2 className="text-2xl font-bold text-center mb-4 text-gray-800">
           {isPartialPayment ? "Split Payment" : "Settle Order"}
         </h2>
@@ -583,7 +642,7 @@ const OrderPaymentModal = ({
           <div className="space-y-4">
             <div
               className={`grid gap-2 ${
-                institutionData.integration === "HOTEL" ? "grid-cols-2" : "grid-cols-4"
+                institutionData.integration === "HOTEL" ? "grid-cols-3" : "grid-cols-4"
               }`}
             >
               {/* Cash Payment */}
@@ -622,91 +681,71 @@ const OrderPaymentModal = ({
                 />
               </div>
 
-              {/* BTC Payment */}
-              <div className="flex flex-col">
-                <label className="text-gray-700 text-sm mb-1">BTC</label>
-                <input
-                  type="number"
-                  value={btcAmount === null ? "" : btcAmount}
-                  onChange={(e) => validateAmountInput(e.target.value, setBtcAmount)}
-                  className="w-full p-2 border rounded-md text-center mb-2"
-                  placeholder="BTC"
+            </div>
+
+            {/* BTC fields for partial payment */}
+            {btcAmount > 0 && (
+              <div className="mt-2">
+                <label className="text-gray-700 text-sm mb-1">Select Company</label>
+                <Select
+                  options={companyOptions}
+                  value={companyOptions.find((option) => option.value === orderSource) || null}
+                  onChange={(selected) => setOrderSource(selected ? selected.value : "")}
+                  placeholder="Select a company..."
+                  isClearable
+                  className="w-full"
                 />
-                {btcAmount > 0 && (
-                  <div className="mt-2 space-y-2">
-                    <label className="text-gray-700 text-sm mb-1">Select Company</label>
-                    <Select
-                      options={companyOptions}
-                      value={companyOptions.find((option) => option.value === orderSource) || null}
-                      onChange={(selected) => setOrderSource(selected ? selected.value : "")}
-                      placeholder="Select a company..."
-                      isClearable
-                      className="w-full"
-                    />
-                    <button
-                      onClick={() => setShowAddCompanyForm(true)}
-                      className="mt-2 text-blue-600 hover:underline text-sm"
-                    >
-                      Add New Company
-                    </button>
-                    {showAddCompanyForm && (
-                      <div className="mt-2 p-3 border rounded-md bg-gray-50">
-                        <h3 className="text-sm font-semibold mb-2">Add New Company</h3>
-                        <input
-                          type="text"
-                          value={newCompany.gstin}
-                          onChange={(e) => setNewCompany({ ...newCompany, gstin: e.target.value })}
-                          className="w-full p-2 border rounded-md mb-2"
-                          placeholder="GSTIN"
-                        />
-                        <input
-                          type="text"
-                          value={newCompany.name}
-                          onChange={(e) => setNewCompany({ ...newCompany, name: e.target.value })}
-                          className="w-full p-2 border rounded-md mb-2"
-                          placeholder="Company Name"
-                        />
-                        <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => setShowAddCompanyForm(false)}
-                            className="px-3 py-1 bg-gray-200 text-gray-800 rounded-md"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={handleAddCompany}
-                            className="px-3 py-1 bg-green-600 text-white rounded-md"
-                          >
-                            Add
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                <button
+                  onClick={() => setShowAddCompanyForm(true)}
+                  className="mt-2 text-blue-600 hover:underline text-sm"
+                >
+                  Add New Company
+                </button>
+                {showAddCompanyForm && (
+                  <div className="mt-2 p-3 border rounded-md bg-gray-50">
+                    <h3 className="text-sm font-semibold mb-2">Add New Company</h3>
                     <input
                       type="text"
-                      value={payerName}
-                      onChange={(e) => setPayerName(e.target.value)}
-                      className="w-full p-2 border rounded-md"
-                      placeholder="Name (employee / payer)"
+                      value={newCompany.gstin}
+                      onChange={(e) => setNewCompany({ ...newCompany, gstin: e.target.value })}
+                      className="w-full p-2 border rounded-md mb-2"
+                      placeholder="GSTIN"
                     />
+                    <input
+                      type="text"
+                      value={newCompany.name}
+                      onChange={(e) => setNewCompany({ ...newCompany, name: e.target.value })}
+                      className="w-full p-2 border rounded-md mb-2"
+                      placeholder="Company Name"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => setShowAddCompanyForm(false)}
+                        className="px-3 py-1 bg-gray-200 text-gray-800 rounded-md"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleAddCompany}
+                        className="px-3 py-1 bg-green-600 text-white rounded-md"
+                      >
+                        Add
+                      </button>
+                    </div>
                   </div>
                 )}
+                <input
+                  type="text"
+                  value={payerName}
+                  onChange={(e) => setPayerName(e.target.value)}
+                  className="w-full p-2 border rounded-md mt-2"
+                  placeholder="Name (employee / payer) *"
+                />
+                {(!payerName || payerName.trim() === "") && (
+                  <div className="text-xs text-red-600 mt-1">Payer name is required for BTC payments.</div>
+                )}
               </div>
-
-              {/* Room Payment - Only show if hotel integration */}
-              {institutionData.integration === "HOTEL" && (
-                <div className="flex flex-col">
-                  <label className="text-gray-700 text-sm mb-1">Room</label>
-                  <input
-                    type="number"
-                    value={roomAmount === null ? "" : roomAmount}
-                    onChange={(e) => validateAmountInput(e.target.value, setRoomAmount)}
-                    className="w-full p-2 border rounded-md text-center"
-                    placeholder="Room"
-                  />
-                </div>
-              )}
-            </div>
+            )}
 
             {/* Hotel Room Selection - Only show if room amount is entered */}
             {institutionData.integration === "HOTEL" && roomAmount > 0 && (
@@ -747,6 +786,12 @@ const OrderPaymentModal = ({
               >
                 Remaining: ₹{remainingAmount}
               </p>
+            </div>
+
+            <div className="text-center mt-4">
+              <button onClick={() => setIsPartialPayment(false)} className="text-blue-600 hover:underline">
+                Switch to Single Payment
+              </button>
             </div>
           </div>
         ) : (
@@ -798,7 +843,7 @@ const OrderPaymentModal = ({
             ) : (
               <div>
                 <h3 className="font-semibold mb-3 text-gray-700">Choose Payment Method:</h3>
-                <div className="grid grid-cols-4 gap-3">
+                <div className={`grid gap-3 ${institutionData.integration === "HOTEL" ? "grid-cols-3" : "grid-cols-4"}`}>
                   {paymentMethods.map((method) => (
                     <button
                       key={method}
@@ -826,7 +871,7 @@ const OrderPaymentModal = ({
                   )}
                 </div>
 
-                {/* BTC fields for single-pay */}
+                {/* BTC fields for single payment */}
                 {selectedPaymentMethod === "BTC" && (
                   <div className="mt-3 space-y-2">
                     <div>
@@ -880,7 +925,7 @@ const OrderPaymentModal = ({
                       )}
                     </div>
                     <div className="flex flex-col">
-                      <label className="text-gray-700 text-sm mb-1">Name</label>
+                      <label className="text-gray-700 text-sm mb-1">Name *</label>
                       <input
                         type="text"
                         value={payerName}
@@ -888,10 +933,68 @@ const OrderPaymentModal = ({
                         className="w-full p-2 border rounded-md"
                         placeholder="Name (employee / payer)"
                       />
+                      {(!payerName || payerName.trim() === "") && (
+                        <div className="text-xs text-red-600 mt-1">Payer name is required for BTC payments.</div>
+                      )}
                     </div>
                     <div className="text-xs text-gray-600">
                       BTC payment will use the total bill amount (₹{totalBillAmount}). Company selection is required.
                     </div>
+                  </div>
+                )}
+
+                {/* Complementary fields for single payment */}
+                {selectedPaymentMethod === "Complementary" && (
+                  <div className="space-y-3 mt-3">
+                    <h3 className="font-semibold mb-1 text-gray-700">Complementary Settlement</h3>
+                    <div className="mt-2">
+                      <label className="text-gray-700 text-sm mb-1">Select Complementary Option</label>
+                      <Select
+                        options={managementOptions}
+                        value={managementOptions.find((option) => option.value === orderSource) || null}
+                        onChange={(selected) => {
+                          setOrderSource(selected ? selected.value : "");
+                          if (selected && selected.value !== "custom") {
+                            setCustomManagementInput("");
+                          }
+                        }}
+                        placeholder="Select an option..."
+                        isClearable
+                        className="w-full"
+                      />
+                      {orderSource === "custom" && (
+                        <input
+                          type="text"
+                          value={customManagementInput}
+                          onChange={(e) => setCustomManagementInput(e.target.value)}
+                          className="w-full p-2 border rounded-md mt-2"
+                          placeholder="Enter custom option"
+                        />
+                      )}
+                    </div>
+                    <div className="flex flex-col">
+                      <label className="text-gray-700 text-sm mb-1">Name *</label>
+                      <input
+                        type="text"
+                        value={payerName}
+                        onChange={(e) => setPayerName(e.target.value)}
+                        className="w-full p-2 border rounded-md"
+                        placeholder="Enter name"
+                      />
+                      {(!payerName || payerName.trim() === "") && (
+                        <div className="text-xs text-red-600 mt-1">Payer name is required for Complementary payments.</div>
+                      )}
+                    </div>
+                    <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-3 py-2 rounded-md mt-2 text-sm">
+                      This will settle the order as <strong>Complementary</strong>.
+                    </div>
+                  </div>
+                )}
+
+                {/* Void Warning */}
+                {selectedPaymentMethod === "Void" && (
+                  <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded-md mt-3 text-sm">
+                    <strong>Warning:</strong> This will void the bill and clear the order without any payment.
                   </div>
                 )}
 
@@ -924,10 +1027,27 @@ const OrderPaymentModal = ({
                     <strong>Note:</strong> Payment will be collected during hotel checkout.
                   </div>
                 )}
+
+                <div className="text-center mt-4">
+                  <button onClick={() => setIsPartialPayment(true)} className="text-blue-600 hover:underline">
+                    Switch to Partial Payment
+                  </button>
+                </div>
               </div>
             )}
           </div>
         )}
+
+        {/* Narration Field */}
+        <div className="mt-4">
+          <label className="text-gray-700 text-sm mb-1">Narration (optional)</label>
+          <textarea
+            value={narration}
+            onChange={(e) => setNarration(e.target.value)}
+            className="w-full p-2 border rounded-md"
+            placeholder="Add any notes or narration here..."
+          />
+        </div>
 
         {/* Action Buttons */}
         <div className={`flex justify-between mt-6 ${isPartialPayment ? "space-x-4" : ""}`}>
