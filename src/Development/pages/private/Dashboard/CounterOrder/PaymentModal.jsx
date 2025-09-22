@@ -503,7 +503,11 @@ const PaymentModal = ({
           },
         });
       }
-
+if (
+  institutionData.bar_integration === "Yes" 
+) {
+  settleBody.dateId = institutionData.dateId;
+}
       const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
       await API.post("main", `/admin/settle-bill/${institutionData.institution}/${tableIdStr}`, {
         body: settleBody,
@@ -560,6 +564,9 @@ const PaymentModal = ({
           narration: narration,
           orderSource: orderSource === "custom" ? customManagementInput : orderSource,
           name: payerName,
+           ...(institutionData?.bar_integration === "Yes" 
+        ? { dateId: institutionData.dateId }
+        : {}),
         },
       });
       await completePayment();
@@ -664,6 +671,9 @@ const PaymentModal = ({
           ...(booking && booking.roomNumber ? { room_number: "Hotel" + booking.roomNumber } : {}),
           ...(orderSource ? { orderSource } : {}),
           ...(payerName ? { name: payerName } : {}),
+           ...(institutionData?.bar_integration === "Yes" 
+        ? { dateId: institutionData.dateId }
+        : {}),
         },
       });
       if (isHotelTable) {

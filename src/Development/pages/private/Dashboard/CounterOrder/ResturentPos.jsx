@@ -728,7 +728,11 @@ const settleUnpaidOrder = async (order, paymentMethod, settleBody = null) => {
         apiBody.narration = settleBody.narration;
       }
     }
-
+if (
+  institutionData.bar_integration === "Yes" 
+) {
+  apiBody.dateId = institutionData.dateId;
+}
     const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
     // Make the API call to settle the order
     await API.post(
