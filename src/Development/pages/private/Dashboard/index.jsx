@@ -15,7 +15,7 @@ const Dashboard = () => {
       (userData?.userType === "admin" &&
       (institutionData?.dayStart === false ||
         institutionData?.dayStart === undefined) ) &&
-      institutionData?.dayStart === true
+      institutionData?.bar_integration === "Yes"
     ) {
       setShowDayStartModal(true);
     } else {
