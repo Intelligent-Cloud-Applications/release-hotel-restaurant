@@ -629,7 +629,7 @@ let tableColumns = ["Order ID","Customer","Table",...(isBhuk?["Phone"]:[]),"Date
       itemsText.length>60?itemsText.slice(0,57)+"...":itemsText,
       `${safeNum(order.totalAmount).toFixed(2)}`
     ];
-    if (subtype==="cancelled") row.push(order.cancelReason||"N/A");
+    if (subtype==="cancelled") row.push(order.reason||"N/A");
     return row;
   });
 
@@ -802,32 +802,34 @@ const getPaymentMethod = (order) => {
 };
 
 const getPaymentDisplay = (order) => {
-    // For unpaid or cancelled orders, show status instead of payment method
-    if (order.paymentStatus !== true) {
-        return order.cancel === true ? "CANCELLED" : "PENDING";
+  // For unpaid or cancelled orders, show status instead of payment method
+  if (order.paymentStatus !== true) {
+    if (order.cancel === true) {
+      return `CANCELLED${order.reason ? ` - ${order.reason}` : ''}`;
     }
-    
-    // For paid orders, show actual payment method
-    if (order.paymentMethods && Array.isArray(order.paymentMethods) && order.paymentMethods.length > 0) {
-        return order.paymentMethods
-            .map((pm) => {
-                let str = `${pm.method}(${pm.amount})`;
-                if (pm.name || pm.reason || pm.note) {
-                    str += ` - ${pm.name || pm.reason || pm.note}`;
-                }
-                return str;
-            })
-            .join(", ");
-    }
-    
-    // Fallback for single payment method (paid orders only)
-    return order.paymentMethod || "Cash";
-};
+    return "PENDING PAYMENT";
+  }
 
+  // For paid orders, show actual payment method
+  if (order.paymentMethods && Array.isArray(order.paymentMethods) && order.paymentMethods.length > 0) {
+    return order.paymentMethods
+      .map((pm) => {
+        let str = `${pm.method}(${pm.amount})`;
+        if (pm.name || pm.reason || pm.note) {
+          str += ` - ${pm.name || pm.reason || pm.note}`;
+        }
+        return str;
+      })
+      .join(", ");
+  }
+
+  // Fallback for single payment method (paid orders only)
+  return order.paymentMethod || "Cash";
+};
 const buildOrderReport = (start, end, filteredOrders) => {
   const startTime = new Date(start).setHours(0, 0, 0, 0);
   const endTime = new Date(end).setHours(23, 59, 59, 999);
-
+  
   const orders = filteredOrders
     .filter((order) => {
       const orderDate = new Date(order.createdAt);
@@ -835,33 +837,26 @@ const buildOrderReport = (start, end, filteredOrders) => {
     })
     .sort((a, b) => getPaymentMethod(a).localeCompare(getPaymentMethod(b)));
 
-  let totalBilledAmount = 0,
-    totalCgst = 0,
-    totalSgst = 0,
-    totalServiceTax = 0;
-  let totalBarAmount = 0,
-    totalCafeAmount = 0,
-    totalBarItemsCount = 0,
-    totalCafeItemsCount = 0;
-
+  let totalBilledAmount = 0, totalCgst = 0, totalSgst = 0, totalServiceTax = 0;
+  let totalBarAmount = 0, totalCafeAmount = 0, totalBarItemsCount = 0, totalCafeItemsCount = 0;
   const paymentBreakdown = {};
   const itemQuantities = {};
 
+  // Separate calculation for paid vs unpaid orders
+  const paidOrders = orders.filter(order => order.paymentStatus === true);
+  const unpaidOrders = orders.filter(order => order.paymentStatus !== true);
+
+  // Calculate totals from ALL orders (billed amounts include pending/cancelled)
   orders.forEach((order) => {
     totalBilledAmount += safeNum(order.totalAmount);
     totalCgst += safeNum(order.cgst);
     totalSgst += safeNum(order.sgst);
     totalServiceTax += safeNum(order.serviceTax);
 
-    const payKey = order.paymentMethod || order.paymentMode || "Cash";
-    paymentBreakdown[payKey] =
-      (paymentBreakdown[payKey] || 0) + safeNum(order.totalAmount);
-
     (order.items || []).forEach((it) => {
       const itQty = safeNum(it.quantity);
       const itAmount = safeNum(it.price) * itQty;
       const itType = String(it.type || "").toLowerCase();
-
       if (itType === "bar") {
         totalBarAmount += itAmount;
         totalBarItemsCount += itQty;
@@ -869,7 +864,6 @@ const buildOrderReport = (start, end, filteredOrders) => {
         totalCafeAmount += itAmount;
         totalCafeItemsCount += itQty;
       }
-
       if (it.name) {
         itemQuantities[it.name] = {
           quantity: (itemQuantities[it.name]?.quantity || 0) + itQty,
@@ -878,6 +872,21 @@ const buildOrderReport = (start, end, filteredOrders) => {
       }
     });
   });
+
+  // Calculate payment breakdown ONLY from PAID orders
+  paidOrders.forEach((order) => {
+    const payKey = order.paymentMethod || order.paymentMode || "Cash";
+    paymentBreakdown[payKey] = (paymentBreakdown[payKey] || 0) + safeNum(order.totalAmount);
+  });
+
+  // For pending/cancelled reports, you might want to track unpaid amounts separately
+  if (filteredOrders.length > 0 && (filteredOrders[0].paymentStatus !== true)) {
+    // For pending/cancelled reports, add a special category for unpaid amounts
+    const totalUnpaid = unpaidOrders.reduce((sum, order) => sum + safeNum(order.totalAmount), 0);
+    if (totalUnpaid > 0) {
+      paymentBreakdown["Unpaid/Pending"] = totalUnpaid;
+    }
+  }
 
   return {
     orders,
@@ -893,7 +902,6 @@ const buildOrderReport = (start, end, filteredOrders) => {
     itemQuantities,
   };
 };
-
 const buildItemReport = (start, end, allOrders, itemTypeFilter = null, menuItems) => {
     const { itemQuantities } = buildOrderReport(start, end, allOrders);
     let items = Object.entries(itemQuantities).map(([name, { quantity, type }]) => {
@@ -1261,23 +1269,25 @@ const Report = () => {
     fetchData();
   }, [institution]);
 
-  useEffect(() => {
-    const methods = new Set();
-    const sources = new Set(); // Added orderSource collection
-    
-    allOrders.forEach((order) => {
+useEffect(() => {
+  const methods = new Set();
+  const sources = new Set();
+
+  // Only collect payment methods from PAID orders
+  allOrders
+    .filter(order => order.paymentStatus === true) // Only paid orders
+    .forEach((order) => {
       if (order.paymentMethod) methods.add(order.paymentMethod);
       if (order.paymentMethods && Array.isArray(order.paymentMethods)) {
         order.paymentMethods.forEach((pm) => methods.add(pm.method));
       }
-      
-      // Collect orderSource values
+      // Collect orderSource values from all orders
       if (order.orderSource) sources.add(order.orderSource);
     });
 
-    setPaymentOptions(["All", ...Array.from(methods).sort()]);
-    setOrderSourceOptions(["All", ...Array.from(sources).sort()]); // Set orderSource options
-  }, [allOrders]);
+  setPaymentOptions(["All", ...Array.from(methods).sort()]);
+  setOrderSourceOptions(["All", ...Array.from(sources).sort()]);
+}, [allOrders]);
 
   useEffect(() => {
     if (!selectedReport || loading) return;
@@ -1561,7 +1571,7 @@ if (["order", "settlement"].includes(selectedReport)) {
                       </td>
                       <td className="px-3 py-2 border text-right">{order.serviceTax || "N/A"}</td>
                       <td className="px-3 py-2 border text-left">{itemsSummary}</td>
-                      {isCancelled && <td className="px-3 py-2 border text-left">{order.cancelReason || "N/A"}</td>}
+                      {isCancelled && <td className="px-3 py-2 border text-left">{order.reason || "N/A"}</td>}
                     </tr>
                   );
                 })}
