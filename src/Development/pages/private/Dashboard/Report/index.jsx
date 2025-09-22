@@ -615,8 +615,9 @@ const exportOrderPDF = (builtData, institutionData, start, end, subtype=null) =>
   yPos += 5; doc.line(20,yPos,115,yPos); yPos += 8;
 
   const isBhuk = institutionData?.institution === "bhuk2323";
-  let tableColumns = ["Order ID","Customer","Table",...(isBhuk?["Phone"]:[]),"Date","Time","Payment","Items","Amount"];
-  if (subtype==="cancelled") tableColumns.push("Cancel Reason");
+let tableColumns = ["Order ID","Customer","Table",...(isBhuk?["Phone"]:[]),"Date","Time",
+    subtype === "pending" || subtype === "cancelled" ? "Status" : "Payment",
+    "Items","Amount"];
 
   const tableData = orders.map(order=>{
     const itemsText = Array.isArray(order.items)?order.items.map(i=>`${i.name}(${i.quantity})`).join(", "):"No items";
@@ -801,19 +802,26 @@ const getPaymentMethod = (order) => {
 };
 
 const getPaymentDisplay = (order) => {
-  let paymentStr = order.paymentMethod || "Cash";
-  if (order.paymentMethods && Array.isArray(order.paymentMethods)) {
-    paymentStr = order.paymentMethods
-      .map((pm) => {
-        let str = `${pm.method}(${pm.amount})`;
-        if (pm.name || pm.reason || pm.note) {
-          str += ` - ${pm.name || pm.reason || pm.note}`;
-        }
-        return str;
-      })
-      .join(", ");
-  }
-  return paymentStr;
+    // For unpaid or cancelled orders, show status instead of payment method
+    if (order.paymentStatus !== true) {
+        return order.cancel === true ? "CANCELLED" : "PENDING";
+    }
+    
+    // For paid orders, show actual payment method
+    if (order.paymentMethods && Array.isArray(order.paymentMethods) && order.paymentMethods.length > 0) {
+        return order.paymentMethods
+            .map((pm) => {
+                let str = `${pm.method}(${pm.amount})`;
+                if (pm.name || pm.reason || pm.note) {
+                    str += ` - ${pm.name || pm.reason || pm.note}`;
+                }
+                return str;
+            })
+            .join(", ");
+    }
+    
+    // Fallback for single payment method (paid orders only)
+    return order.paymentMethod || "Cash";
 };
 
 const buildOrderReport = (start, end, filteredOrders) => {
@@ -886,21 +894,31 @@ const buildOrderReport = (start, end, filteredOrders) => {
   };
 };
 
-const buildItemReport = (start, end, allOrders, itemTypeFilter = null) => {
-  const { itemQuantities } = buildOrderReport(start, end, allOrders);
+const buildItemReport = (start, end, allOrders, itemTypeFilter = null, menuItems) => {
+    const { itemQuantities } = buildOrderReport(start, end, allOrders);
+    let items = Object.entries(itemQuantities).map(([name, { quantity, type }]) => {
+        const menuItem = menuItems.find((mi) => mi.itemName === name);
+        return {
+            name,
+            quantity,
+            type: type === "bar" ? "Bar" : "Cafe",
+            category: menuItem?.category || "N/A",
+        };
+    });
 
-  let items = Object.entries(itemQuantities).map(([name, { quantity, type }]) => ({
-    name,
-    quantity,
-    type: type === "bar" ? "Bar" : "Cafe",
-  }));
+    // Filter based on report type
+    if (itemTypeFilter) {
+        if (itemTypeFilter === "Beverage") {
+            // Beverage report: show only items where category === "Beverage"
+            items = items.filter((it) => it.category === "Beverage");
+        } else if (itemTypeFilter === "Kitchen") {
+            // Kitchen report: show items where category !== "Beverage"
+            items = items.filter((it) => it.category !== "Beverage");
+        }
+    }
 
-  if (itemTypeFilter) {
-    items = items.filter((it) => it.type === itemTypeFilter);
-  }
-
-  items.sort((a, b) => a.name.localeCompare(b.name));
-  return { items };
+    items.sort((a, b) => a.name.localeCompare(b.name));
+    return { items };
 };
 
 // Excel export functions
@@ -1281,19 +1299,22 @@ const Report = () => {
     };
 
     let filteredOrders = allOrders;
-    if (["order", "settlement"].includes(selectedReport)) {
-      filteredOrders = allOrders.filter((o) => 
-        hasPayment(o, paymentFilter) && hasOrderSource(o, orderSourceFilter)
-      );
-    } else if (selectedReport === "pending_orders") {
-      filteredOrders = allOrders.filter((o) => 
-        !o.paymentStatus && !o.cancel && hasOrderSource(o, orderSourceFilter)
-      );
-    } else if (selectedReport === "cancelled_orders") {
-      filteredOrders = allOrders.filter((o) => 
-        o.cancel === true && hasOrderSource(o, orderSourceFilter)
-      );
-    }
+if (["order", "settlement"].includes(selectedReport)) {
+  filteredOrders = allOrders.filter(
+    (o) =>
+      hasPayment(o, paymentFilter) &&
+      hasOrderSource(o, orderSourceFilter) &&
+      (selectedReport === "settlement" ? o.paymentStatus === true : true)
+  );
+} else if (selectedReport === "pending_orders") {
+  filteredOrders = allOrders.filter(
+    (o) => !o.paymentStatus && !o.cancel && hasOrderSource(o, orderSourceFilter)
+  );
+} else if (selectedReport === "cancelled_orders") {
+  filteredOrders = allOrders.filter(
+    (o) => o.cancel === true && hasOrderSource(o, orderSourceFilter)
+  );
+}
 
     if (selectedReport === "itemId") {
       const data = buildItemReferenceData(menuItems);
@@ -1304,15 +1325,15 @@ const Report = () => {
         const data = buildCafeDailyReport(isoStart, stocks);
         setReportData({ type: "cafe", data });
       } else if (selectedReport === "item") {
-        const data = buildItemReport(startDate, effectiveEnd, filteredOrders);
-        setReportData({ type: "item", data });
-      } else if (selectedReport === "beverage_item") {
-        const data = buildItemReport(startDate, effectiveEnd, filteredOrders, "Bar");
-        setReportData({ type: "item", subtype: "beverage", data });
-      } else if (selectedReport === "kitchen_item") {
-        const data = buildItemReport(startDate, effectiveEnd, filteredOrders, "Cafe");
-        setReportData({ type: "item", subtype: "kitchen", data });
-      } else if (["order", "settlement", "pending_orders", "cancelled_orders"].includes(selectedReport)) {
+  const data = buildItemReport(startDate, effectiveEnd, filteredOrders, null, menuItems);
+  setReportData({ type: "item", data });
+}  else if (selectedReport === "beverage_item") {
+    const data = buildItemReport(startDate, effectiveEnd, filteredOrders, "Beverage", menuItems);
+    setReportData({ type: "item", subtype: "beverage", data });
+} else if (selectedReport === "kitchen_item") {
+    const data = buildItemReport(startDate, effectiveEnd, filteredOrders, "Kitchen", menuItems);
+    setReportData({ type: "item", subtype: "kitchen", data });
+} else if (["order", "settlement", "pending_orders", "cancelled_orders"].includes(selectedReport)) {
         const data = buildOrderReport(startDate, effectiveEnd, filteredOrders);
         setReportData({
           type: selectedReport === "settlement" ? "settlement" : "order",
@@ -1485,24 +1506,26 @@ const Report = () => {
             <h2 className="text-base font-bold mb-2">Orders</h2>
             <table className="min-w-full bg-white border border-gray-300 text-sm">
               <thead className="bg-gray-100">
-                <tr>
-                  <th className="px-3 py-2 border text-left text-xs">Order ID</th>
-                  <th className="px-3 py-2 border text-left text-xs">Customer</th>
-                  <th className="px-3 py-2 border text-left text-xs">Table</th>
-                  {institutionData?.institution === "bhuk2323" && (
-                    <th className="px-3 py-2 border text-left text-xs">Phone</th>
-                  )}
-                  <th className="px-3 py-2 border text-center text-xs">Date</th>
-                  <th className="px-3 py-2 border text-center text-xs">Time</th>
-                  <th className="px-3 py-2 border text-left text-xs">Payment Method</th>
-                  <th className="px-3 py-2 border text-right text-xs">Total</th>
-                  <th className="px-3 py-2 border text-right text-xs">CGST</th>
-                  <th className="px-3 py-2 border text-right text-xs">SGST</th>
-                  <th className="px-3 py-2 border text-right text-xs">Service Tax</th>
-                  <th className="px-3 py-2 border text-left text-xs">Items</th>
-                  {isCancelled && <th className="px-3 py-2 border text-left text-xs">Cancel Reason</th>}
-                </tr>
-              </thead>
+    <tr>
+        <th className="px-3 py-2 border text-left text-xs">Order ID</th>
+        <th className="px-3 py-2 border text-left text-xs">Customer</th>
+        <th className="px-3 py-2 border text-left text-xs">Table</th>
+        {institutionData?.institution === "bhuk2323" && (
+            <th className="px-3 py-2 border text-left text-xs">Phone</th>
+        )}
+        <th className="px-3 py-2 border text-center text-xs">Date</th>
+        <th className="px-3 py-2 border text-center text-xs">Time</th>
+        <th className="px-3 py-2 border text-left text-xs">
+            {isCancelled || reportData.subtype === "pending" ? "Status" : "Payment Method"}
+        </th>
+        <th className="px-3 py-2 border text-right text-xs">Total</th>
+        <th className="px-3 py-2 border text-right text-xs">CGST</th>
+        <th className="px-3 py-2 border text-right text-xs">SGST</th>
+        <th className="px-3 py-2 border text-right text-xs">Service Tax</th>
+        <th className="px-3 py-2 border text-left text-xs">Items</th>
+        {isCancelled && <th className="px-3 py-2 border text-left text-xs">Cancel Reason</th>}
+    </tr>
+</thead>
               <tbody>
                 {orders.map((order, index) => {
                   const paymentMethod = getPaymentDisplay(order);
