@@ -105,79 +105,81 @@ const CashBookManager = () => {
       return sum + (amount > 0 ? amount : 0);
     }, 0);
   }, []);
-
+ const getFilteredOrdersForSelectedDate = useCallback(() => {
+    if (!Array.isArray(ordersData) || ordersData.length === 0) return [];
+    const startDate = new Date(selectedDate);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(selectedDate);
+    endDate.setHours(23, 59, 59, 999);
+    return ordersData.filter(order => {
+      const ts = toTimestamp(order.createdAt || order.updatedAt);
+      return ts >= startDate.getTime() && ts <= endDate.getTime();
+    });
+  }, [ordersData, selectedDate]);
   // ---------- corrected opening cash ----------
-  const calculateOpeningCash = useCallback(async (currentDayData, targetDate) => {
-    setWarningMsg('');
-    if (!institution) return;
+// ---------- corrected opening cash ----------
+const calculateOpeningCash = useCallback(async (currentDayData, targetDate) => {
+  setWarningMsg('');
+  if (!institution) return;
 
-    const allOrdersUpToDate = await fetchAllOrdersUpToDate(targetDate);
+  const allOrdersUpToDate = await fetchAllOrdersUpToDate(targetDate);
+  const currentDayOrders = getFilteredOrdersForSelectedDate(); // Orders for the selected date
 
-    let openingCash = 0;
-    let cashFromOrders = 0;
+  let openingCash = 0;
+  let cashFromOrders = 0;
 
-    if (currentDayData && currentDayData.data) {
-      const dayData = currentDayData.data;
-      const recordedClosingCash = parseFloat(dayData.closingCash) || 0;
-      const closingOrderId = dayData.closingOrderId;
+  if (currentDayData && currentDayData.data) {
+    const dayData = currentDayData.data;
+    const recordedClosingCash = parseFloat(dayData.closingCash) || 0;
+    const closingOrderId = dayData.closingOrderId;
 
-      let closingOrderTs = null;
-      if (closingOrderId) {
-        const found = allOrdersUpToDate.find(o => o.orderId === closingOrderId);
-        if (found) {
-          closingOrderTs = toTimestamp(found.createdAt || found.updatedAt);
-        }
+    // Opening cash is always the previous day's closing cash
+    openingCash = recordedClosingCash;
+    setIsUpdating(true);
+
+    // For updating: cashFromOrders should be ALL eligible cash orders for the current day
+    // (Don't filter by closing order timestamp when updating existing record)
+    cashFromOrders = sumCashFromOrders(currentDayOrders, () => true);
+    
+    // Verify if the closing order is still valid (exists and was paid)
+    if (closingOrderId) {
+      const closingOrderExists = currentDayOrders.some(order => 
+        order.orderId === closingOrderId && 
+        !(order.cancel === true || order.isCancelled === true) &&
+        (order.paymentStatus === true || 
+         (order.paymentMethod === 'Cash') ||
+         (Array.isArray(order.paymentMethods) && 
+          order.paymentMethods.some(p => p && p.method === 'Cash' && (parseFloat(p.amount) || 0) > 0)))
+      );
+      
+      if (!closingOrderExists) {
+        setWarningMsg(`⚠️ Closing order ${closingOrderId} is no longer valid. Consider updating the closing order reference.`);
       }
-
-      if (!closingOrderTs && dayData.dateId) {
-        try {
-          const dd = String(dayData.dateId);
-          if (dd.length === 6) {
-            const yy = parseInt(dd.slice(0,2), 10);
-            const mm = parseInt(dd.slice(2,4), 10) - 1;
-            const d = parseInt(dd.slice(4,6), 10);
-            const fullYear = 2000 + yy;
-            const boundary = new Date(fullYear, mm, d, 23, 59, 59, 999);
-            closingOrderTs = boundary.getTime();
-          }
-        } catch {
-          closingOrderTs = null;
-        }
-      }
-
-      if (!closingOrderTs) {
-        setWarningMsg("⚠️ closingOrderId not found in orders — falling back to summing eligible orders up to selected date. Verify to avoid double counting.");
-        cashFromOrders = sumCashFromOrders(allOrdersUpToDate, () => true);
-      } else {
-        cashFromOrders = sumCashFromOrders(allOrdersUpToDate, (order) => {
-          const ts = toTimestamp(order.createdAt || order.updatedAt) || 0;
-          return ts > closingOrderTs;
-        });
-      }
-
-      // Opening should be previous recorded closing only (no double counting)
-      openingCash = recordedClosingCash;
-      setIsUpdating(true);
-    } else {
-      openingCash = 0;
-      cashFromOrders = sumCashFromOrders(allOrdersUpToDate, () => true);
-      setIsUpdating(false);
     }
 
-    const currentTotalOutflow = calculateTotalAmount(formData.amount || []); // outflows
-    // IMPORTANT: movements are OUTFLOWS, so subtract them
-    const closingCash = parseFloat((openingCash + cashFromOrders - currentTotalOutflow).toFixed(2));
+  } else {
+    // For new record: opening cash is 0 (or could be previous day's closing if available)
+    // But for simplicity, start from 0 if no previous record
+    openingCash = 0;
+    
+    // Sum ALL eligible cash orders up to and including the target date
+    cashFromOrders = sumCashFromOrders(allOrdersUpToDate, () => true);
+    setIsUpdating(false);
+  }
 
-    setFormData(prev => ({
-      ...prev,
-      openingCash,
-      cashFromOrders: parseFloat(cashFromOrders.toFixed(2)),
-      totalAmount: parseFloat(currentTotalOutflow.toFixed(2)), // store as positive outflow total
-      closingCash
-    }));
+  const currentTotalOutflow = calculateTotalAmount(formData.amount || []); // outflows
+  // IMPORTANT: movements are OUTFLOWS, so subtract them
+  const closingCash = parseFloat((openingCash + cashFromOrders - currentTotalOutflow).toFixed(2));
 
-    // Note: DO NOT set ordersData(allOrdersUpToDate) here — keep per-day orders from fetchOrdersData
-  }, [institution, fetchAllOrdersUpToDate, sumCashFromOrders, formData.amount, calculateTotalAmount]);
+  setFormData(prev => ({
+    ...prev,
+    openingCash,
+    cashFromOrders: parseFloat(cashFromOrders.toFixed(2)),
+    totalAmount: parseFloat(currentTotalOutflow.toFixed(2)), // store as positive outflow total
+    closingCash
+  }));
+
+}, [institution, fetchAllOrdersUpToDate, sumCashFromOrders, formData.amount, calculateTotalAmount, getFilteredOrdersForSelectedDate]);
 
   // ---------- Fetch day end ----------
   const fetchDayEndData = useCallback(async (targetDate = selectedDate) => {
@@ -219,40 +221,41 @@ const CashBookManager = () => {
   }, [institution, selectedDate, calculateOpeningCash, getDateId]);
 
   // ---------- Fetch orders for date ----------
-  const fetchOrdersData = useCallback(async (targetDate = selectedDate) => {
-    if (!institution) return;
-    setLoading(true);
-    try {
-      const allOrdersUpToDate = await fetchAllOrdersUpToDate(targetDate);
-      const startDate = new Date(targetDate);
-      startDate.setHours(0, 0, 0, 0);
-      const endDate = new Date(targetDate);
-      endDate.setHours(23, 59, 59, 999);
-      const filteredOrders = allOrdersUpToDate.filter(order => {
-        const ts = toTimestamp(order.createdAt || order.updatedAt);
-        return ts >= startDate.getTime() && ts <= endDate.getTime();
-      });
+ // ---------- Fetch orders for date ----------
+const fetchOrdersData = useCallback(async (targetDate = selectedDate) => {
+  if (!institution) return;
+  setLoading(true);
+  try {
+    const allOrdersUpToDate = await fetchAllOrdersUpToDate(targetDate);
+    const startDate = new Date(targetDate);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(targetDate);
+    endDate.setHours(23, 59, 59, 999);
+    const filteredOrders = allOrdersUpToDate.filter(order => {
+      const ts = toTimestamp(order.createdAt || order.updatedAt);
+      return ts >= startDate.getTime() && ts <= endDate.getTime();
+    });
 
-      setOrdersData(filteredOrders);
+    setOrdersData(filteredOrders);
 
-      const cashFromOrdersForDate = sumCashFromOrders(filteredOrders, () => true);
-      const currentTotalOutflow = calculateTotalAmount(formData.amount || []);
-      const closingCash = parseFloat((formData.openingCash + cashFromOrdersForDate - currentTotalOutflow).toFixed(2));
+    // Always calculate cash from ALL eligible orders for the current day
+    const cashFromOrdersForDate = sumCashFromOrders(filteredOrders, () => true);
+    const currentTotalOutflow = calculateTotalAmount(formData.amount || []);
+    const closingCash = parseFloat((formData.openingCash + cashFromOrdersForDate - currentTotalOutflow).toFixed(2));
 
-      setFormData(prev => ({
-        ...prev,
-        cashFromOrders: parseFloat(cashFromOrdersForDate.toFixed(2)),
-        totalAmount: parseFloat(currentTotalOutflow.toFixed(2)),
-        closingCash
-      }));
-    } catch (err) {
-      console.error('Error fetching orders for date:', err);
-      setOrdersData([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [institution, fetchAllOrdersUpToDate, selectedDate, sumCashFromOrders, formData.amount, calculateTotalAmount]);
-
+    setFormData(prev => ({
+      ...prev,
+      cashFromOrders: parseFloat(cashFromOrdersForDate.toFixed(2)),
+      totalAmount: parseFloat(currentTotalOutflow.toFixed(2)),
+      closingCash
+    }));
+  } catch (err) {
+    console.error('Error fetching orders for date:', err);
+    setOrdersData([]);
+  } finally {
+    setLoading(false);
+  }
+}, [institution, fetchAllOrdersUpToDate, selectedDate, sumCashFromOrders, formData.amount, calculateTotalAmount]);
   // ---------- Handlers ----------
   const handleAmountChange = useCallback((index, field, value) => {
     setFormData(prev => {
@@ -299,105 +302,117 @@ const CashBookManager = () => {
     return true;
   }, [formData]);
 
-  // ---------- Submit ----------
-  const submitCashBook = useCallback(async () => {
-    if (!validateForm()) return;
+ // ---------- Submit ----------
+const submitCashBook = useCallback(async () => {
+  // Get current filtered orders for this check
+  const currentFilteredOrders = getFilteredOrdersForSelectedDate();
+  const currentPendingOrders = currentFilteredOrders.filter(order => {
+    return typeof order.paymentStatus !== 'undefined' && order.paymentStatus !== true && order.cancel !== true && order.isCancelled !== true;
+  });
 
-    setLoading(true);
-    try {
-      const dateId = getDateId(selectedDate);
+  if (currentPendingOrders.length > 0) {
+    alert("There are pending orders. Please settle all active/unpaid orders before submitting the cash book.");
+    return;
+  }
 
-      // Choose latest eligible closing order (paid & non-cancelled)
-      let closingOrderId = null;
-      if (ordersData && ordersData.length > 0) {
-        const eligible = ordersData.filter(order => {
-          if (!order) return false;
-          if (order.cancel === true || order.isCancelled === true) return false;
-          if (typeof order.paymentStatus !== 'undefined' && order.paymentStatus !== true) return false;
-          if (order.paymentMethod === 'Cash') return true;
-          if (Array.isArray(order.paymentMethods)) {
-            return order.paymentMethods.some(p => p && p.method === 'Cash' && (parseFloat(p.amount) || 0) > 0);
-          }
-          return false;
-        });
+  if (!validateForm()) return;
 
-        if (eligible.length > 0) {
-          const latestOrder = eligible.reduce((latest, order) => {
-            const currentTs = toTimestamp(order.createdAt || order.updatedAt);
-            const latestTs = toTimestamp(latest.createdAt || latest.updatedAt);
-            return currentTs > latestTs ? order : latest;
-          }, eligible[0]);
-          closingOrderId = latestOrder.orderId;
+  setLoading(true);
+  try {
+    const dateId = getDateId(selectedDate);
+
+    // Use existing closingOrderId if updating, otherwise find the latest eligible order
+    let closingOrderId = null;
+    
+    const isUpdate = dayEndData?.data && dayEndData.data.dateId === dateId;
+    
+    if (isUpdate && dayEndData.data.closingOrderId) {
+      // Use the existing closing order ID when updating
+      closingOrderId = dayEndData.data.closingOrderId;
+    } else if (ordersData && ordersData.length > 0) {
+      // Only find new closing order when creating new record
+      const eligible = ordersData.filter(order => {
+        if (!order) return false;
+        if (order.cancel === true || order.isCancelled === true) return false;
+        if (typeof order.paymentStatus !== 'undefined' && order.paymentStatus !== true) return false;
+        if (order.paymentMethod === 'Cash') return true;
+        if (Array.isArray(order.paymentMethods)) {
+          return order.paymentMethods.some(p => p && p.method === 'Cash' && (parseFloat(p.amount) || 0) > 0);
         }
+        return false;
+      });
+
+      if (eligible.length > 0) {
+        const latestOrder = eligible.reduce((latest, order) => {
+          const currentTs = toTimestamp(order.createdAt || order.updatedAt);
+          const latestTs = toTimestamp(latest.createdAt || latest.updatedAt);
+          return currentTs > latestTs ? order : latest;
+        }, eligible[0]);
+        closingOrderId = latestOrder.orderId;
       }
-
-      const validAmounts = (formData.amount || [])
-        .filter(item => {
-          const amount = parseFloat(item.amount) || 0;
-          return amount > 0 && item.to && item.to.trim() && item.narration && item.narration.trim();
-        })
-        .map(item => ({
-          amount: parseFloat(item.amount), // keep positive, backend semantics determine sign
-          to: item.to.trim(),
-          narration: item.narration.trim()
-        }));
-
-      
-      const payload = {
-        dateId,
-        openingCash: parseFloat(formData.openingCash.toFixed(2)),
-        closingCash: parseFloat(formData.closingCash.toFixed(2)),
-        totalAmount: parseFloat(formData.totalAmount.toFixed(2)), // positive total outflow
-        amountDetails: validAmounts,
-        closingOrderId
-      };
-
-      const isUpdate = dayEndData?.data && dayEndData.data.dateId === dateId;
-      const endpoint = isUpdate ? `/admin/update-cash-book/${institution}` : `/admin/cash-book/${institution}`;
-
-      const response = await API.post('main', endpoint, { body: payload });
-
-      if (response?.success !== false) {
-        alert(response?.message || (isUpdate ? 'Cash book entry updated successfully!' : 'Cash book entry saved successfully!'));
-        setFormData(prev => ({
-          ...prev,
-          amount: [{ amount: '', to: '', narration: '' }],
-          totalAmount: 0,
-          closingCash: parseFloat(prev.openingCash.toFixed(2))
-        }));
-        setShowForm(false);
-        setIsUpdating(false);
-        await fetchDayEndData(selectedDate);
-        await fetchOrdersData(selectedDate);
-      } else {
-        alert(response?.message || 'Failed to save cash book entry');
-      }
-    } catch (err) {
-      console.error('Error submitting cash book:', err);
-      alert(`Error: ${err?.response?.data?.message || err.message || 'Unknown error occurred'}`);
-    } finally {
-      setLoading(false);
     }
-  }, [formData, ordersData, institution, selectedDate, dayEndData, fetchDayEndData, fetchOrdersData, validateForm, getDateId]);
 
+    const validAmounts = (formData.amount || [])
+      .filter(item => {
+        const amount = parseFloat(item.amount) || 0;
+        return amount > 0 && item.to && item.to.trim() && item.narration && item.narration.trim();
+      })
+      .map(item => ({
+        amount: parseFloat(item.amount), // keep positive, backend semantics determine sign
+        to: item.to.trim(),
+        narration: item.narration.trim()
+      }));
+
+    const payload = {
+      dateId,
+      openingCash: parseFloat(formData.openingCash.toFixed(2)),
+      closingCash: parseFloat(formData.closingCash.toFixed(2)),
+      totalAmount: parseFloat(formData.totalAmount.toFixed(2)), // positive total outflow
+      amountDetails: validAmounts,
+      closingOrderId
+    };
+
+    const endpoint = isUpdate ? `/admin/update-cash-book/${institution}` : `/admin/cash-book/${institution}`;
+
+    const response = await API.post('main', endpoint, { body: payload });
+
+    if (response?.success !== false) {
+      alert(response?.message || (isUpdate ? 'Cash book entry updated successfully!' : 'Cash book entry saved successfully!'));
+      setFormData(prev => ({
+        ...prev,
+        amount: [{ amount: '', to: '', narration: '' }],
+        totalAmount: 0,
+        closingCash: parseFloat(prev.openingCash.toFixed(2))
+      }));
+      setShowForm(false);
+      setIsUpdating(false);
+      await fetchDayEndData(selectedDate);
+      await fetchOrdersData(selectedDate);
+    } else {
+      alert(response?.message || 'Failed to save cash book entry');
+    }
+  } catch (err) {
+    console.error('Error submitting cash book:', err);
+    alert(`Error: ${err?.response?.data?.message || err.message || 'Unknown error occurred'}`);
+  } finally {
+    setLoading(false);
+  }
+}, [formData, ordersData, institution, selectedDate, dayEndData, fetchDayEndData, fetchOrdersData, validateForm, getDateId]);
   // ---------- Derived ----------
-  const getFilteredOrdersForSelectedDate = useCallback(() => {
-    if (!Array.isArray(ordersData) || ordersData.length === 0) return [];
-    const startDate = new Date(selectedDate);
-    startDate.setHours(0, 0, 0, 0);
-    const endDate = new Date(selectedDate);
-    endDate.setHours(23, 59, 59, 999);
-    return ordersData.filter(order => {
-      const ts = toTimestamp(order.createdAt || order.updatedAt);
-      return ts >= startDate.getTime() && ts <= endDate.getTime();
-    });
-  }, [ordersData, selectedDate]);
+ 
 
   const filteredOrders = getFilteredOrdersForSelectedDate();
+
   const cashOrders = filteredOrders.filter(order => {
+    if (order.cancel === true || order.isCancelled === true) return false;
+    if (typeof order.paymentStatus !== 'undefined' && order.paymentStatus !== true) return false;
     if (order.paymentMethod === 'Cash') return true;
-    if (order.paymentMethods) return order.paymentMethods.some(p => p.method === 'Cash');
+    if (order.paymentMethods) return order.paymentMethods.some(p => p.method === 'Cash' && (parseFloat(p.amount) || 0) > 0);
     return false;
+  });
+
+  const pendingOrders = filteredOrders.filter(order => {
+    return typeof order.paymentStatus !== 'undefined' && order.paymentStatus !== true && order.cancel !== true && order.isCancelled !== true;
   });
 
   // ---------- Effects ----------
@@ -544,11 +559,49 @@ const CashBookManager = () => {
           </div>
         )}
 
+        {/* Pending Orders Warning */}
+        {pendingOrders.length > 0 && (
+          <div className="mb-6 p-6 bg-red-50 border border-red-200 rounded-lg shadow">
+            <h2 className="text-lg font-semibold text-red-900 mb-4">Pending/Unpaid Orders ({pendingOrders.length})</h2>
+            <p className="text-sm text-red-700 mb-4">Please settle these active orders (pay or cancel) before adding movements or submitting the cash book.</p>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-red-200">
+                <thead className="bg-red-100">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-red-500 uppercase tracking-wider">Order ID</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-red-500 uppercase tracking-wider">Table</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-red-500 uppercase tracking-wider">Total</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-red-500 uppercase tracking-wider">Time</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-red-500 uppercase tracking-wider">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-red-200">
+                  {pendingOrders.slice(0, 10).map((order) => {
+                    const orderTime = toTimestamp(order.createdAt || order.updatedAt || 0);
+                    const timeString = new Date(orderTime).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+                    return (
+                      <tr key={order.orderId} className="hover:bg-red-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-900">{order.orderId}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-red-700">{order.tableName || 'Takeaway'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-red-900 text-right">₹{(order.totalAmount || 0).toFixed(2)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-red-700">{timeString}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-red-700">Pending Payment</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {pendingOrders.length > 10 && <div className="px-6 py-3 bg-red-100 text-right text-sm text-red-500">Showing first 10 of {pendingOrders.length} pending orders</div>}
+          </div>
+        )}
+
         {/* Cash Orders Table */}
         {cashOrders.length > 0 && (
           <div className="bg-white shadow sm:rounded-lg mb-6 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-              <h2 className="text-lg font-semibold text-gray-900">Cash Orders ({cashOrders.length})</h2>
+              <h2 className="text-lg font-semibold text-gray-900">Settled Cash Orders ({cashOrders.length})</h2>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
@@ -614,8 +667,7 @@ const CashBookManager = () => {
                 </div>
               </div>
 
-              {/* Movement Entries (same input UI) */}
-                {/* Movement Entries */}
+              {/* Movement Entries */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
                   Cash Movements <span className="text-gray-500">(Add each transaction)</span>
@@ -713,7 +765,7 @@ const CashBookManager = () => {
               </div>
 
               <div className="pt-4">
-                <button type="button" onClick={submitCashBook} disabled={loading || !validateForm()} className="w-full bg-blue-600 text-white py-3 px-6 rounded-md font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
+                <button type="button" onClick={submitCashBook} disabled={loading || !validateForm() || pendingOrders.length > 0} className="w-full bg-blue-600 text-white py-3 px-6 rounded-md font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
                   {loading ? 'Submitting...' : (isUpdating ? 'Update Cash Book Entry' : 'Create Cash Book Entry')}
                 </button>
 
