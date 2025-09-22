@@ -379,6 +379,11 @@ const StockManagement = () => {
     try {
       let response;
       if (editMode && currentStock) {
+        if (
+  institutionData.bar_integration === "Yes"
+) {
+  updatedForm.dateId = institutionData.dateId;
+}
         response = await API.put(
           "main",
           `/admin/stock-update-item/${institution}/${currentStock.stockId}`,
@@ -486,6 +491,9 @@ const StockManagement = () => {
               adjustmentType,
               amount: adjustedAmount,
               unit: adjustedUnit,
+               ...(institutionData?.bar_integration === "Yes"
+        ? { dateId: institutionData.dateId }
+        : {}),
             },
           });
         })
