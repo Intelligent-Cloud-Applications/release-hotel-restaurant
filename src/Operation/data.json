@@ -1,19 +1,21 @@
 {
-    "institutionId": "cafe-21",
+    "institutionId": "HOTE6295",
+    
+    "index": "2",
 
-    "s3BucketName": "templatecm.awsaiapp.com",
+    "s3BucketName": "hotelamrapaliclassicbar.tekkzy.com",
 
-    "cloudFrontId": "",
+    "cloudFrontId": "E288FZJXWHZGI0",
 
-    "domain": "https://templatecm.awsaiapp.com",
+    "domain": "https://hotelamrapaliclassicbar.tekkzy.com",
 
     "printerType":"local",
 
-    "printerpaperSize":"55",
+    "printerpaperSize":"80",
 
     "paymentMethod":"",
 
-    "bar_integration":"Yes",
+    "bar_integration":"",
 
     "reprintKot":"Yes",
 
