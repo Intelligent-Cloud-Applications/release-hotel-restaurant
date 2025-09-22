@@ -25,6 +25,7 @@ import StockManagement from '../pages/private/Dashboard/StockManagement/index.js
 import Report from '../pages/private/Dashboard/Report/index.jsx';
 import RoomDetails from '../pages/private/Dashboard/RoomDetails/index.jsx';
 import EndDay from '../pages/private/Dashboard/EndDay/index.jsx';
+import Cashbook from '../pages/private/Dashboard/Cashbook/index.jsx'
 const RoutesContainer = () => {
   return (
     <Routes>
@@ -46,6 +47,7 @@ const RoutesContainer = () => {
         <Route path='menu' element={ <MenuTextExtractor /> } />
         <Route path='report' element={ <Report /> } />
         <Route path='day-end' element={<EndDay />} />
+        <Route path='cashbook' element={<Cashbook />} />
       </Route>
       <Route path='/redirect' element={ <Redirect /> } />
       <Route path='/receipt' element={ <Receipt /> } />

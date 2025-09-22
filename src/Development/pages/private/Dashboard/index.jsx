@@ -12,9 +12,10 @@ const Dashboard = () => {
   // Check if day start modal should be shown
   useEffect(() => {
     if (
-      userData?.userType === "admin" &&
+      (userData?.userType === "admin" &&
       (institutionData?.dayStart === false ||
-        institutionData?.dayStart === undefined)
+        institutionData?.dayStart === undefined) ) &&
+      institutionData?.dayStart === true
     ) {
       setShowDayStartModal(true);
     } else {

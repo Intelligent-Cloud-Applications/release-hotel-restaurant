@@ -14,6 +14,8 @@ import { useState, useEffect, useContext } from "react";
 import { API } from "aws-amplify";
 import { Context } from "../../../Context";
 import { useWebSocket } from '../../../Context/WebSocketContext'; 
+import { FaCashRegister } from "react-icons/fa";
+
 
 const routes = [
   { path: 'counterorder', label: '', icon: TbToolsKitchen3, allowedUserTypes: ['admin'] },
@@ -23,10 +25,11 @@ const routes = [
   { path: 'item', label: '', icon: MdOutlineProductionQuantityLimits, allowedUserTypes: ['admin', 'chef'] },
   { path: 'stockmanagement', label: '', icon: MdInventory2, allowedUserTypes: ['admin'] },
   { path: 'qrmanage', label: '', icon: MdQrCodeScanner, allowedUserTypes: ['admin'], requiresOwnerRole: true },
-  { path: 'room-details', label: '', icon: FaHotel, allowedUserTypes: ['admin', 'waiter'] },
+  { path: 'room-details', label: '', icon: FaHotel, allowedUserTypes: ['admin', 'waiter'] ,requiresCafeIntegration: true},
   { path: 'day-end', label: '', icon: IoMdTimer, allowedUserTypes: ['admin', 'waiter'], requiresBarIntegration: true },
   { path: 'revenue', label: '', icon: RiMoneyRupeeCircleFill, allowedUserTypes: ['admin'] },
   { path: 'orderhistory', label: '', icon: RiBillLine, allowedUserTypes: ['admin'] },
+  { path: 'cashbook', label: '', icon: FaCashRegister, allowedUserTypes: ['admin'], requiresCafeIntegration: true },
   { path: 'report', label: '', icon: TbReportSearch, allowedUserTypes: ['admin'] },
   { path: 'profile', label: '', icon: CgProfile, allowedUserTypes: ['member', 'admin', 'chef', 'waiter'] },
 ];
@@ -53,6 +56,9 @@ const SideBar = () => {
     // Check for bar integration for day-end route
     if (route.requiresBarIntegration) {
       return hasUserType && bar_integration === "Yes";
+    }
+     if (route.requiresCafeIntegration) {
+      return hasUserType && bar_integration !== "Yes";
     }
     return hasUserType;
   };
