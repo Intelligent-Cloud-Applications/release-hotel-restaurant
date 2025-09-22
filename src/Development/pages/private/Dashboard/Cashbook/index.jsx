@@ -105,7 +105,8 @@ const CashBookManager = () => {
       return sum + (amount > 0 ? amount : 0);
     }, 0);
   }, []);
- const getFilteredOrdersForSelectedDate = useCallback(() => {
+
+  const getFilteredOrdersForSelectedDate = useCallback(() => {
     if (!Array.isArray(ordersData) || ordersData.length === 0) return [];
     const startDate = new Date(selectedDate);
     startDate.setHours(0, 0, 0, 0);
@@ -116,70 +117,70 @@ const CashBookManager = () => {
       return ts >= startDate.getTime() && ts <= endDate.getTime();
     });
   }, [ordersData, selectedDate]);
+
   // ---------- corrected opening cash ----------
-// ---------- corrected opening cash ----------
-const calculateOpeningCash = useCallback(async (currentDayData, targetDate) => {
-  setWarningMsg('');
-  if (!institution) return;
+  const calculateOpeningCash = useCallback(async (currentDayData, targetDate) => {
+    setWarningMsg('');
+    if (!institution) return;
 
-  const allOrdersUpToDate = await fetchAllOrdersUpToDate(targetDate);
-  const currentDayOrders = getFilteredOrdersForSelectedDate(); // Orders for the selected date
+    const allOrdersUpToDate = await fetchAllOrdersUpToDate(targetDate);
+    const currentDayOrders = getFilteredOrdersForSelectedDate(); // Orders for the selected date
 
-  let openingCash = 0;
-  let cashFromOrders = 0;
+    let openingCash = 0;
+    let cashFromOrders = 0;
 
-  if (currentDayData && currentDayData.data) {
-    const dayData = currentDayData.data;
-    const recordedClosingCash = parseFloat(dayData.closingCash) || 0;
-    const closingOrderId = dayData.closingOrderId;
+    if (currentDayData && currentDayData.data) {
+      const dayData = currentDayData.data;
+      const recordedClosingCash = parseFloat(dayData.closingCash) || 0;
+      const closingOrderId = dayData.closingOrderId;
 
-    // Opening cash is always the previous day's closing cash
-    openingCash = recordedClosingCash;
-    setIsUpdating(true);
+      // Opening cash is always the previous day's closing cash
+      openingCash = recordedClosingCash;
+      setIsUpdating(true);
 
-    // For updating: cashFromOrders should be ALL eligible cash orders for the current day
-    // (Don't filter by closing order timestamp when updating existing record)
-    cashFromOrders = sumCashFromOrders(currentDayOrders, () => true);
-    
-    // Verify if the closing order is still valid (exists and was paid)
-    if (closingOrderId) {
-      const closingOrderExists = currentDayOrders.some(order => 
-        order.orderId === closingOrderId && 
-        !(order.cancel === true || order.isCancelled === true) &&
-        (order.paymentStatus === true || 
-         (order.paymentMethod === 'Cash') ||
-         (Array.isArray(order.paymentMethods) && 
-          order.paymentMethods.some(p => p && p.method === 'Cash' && (parseFloat(p.amount) || 0) > 0)))
-      );
+      // For updating: cashFromOrders should be ALL eligible cash orders for the current day
+      // (Don't filter by closing order timestamp when updating existing record)
+      cashFromOrders = sumCashFromOrders(currentDayOrders, () => true);
       
-      if (!closingOrderExists) {
-        setWarningMsg(`⚠️ Closing order ${closingOrderId} is no longer valid. Consider updating the closing order reference.`);
+      // Verify if the closing order is still valid (exists and was paid)
+      if (closingOrderId) {
+        const closingOrderExists = currentDayOrders.some(order => 
+          order.orderId === closingOrderId && 
+          !(order.cancel === true || order.isCancelled === true) &&
+          (order.paymentStatus === true || 
+           (order.paymentMethod === 'Cash') ||
+           (Array.isArray(order.paymentMethods) && 
+            order.paymentMethods.some(p => p && p.method === 'Cash' && (parseFloat(p.amount) || 0) > 0)))
+        );
+        
+        if (!closingOrderExists) {
+          setWarningMsg(`⚠️ Closing order ${closingOrderId} is no longer valid. Consider updating the closing order reference.`);
+        }
       }
+
+    } else {
+      // For new record: opening cash is 0 (or could be previous day's closing if available)
+      // But for simplicity, start from 0 if no previous record
+      openingCash = 0;
+      
+      // Sum ALL eligible cash orders up to and including the target date
+      cashFromOrders = sumCashFromOrders(allOrdersUpToDate, () => true);
+      setIsUpdating(false);
     }
 
-  } else {
-    // For new record: opening cash is 0 (or could be previous day's closing if available)
-    // But for simplicity, start from 0 if no previous record
-    openingCash = 0;
-    
-    // Sum ALL eligible cash orders up to and including the target date
-    cashFromOrders = sumCashFromOrders(allOrdersUpToDate, () => true);
-    setIsUpdating(false);
-  }
+    const currentTotalOutflow = calculateTotalAmount(formData.amount || []); // outflows
+    // IMPORTANT: movements are OUTFLOWS, so subtract them
+    const closingCash = parseFloat((openingCash + cashFromOrders - currentTotalOutflow).toFixed(2));
 
-  const currentTotalOutflow = calculateTotalAmount(formData.amount || []); // outflows
-  // IMPORTANT: movements are OUTFLOWS, so subtract them
-  const closingCash = parseFloat((openingCash + cashFromOrders - currentTotalOutflow).toFixed(2));
+    setFormData(prev => ({
+      ...prev,
+      openingCash,
+      cashFromOrders: parseFloat(cashFromOrders.toFixed(2)),
+      totalAmount: parseFloat(currentTotalOutflow.toFixed(2)), // store as positive outflow total
+      closingCash
+    }));
 
-  setFormData(prev => ({
-    ...prev,
-    openingCash,
-    cashFromOrders: parseFloat(cashFromOrders.toFixed(2)),
-    totalAmount: parseFloat(currentTotalOutflow.toFixed(2)), // store as positive outflow total
-    closingCash
-  }));
-
-}, [institution, fetchAllOrdersUpToDate, sumCashFromOrders, formData.amount, calculateTotalAmount, getFilteredOrdersForSelectedDate]);
+  }, [institution, fetchAllOrdersUpToDate, sumCashFromOrders, formData.amount, calculateTotalAmount, getFilteredOrdersForSelectedDate]);
 
   // ---------- Fetch day end ----------
   const fetchDayEndData = useCallback(async (targetDate = selectedDate) => {
@@ -221,41 +222,41 @@ const calculateOpeningCash = useCallback(async (currentDayData, targetDate) => {
   }, [institution, selectedDate, calculateOpeningCash, getDateId]);
 
   // ---------- Fetch orders for date ----------
- // ---------- Fetch orders for date ----------
-const fetchOrdersData = useCallback(async (targetDate = selectedDate) => {
-  if (!institution) return;
-  setLoading(true);
-  try {
-    const allOrdersUpToDate = await fetchAllOrdersUpToDate(targetDate);
-    const startDate = new Date(targetDate);
-    startDate.setHours(0, 0, 0, 0);
-    const endDate = new Date(targetDate);
-    endDate.setHours(23, 59, 59, 999);
-    const filteredOrders = allOrdersUpToDate.filter(order => {
-      const ts = toTimestamp(order.createdAt || order.updatedAt);
-      return ts >= startDate.getTime() && ts <= endDate.getTime();
-    });
+  const fetchOrdersData = useCallback(async (targetDate = selectedDate) => {
+    if (!institution) return;
+    setLoading(true);
+    try {
+      const allOrdersUpToDate = await fetchAllOrdersUpToDate(targetDate);
+      const startDate = new Date(targetDate);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(targetDate);
+      endDate.setHours(23, 59, 59, 999);
+      const filteredOrders = allOrdersUpToDate.filter(order => {
+        const ts = toTimestamp(order.createdAt || order.updatedAt);
+        return ts >= startDate.getTime() && ts <= endDate.getTime();
+      });
 
-    setOrdersData(filteredOrders);
+      setOrdersData(filteredOrders);
 
-    // Always calculate cash from ALL eligible orders for the current day
-    const cashFromOrdersForDate = sumCashFromOrders(filteredOrders, () => true);
-    const currentTotalOutflow = calculateTotalAmount(formData.amount || []);
-    const closingCash = parseFloat((formData.openingCash + cashFromOrdersForDate - currentTotalOutflow).toFixed(2));
+      // Always calculate cash from ALL eligible orders for the current day
+      const cashFromOrdersForDate = sumCashFromOrders(filteredOrders, () => true);
+      const currentTotalOutflow = calculateTotalAmount(formData.amount || []);
+      const closingCash = parseFloat((formData.openingCash + cashFromOrdersForDate - currentTotalOutflow).toFixed(2));
 
-    setFormData(prev => ({
-      ...prev,
-      cashFromOrders: parseFloat(cashFromOrdersForDate.toFixed(2)),
-      totalAmount: parseFloat(currentTotalOutflow.toFixed(2)),
-      closingCash
-    }));
-  } catch (err) {
-    console.error('Error fetching orders for date:', err);
-    setOrdersData([]);
-  } finally {
-    setLoading(false);
-  }
-}, [institution, fetchAllOrdersUpToDate, selectedDate, sumCashFromOrders, formData.amount, calculateTotalAmount]);
+      setFormData(prev => ({
+        ...prev,
+        cashFromOrders: parseFloat(cashFromOrdersForDate.toFixed(2)),
+        totalAmount: parseFloat(currentTotalOutflow.toFixed(2)),
+        closingCash
+      }));
+    } catch (err) {
+      console.error('Error fetching orders for date:', err);
+      setOrdersData([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [institution, fetchAllOrdersUpToDate, selectedDate, sumCashFromOrders, formData.amount, calculateTotalAmount]);
+
   // ---------- Handlers ----------
   const handleAmountChange = useCallback((index, field, value) => {
     setFormData(prev => {
@@ -292,6 +293,22 @@ const fetchOrdersData = useCallback(async (targetDate = selectedDate) => {
     });
   }, [calculateTotalAmount]);
 
+  // ---------- Form toggle with validation ----------
+  const handleToggleForm = useCallback(() => {
+    // Get current filtered orders for this check
+    const currentFilteredOrders = getFilteredOrdersForSelectedDate();
+    const currentPendingOrders = currentFilteredOrders.filter(order => {
+      return typeof order.paymentStatus !== 'undefined' && order.paymentStatus !== true && order.cancel !== true && order.isCancelled !== true;
+    });
+
+    if (currentPendingOrders.length > 0) {
+      alert(`There are ${currentPendingOrders.length} pending/unpaid orders for ${formatDate(selectedDate)}. Please settle all active/unpaid orders before adding cash movements.`);
+      return;
+    }
+
+    setShowForm(prev => !prev);
+  }, [getFilteredOrdersForSelectedDate, selectedDate, formatDate]);
+
   // ---------- Validation ----------
   const validateForm = useCallback(() => {
     const hasValidAmounts = (formData.amount || []).some(item => {
@@ -302,35 +319,47 @@ const fetchOrdersData = useCallback(async (targetDate = selectedDate) => {
     return true;
   }, [formData]);
 
- // ---------- Submit ----------
+  // ---------- Submit ----------
 const submitCashBook = useCallback(async () => {
-  // Get current filtered orders for this check
-  const currentFilteredOrders = getFilteredOrdersForSelectedDate();
-  const currentPendingOrders = currentFilteredOrders.filter(order => {
-    return typeof order.paymentStatus !== 'undefined' && order.paymentStatus !== true && order.cancel !== true && order.isCancelled !== true;
-  });
-
-  if (currentPendingOrders.length > 0) {
-    alert("There are pending orders. Please settle all active/unpaid orders before submitting the cash book.");
+  if (!validateForm()) {
+    console.log('Form validation failed, submission aborted.');
     return;
   }
 
-  if (!validateForm()) return;
-
   setLoading(true);
+  console.log('Starting cash book submission for date:', formatDate(selectedDate));
+
   try {
     const dateId = getDateId(selectedDate);
+    console.log('Generated dateId:', dateId);
 
-    // Use existing closingOrderId if updating, otherwise find the latest eligible order
+    // Refresh orders to ensure we have the latest data
+    console.log('Refreshing orders data before unpaid order check...');
+    await fetchOrdersData(selectedDate);
+    const currentFilteredOrders = getFilteredOrdersForSelectedDate();
+    console.log('Filtered orders for selected date:', currentFilteredOrders.length, 'orders found');
+    console.log(
+      'Order IDs in filtered orders:',
+      currentFilteredOrders.map(o => ({
+        orderId: o.orderId,
+        status: o.status,
+        paymentStatus: o.paymentStatus,
+        cancel: o.cancel,
+        isCancelled: o.isCancelled,
+        createdAt: o.createdAt,
+        updatedAt: o.updatedAt
+      }))
+    );
+
+    // Determine the closingOrderId
     let closingOrderId = null;
-    
     const isUpdate = dayEndData?.data && dayEndData.data.dateId === dateId;
-    
+    console.log('Is updating existing record?', isUpdate);
+
     if (isUpdate && dayEndData.data.closingOrderId) {
-      // Use the existing closing order ID when updating
       closingOrderId = dayEndData.data.closingOrderId;
+      console.log('Using existing closingOrderId from dayEndData:', closingOrderId);
     } else if (ordersData && ordersData.length > 0) {
-      // Only find new closing order when creating new record
       const eligible = ordersData.filter(order => {
         if (!order) return false;
         if (order.cancel === true || order.isCancelled === true) return false;
@@ -341,6 +370,7 @@ const submitCashBook = useCallback(async () => {
         }
         return false;
       });
+      console.log('Eligible orders for closingOrderId:', eligible.length);
 
       if (eligible.length > 0) {
         const latestOrder = eligible.reduce((latest, order) => {
@@ -349,34 +379,85 @@ const submitCashBook = useCallback(async () => {
           return currentTs > latestTs ? order : latest;
         }, eligible[0]);
         closingOrderId = latestOrder.orderId;
+        console.log('Selected latest closingOrderId:', closingOrderId);
+      } else {
+        console.log('No eligible orders found for closingOrderId.');
       }
+    } else {
+      console.log('No orders available to determine closingOrderId.');
     }
 
+    // Check for unpaid and active orders with orderId > closingOrderId
+    console.log('Checking for unpaid/active orders with orderId >', closingOrderId);
+    const unpaidActiveOrders = currentFilteredOrders.filter(order => {
+      if (!order || !closingOrderId) return false;
+      const isOrderIdGreater = String(order.orderId) > String(closingOrderId);
+      // Consider order as unpaid if paymentStatus is false/undefined or status is "pending"
+      const isUnpaidActive =
+        (typeof order.paymentStatus === 'undefined' || order.paymentStatus !== true || order.status === 'pending') &&
+        order.cancel !== true &&
+        order.isCancelled !== true;
+      if (isOrderIdGreater && isUnpaidActive) {
+        console.log(
+          `Found unpaid/active order: orderId=${order.orderId}, status=${order.status}, paymentStatus=${
+            order.paymentStatus
+          }, cancel=${order.cancel}, isCancelled=${order.isCancelled}, createdAt=${new Date(
+            toTimestamp(order.createdAt || order.updatedAt)
+          ).toLocaleString('en-GB')}`
+        );
+      }
+      return isOrderIdGreater && isUnpaidActive;
+    });
+
+    if (unpaidActiveOrders.length > 0) {
+      const unpaidOrderIds = unpaidActiveOrders.map(order => order.orderId).join(', ');
+      console.log('Unpaid/active orders found:', unpaidActiveOrders.length, 'Orders:', unpaidOrderIds);
+      alert(
+        `There are ${unpaidActiveOrders.length} unpaid and active orders with orderId greater than ${closingOrderId} for ${formatDate(
+          selectedDate
+        )}: ${unpaidOrderIds}. Please settle these orders before submitting the cash book.`
+      );
+      setLoading(false);
+      return;
+    } else {
+      console.log('No unpaid/active orders with orderId >', closingOrderId, 'found. Proceeding with submission.');
+    }
+
+    // Prepare valid amounts for submission
     const validAmounts = (formData.amount || [])
       .filter(item => {
         const amount = parseFloat(item.amount) || 0;
-        return amount > 0 && item.to && item.to.trim() && item.narration && item.narration.trim();
+        const isValid = amount > 0 && item.to && item.to.trim() && item.narration && item.narration.trim();
+        console.log(
+          `Validating amount entry: amount=${item.amount}, to=${item.to}, narration=${item.narration}, isValid=${isValid}`
+        );
+        return isValid;
       })
       .map(item => ({
-        amount: parseFloat(item.amount), // keep positive, backend semantics determine sign
+        amount: parseFloat(item.amount),
         to: item.to.trim(),
         narration: item.narration.trim()
       }));
+    console.log('Valid amounts prepared for submission:', validAmounts);
 
     const payload = {
       dateId,
       openingCash: parseFloat(formData.openingCash.toFixed(2)),
       closingCash: parseFloat(formData.closingCash.toFixed(2)),
-      totalAmount: parseFloat(formData.totalAmount.toFixed(2)), // positive total outflow
+      totalAmount: parseFloat(formData.totalAmount.toFixed(2)),
       amountDetails: validAmounts,
       closingOrderId
     };
+    console.log('Submission payload:', payload);
 
     const endpoint = isUpdate ? `/admin/update-cash-book/${institution}` : `/admin/cash-book/${institution}`;
+    console.log('Submitting to endpoint:', endpoint);
 
     const response = await API.post('main', endpoint, { body: payload });
+    console.log('API response:', response);
 
     if (response?.success !== false) {
+      console.log('Cash book entry submitted successfully:', response?.message || 'Success');
       alert(response?.message || (isUpdate ? 'Cash book entry updated successfully!' : 'Cash book entry saved successfully!'));
       setFormData(prev => ({
         ...prev,
@@ -386,21 +467,36 @@ const submitCashBook = useCallback(async () => {
       }));
       setShowForm(false);
       setIsUpdating(false);
+      console.log('Resetting form and state after successful submission.');
       await fetchDayEndData(selectedDate);
       await fetchOrdersData(selectedDate);
+      console.log('Refreshed day end and orders data.');
     } else {
+      console.log('Failed to save cash book entry:', response?.message);
       alert(response?.message || 'Failed to save cash book entry');
     }
   } catch (err) {
-    console.error('Error submitting cash book:', err);
+    console.error('Error submitting cash book:', err, { stack: err.stack, response: err.response });
     alert(`Error: ${err?.response?.data?.message || err.message || 'Unknown error occurred'}`);
   } finally {
+    console.log('Submission process completed, setting loading to false.');
     setLoading(false);
   }
-}, [formData, ordersData, institution, selectedDate, dayEndData, fetchDayEndData, fetchOrdersData, validateForm, getDateId]);
-  // ---------- Derived ----------
- 
+}, [
+  formData,
+  ordersData,
+  institution,
+  selectedDate,
+  dayEndData,
+  fetchDayEndData,
+  fetchOrdersData,
+  validateForm,
+  getDateId,
+  getFilteredOrdersForSelectedDate,
+  formatDate
+]);
 
+  // ---------- Derived ----------
   const filteredOrders = getFilteredOrdersForSelectedDate();
 
   const cashOrders = filteredOrders.filter(order => {
@@ -644,7 +740,19 @@ const submitCashBook = useCallback(async () => {
         <div className="bg-white shadow sm:rounded-lg p-6">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold text-gray-900">Cash Movements (Outflows)</h2>
-            <button type="button" onClick={() => setShowForm(!showForm)} className={`px-4 py-2 rounded-md font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${showForm ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-green-600 text-white hover:bg-green-700'}`}>{showForm ? 'Cancel' : '+ Add Movement'}</button>
+            <button 
+              type="button" 
+              onClick={handleToggleForm} 
+              disabled={loading || pendingOrders.length > 0}
+              className={`px-4 py-2 rounded-md font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${
+                showForm 
+                  ? 'bg-red-600 text-white hover:bg-red-700' 
+                  : 'bg-green-600 text-white hover:bg-green-700'
+              } ${loading || pendingOrders.length > 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+              title={pendingOrders.length > 0 ? `Cannot add movements: ${pendingOrders.length} pending orders` : undefined}
+            >
+              {showForm ? 'Cancel' : '+ Add Movement'}
+            </button>
           </div>
 
           {showForm && (
@@ -765,7 +873,12 @@ const submitCashBook = useCallback(async () => {
               </div>
 
               <div className="pt-4">
-                <button type="button" onClick={submitCashBook} disabled={loading || !validateForm() || pendingOrders.length > 0} className="w-full bg-blue-600 text-white py-3 px-6 rounded-md font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
+                <button 
+                  type="button" 
+                  onClick={submitCashBook} 
+                  disabled={loading || !validateForm() || pendingOrders.length > 0} 
+                  className="w-full bg-blue-600 text-white py-3 px-6 rounded-md font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                >
                   {loading ? 'Submitting...' : (isUpdating ? 'Update Cash Book Entry' : 'Create Cash Book Entry')}
                 </button>
 
