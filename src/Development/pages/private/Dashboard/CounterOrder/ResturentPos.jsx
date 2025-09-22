@@ -201,6 +201,29 @@ const [tables, setTables] = useState([
         console.warn(`No booking found for room number ${roomNumber}. Skipping amend-booking API call.`);
       }
     }
+    const getDaySessionFromStorage = () => {
+    try {
+      // First try to get table-specific session
+      const tableSpecificSession = localStorage.getItem(`daySession_${institutionData.institution}_${tableIdStr}`);
+      if (tableSpecificSession) {
+        return tableSpecificSession;
+      }
+      
+      // Fallback to global session
+      const globalSession = localStorage.getItem(`daySession_${institutionData.institution}_global`);
+      if (globalSession) {
+        return globalSession;
+      }
+      
+      // Default fallback
+      return "breakfast";
+    } catch (error) {
+      console.error("Error retrieving day session from localStorage:", error);
+      return "breakfast";
+    }
+  };
+
+  const currentDaySession = getDaySessionFromStorage();
       await API.post("main", `/any/create-order/${institutionData.institution}`, {
         body: {
           type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
@@ -214,7 +237,8 @@ const [tables, setTables] = useState([
           sgst,
           serviceTax,
           ...(userData && { orderBy: userData.cognitoId }),
-          tableOccupied: true
+          tableOccupied: true,
+          daySession: currentDaySession,
         },
       });
 if (isHotelTable) {
@@ -1056,6 +1080,29 @@ const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
         console.warn(`No booking found for room number ${roomNumber}. Skipping amend-booking API call.`);
       }
     }
+    const getDaySessionFromStorage = () => {
+    try {
+      // First try to get table-specific session
+      const tableSpecificSession = localStorage.getItem(`daySession_${institutionData.institution}_${tableIdStr}`);
+      if (tableSpecificSession) {
+        return tableSpecificSession;
+      }
+      
+      // Fallback to global session
+      const globalSession = localStorage.getItem(`daySession_${institutionData.institution}_global`);
+      if (globalSession) {
+        return globalSession;
+      }
+      
+      // Default fallback
+      return "breakfast";
+    } catch (error) {
+      console.error("Error retrieving day session from localStorage:", error);
+      return "breakfast";
+    }
+  };
+
+  const currentDaySession = getDaySessionFromStorage();
       if (!hasExistingOrder) {
         await API.post("main", `/any/create-order/${institutionData.institution}`, {
           body: {
@@ -1071,6 +1118,7 @@ const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
             ...(userData && { orderBy: userData.cognitoId }),
             tableOccupied: true,
             type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
+            daySession: currentDaySession,
           },
         });
 if (isHotelTable) {

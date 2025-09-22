@@ -64,9 +64,11 @@ const OrderContent = ({
   const { printerType, printerpaperSize } = data;
   const { staffData, fetchStaffData, setLoader, hotelBookings } = useContext(Context);
   const screenWidth = window.innerWidth;
+  
+  // Existing state variables
   const [orderRoomSelection, setOrderRoomSelection] = useState({});
   const [showOrderPaymentModal, setShowOrderPaymentModal] = useState(false);
-  const [showUnpaidOrderPaymentModal, setShowUnpaidOrderPaymentModal] = useState(false); // New state for UnpaidOrderPaymentModal
+  const [showUnpaidOrderPaymentModal, setShowUnpaidOrderPaymentModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [printMode, setPrintMode] = useState("local");
   const [showPrintBill, setShowPrintBill] = useState(false);
@@ -77,8 +79,104 @@ const OrderContent = ({
   const [isUnpaidOrdersOpen, setIsUnpaidOrdersOpen] = useState(false);
   const [selectedUnpaidOrder, setSelectedUnpaidOrder] = useState(null);
 
+  // New state for day session
+  const [selectedDaySession, setSelectedDaySession] = useState("breakfast");
+
+  // Day session options
+  const daySessionOptions = [
+    { value: "breakfast", label: "Breakfast" },
+    { value: "lunch", label: "Lunch" },
+    { value: "dinner", label: "Dinner" },
+    { value: "snacks", label: "Snacks" },
+    { value: "late-night", label: "Late Night" },
+  ];
+
   // Use refs to prevent input focus loss
   const discountValueInputRef = useRef(null);
+
+  // Load day session from localStorage on component mount
+  useEffect(() => {
+    const loadDaySession = () => {
+      try {
+        const savedSession = localStorage.getItem(`daySession_${institutionData?.institution}_${selectedTable?.id || 'global'}`);
+        if (savedSession && daySessionOptions.find(option => option.value === savedSession)) {
+          setSelectedDaySession(savedSession);
+        } else {
+          // Set default to breakfast if no valid session found
+          setSelectedDaySession("breakfast");
+        }
+      } catch (error) {
+        console.error("Error loading day session from localStorage:", error);
+        setSelectedDaySession("breakfast");
+      }
+    };
+
+    if (institutionData?.institution) {
+      loadDaySession();
+    }
+  }, [institutionData?.institution, selectedTable?.id]);
+
+  // Save day session to localStorage when it changes
+  useEffect(() => {
+    const saveDaySession = () => {
+      try {
+        if (institutionData?.institution) {
+          const tableKey = `daySession_${institutionData.institution}_${selectedTable?.id || 'global'}`;
+          const globalKey = `daySession_${institutionData.institution}_global`;
+          
+          // Remove existing day session for this table/institution
+          localStorage.removeItem(tableKey);
+          localStorage.removeItem(globalKey);
+          
+          // Save new day session
+          localStorage.setItem(tableKey, selectedDaySession);
+          localStorage.setItem(globalKey, selectedDaySession);
+          
+          console.log(`Day session saved: ${selectedDaySession} for institution ${institutionData.institution}, table ${selectedTable?.id || 'global'}`);
+        }
+      } catch (error) {
+        console.error("Error saving day session to localStorage:", error);
+        toast.error("Failed to save day session settings");
+      }
+    };
+
+    if (institutionData?.institution && selectedDaySession) {
+      saveDaySession();
+    }
+  }, [selectedDaySession, institutionData?.institution, selectedTable?.id]);
+
+  // Handle day session change
+  const handleDaySessionChange = (newSession) => {
+    if (newSession !== selectedDaySession) {
+      // Show confirmation if there are existing items
+      const hasItems = (kotcurrent?.items || localBillItems || []).length > 0;
+      if (hasItems) {
+        const currentSessionName = daySessionOptions.find(s => s.value === selectedDaySession)?.label || selectedDaySession;
+        const newSessionName = daySessionOptions.find(s => s.value === newSession)?.label || newSession;
+        const confirmChange = window.confirm(
+          `Changing day session from ${currentSessionName} to ${newSessionName} will affect menu availability. Continue?`
+        );
+        
+        if (!confirmChange) {
+          return;
+        }
+      }
+      
+      setSelectedDaySession(newSession);
+      toast.success(`Day session changed to ${daySessionOptions.find(s => s.value === newSession)?.label || newSession}`);
+      
+      // Optional: Refresh table data to reflect new day session menu items
+      if (selectedTable?.id && fetchTableData) {
+        fetchTableData(String(selectedTable.id));
+      }
+    }
+  };
+
+  // Get current day session display name
+  const getCurrentDaySessionName = () => {
+    const current = daySessionOptions.find(option => option.value === selectedDaySession);
+    return current ? current.label : selectedDaySession.toUpperCase();
+  };
 
   // Helper function to get current discount info
   const getCurrentDiscountInfo = () => {
@@ -192,6 +290,10 @@ const OrderContent = ({
     handleSettleUnpaidOrder(order, "ROOM", { bookingId: selectedBookingId, roomNumber });
   };
 
+  const formatOrderTableLabel = (order) => {
+    return order.tableName || "N/A";
+  };
+
   const calculateTotals = (items) => {
     const billSubtotal = items.reduce((sum, item) => {
       const price = Number(item.price) || 0;
@@ -298,6 +400,7 @@ const OrderContent = ({
     kot += `\x1B\x61\x01${headerFont}`;
     kot += `KOT No: ${kotNo}\n`;
     kot += `${orderType}\n`;
+    kot += `Session: ${getCurrentDaySessionName()}\n`; // Added day session
     kot += `Date: ${formatDateTime()}\n`;
     kot += `Table: ${selectedTable?.id || "N/A"}\n`;
     kot += `\x1B\x61\x00${resetFont}${itemFont}`;
@@ -381,6 +484,7 @@ const OrderContent = ({
     bill += `${institutionData?.Query_Address || "BhawaniPeth"}\n`;
     bill += `Contact: ${institutionData?.Query_PhoneNumber || "+917008120727"}\n`;
     bill += `Date: ${formatDateTime()}\n`;
+    bill += `Session: ${getCurrentDaySessionName()}\n`; // Added day session
     bill += `${institutionData?.gstin ? `GSTIN: ${institutionData.gstin}\n` : ""}`;
     bill += `Table: ${selectedTable?.id || "N/A"}\n`;
     if (splitBillMode && customerId) {
@@ -869,13 +973,12 @@ const OrderContent = ({
                     </div>
                   </div>
                   <div className="flex flex-col space-y-1">
-                   <button
-  onClick={() => handleUnpaidPaymentMethodChange(order, "cash")} 
-  className="text-xs border rounded px-3 py-1.5 bg-red-100 text-red-700 font-medium hover:bg-red-200 transition-colors"
->
-  Settle
-</button>
-
+                    <button
+                      onClick={() => handleUnpaidPaymentMethodChange(order, "cash")} 
+                      className="text-xs border rounded px-3 py-1.5 bg-red-100 text-red-700 font-medium hover:bg-red-200 transition-colors"
+                    >
+                      Settle
+                    </button>
                   </div>
                 </div>
               </div>
@@ -892,53 +995,77 @@ const OrderContent = ({
       return (
         <>
           <div className="p-3">
+
+            
             <UnpaidOrdersSection />
           </div>
-          <div className="flex-1 overflow-y-auto p-2 sm:p-4 max-h-[30rem] max406:max-h-[15rem]">
+          <div className="flex-1 overflow-y-auto p-2 sm:p-4 max-h-[22rem] max406:max-h-[12rem]">
             {(kotcurrent?.items || []).map((item) => (
               <ItemControls key={item.itemId} item={item} />
             ))}
           </div>
           <div className="p-2 sm:p-4 border-b space-y-2">
-            <div className="flex gap-2">
-              <div className="relative w-1/2">
-                <User className="w-4 h-4 absolute left-2 top-2 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Customer Name"
-                  className="w-full pl-8 pr-2 py-1 text-xs sm:text-sm border rounded"
-                  value={customerDetails[selectedTable?.id]?.name || ""}
-                  onChange={(e) =>
-                    setCustomerDetails((prev) => ({
-                      ...prev,
-                      [selectedTable?.id]: {
-                        ...prev[selectedTable?.id],
-                        name: e.target.value,
-                      },
-                    }))
-                  }
-                />
-              </div>
-              <div className="relative w-1/2">
-                <Phone className="w-4 h-4 absolute left-2 top-2 text-gray-400" />
-                <input
-                  type="tel"
-                  placeholder="Phone Number"
-                  className="w-full pl-8 pr-2 py-1 text-xs sm:text-sm border rounded"
-                  value={customerDetails[selectedTable?.id]?.phone || ""}
-                  onChange={(e) =>
-                    setCustomerDetails((prev) => ({
-                      ...prev,
-                      [selectedTable?.id]: {
-                        ...prev[selectedTable?.id],
-                        phone: e.target.value,
-                      },
-                    }))
-                  }
-                />
-              </div>
-            </div>
-          </div>
+  <div className="flex gap-2">
+    {/* Customer Name */}
+    <div className="relative w-1/3">
+      <User className="w-4 h-4 absolute left-2 top-2 text-gray-400" />
+      <input
+        type="text"
+        placeholder="Name"
+        className="w-full pl-7 pr-2 py-1 text-xs border rounded"
+        value={customerDetails[selectedTable?.id]?.name || ""}
+        onChange={(e) =>
+          setCustomerDetails((prev) => ({
+            ...prev,
+            [selectedTable?.id]: {
+              ...prev[selectedTable?.id],
+              name: e.target.value,
+            },
+          }))
+        }
+      />
+    </div>
+
+    {/* Phone Number */}
+    <div className="relative w-1/3">
+      <Phone className="w-4 h-4 absolute left-2 top-2 text-gray-400" />
+      <input
+        type="tel"
+        placeholder="Phone"
+        className="w-full pl-7 pr-2 py-1 text-xs border rounded"
+        value={customerDetails[selectedTable?.id]?.phone || ""}
+        onChange={(e) =>
+          setCustomerDetails((prev) => ({
+            ...prev,
+            [selectedTable?.id]: {
+              ...prev[selectedTable?.id],
+              phone: e.target.value,
+            },
+          }))
+        }
+      />
+    </div>
+
+    {/* Day Session Dropdown (Compact) */}
+    <div className="relative w-1/3">
+      <select
+        value={selectedDaySession}
+        onChange={(e) => handleDaySessionChange(e.target.value)}
+        className="w-full pl-2 pr-6 py-1 text-xs border rounded appearance-none"
+      >
+        {daySessionOptions.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <div className="absolute inset-y-0 right-1 flex items-center pointer-events-none">
+        <ChevronDown className="h-3 w-3 text-gray-400" />
+      </div>
+    </div>
+  </div>
+</div>
+
           <div className="p-4 border-t space-y-2">
             <div className="flex justify-between font-bold text-sm sm:text-base mt-3 mb-3">
               <span>Total Items:</span>
@@ -1003,7 +1130,7 @@ const OrderContent = ({
               <UnpaidOrdersSection />
             </div>
             {renderOrderTabs()}
-            <div className="flex-1 overflow-y-auto p-2 sm:p-4 max-h-[19rem] max406:max-h-[10rem]">
+            <div className="flex-1 overflow-y-auto p-2 sm:p-4 max-h-[16rem] max406:max-h-[10rem]">
               {selectedOrderId ? (
                 orderItems.length > 0 ? (
                   orderItems.map((item) => (
@@ -1169,9 +1296,10 @@ const OrderContent = ({
         return (
           <>
             <div className="p-3">
+              
               <UnpaidOrdersSection />
             </div>
-            <div className="flex-1 overflow-y-auto p-2 sm:p-4 max-h-[19rem] max406:max-h-[10rem]">
+            <div className="flex-1 overflow-y-auto p-2 sm:p-4 max-h-[16rem] max406:max-h-[10rem]">
               {localBillItems.length > 0 ? (
                 localBillItems.map((item) => <ItemControls key={item.itemId} item={item} />)
               ) : (
@@ -1555,19 +1683,7 @@ const OrderContent = ({
   return (
     <>
       <div className="flex-1 flex flex-col">{renderContent()}</div>
-      <StaffSelectionModal
-        showStaffSelectionModal={showStaffSelectionModal}
-        setShowStaffSelectionModal={setShowStaffSelectionModal}
-        selectedStaff={selectedStaff}
-        setSelectedStaff={setSelectedStaff}
-        staffData={staffData}
-        selectedTable={selectedTable}
-        institutionData={institutionData}
-        splitBillMode={splitBillMode}
-        selectedOrderId={selectedOrderId}
-        fetchPendingOrders={fetchPendingOrders}
-        setLoader={setLoader}
-      />
+      
       {showOrderPaymentModal && (
         <OrderPaymentModal
           selectedTable={selectedTable}
@@ -1580,8 +1696,10 @@ const OrderContent = ({
           customerDetails={customerDetails}
           discountData={discountData}
           setDiscountData={setDiscountData}
+         
         />
       )}
+      
       {showUnpaidOrderPaymentModal && selectedUnpaidOrder && (
         <UnpaidOrderPaymentModal
           selectedTable={selectedTable}
@@ -1597,8 +1715,10 @@ const OrderContent = ({
           customerDetails={customerDetails}
           discountData={discountData}
           setDiscountData={setDiscountData}
+         
         />
       )}
+      
       {showReprintKOT && (
         <ReprintKOT
           selectedTable={selectedTable}
@@ -1606,6 +1726,20 @@ const OrderContent = ({
           institutionData={institutionData}
         />
       )}
+        <StaffSelectionModal
+          showStaffSelectionModal={showStaffSelectionModal}
+          setShowStaffSelectionModal={setShowStaffSelectionModal}
+          selectedStaff={selectedStaff}
+          setSelectedStaff={setSelectedStaff}
+          staffData={staffData}
+          selectedTable={selectedTable}
+          institutionData={institutionData}
+          splitBillMode={splitBillMode}
+          selectedOrderId={selectedOrderId}
+          fetchPendingOrders={fetchPendingOrders}
+          setLoader={setLoader}
+        />
+
     </>
   );
 };
