@@ -680,7 +680,7 @@ const settleUnpaidOrder = async (order, paymentMethod, settleBody = null) => {
 
     // Prepare the API body
     const apiBody = {
-      paymentStatus: paymentMethod === "Void" ? false : true,
+      paymentStatus: paymentMethod === "Void" ? true : true,
       paymentMode: "offline",
       type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
       table: false,
