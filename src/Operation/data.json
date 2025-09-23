@@ -1,13 +1,13 @@
 {
     "institutionId": "HOTE6295",
     
-    "index": "1",
+    "index": "2",
 
-    "s3BucketName": "amrapaliclassicbar.tekkzy.com",
+    "s3BucketName": "hotelamrapaliclassicbar.tekkzy.com",
 
-    "cloudFrontId": "E3FGWP175JWY4N",
+    "cloudFrontId": "E288FZJXWHZGI0",
 
-    "domain": "https://amrapaliclassicbar.tekkzy.com",
+    "domain": "https://hotelamrapaliclassicbar.tekkzy.com",
 
     "printerType":"local",
 
@@ -15,7 +15,7 @@
 
     "paymentMethod":"",
 
-    "bar_integration":"Yes",
+    "bar_integration":"",
 
     "reprintKot":"Yes",
 
