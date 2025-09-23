@@ -25,6 +25,8 @@ const UnpaidOrderPaymentModal = ({
   const [qrAmount, setQrAmount] = useState(null);
   const [roomAmount, setRoomAmount] = useState(null);
   const [btcAmount, setBtcAmount] = useState(null);
+  const [complementaryAmount, setComplementaryAmount] = useState(null);
+  const [voidAmount, setVoidAmount] = useState(null);
   const [orderSource, setOrderSource] = useState("");
   const [payerName, setPayerName] = useState("");
   const [narration, setNarration] = useState("");
@@ -126,7 +128,7 @@ const UnpaidOrderPaymentModal = ({
     setLoader(true);
     setError(null);
     try {
-      const inst = institutionData?.institution || institutionData?.institution;
+      const inst = institutionData?.institution;
       const resp = await API.post("frontdesk", "/company", {
         body: { ...payload, institutionId: inst },
       });
@@ -152,8 +154,8 @@ const UnpaidOrderPaymentModal = ({
       }
 
       setCompanies((prev) => [...(prev || []), newCompanyObj]);
-      setOrderSource(newCompanyObj.name || ""); // Set orderSource to company name
-      setShowAddCompanyForm(false);
+      setOrderSource(newCompanyObj.name || ""); // Immediately select the new company
+      setShowAddCompanyForm(false); // Close the form
       setNewCompany({ gstin: "", name: "" });
       toast.success("Company added successfully");
       return newCompanyObj;
@@ -283,12 +285,13 @@ const UnpaidOrderPaymentModal = ({
       gstin: newCompany.gstin,
       name: newCompany.name,
     });
+    await fetchCompanies();
   };
 
   const companyOptions = (companies || []).map((company) => ({
-    value: company.name || "Unnamed", // Use company name as value
+    value: company.name || "Unnamed",
     label: `${company.name || "Unnamed"}${company.gst_no ? ` — ${company.gst_no}` : ""}`,
-    raw: company, // Store full company object for access to ID
+    raw: company,
   }));
 
   const totalBillAmount = calculateTotals(unpaidOrder.items).totalWithTax;
@@ -321,6 +324,7 @@ const UnpaidOrderPaymentModal = ({
       return;
     }
 
+    // Enforce validations for BTC and Complementary
     if (selectedPaymentMethod === "BTC" || selectedPaymentMethod === "Complementary" || isManagementFree) {
       if (!orderSource) {
         toast.error(
@@ -340,6 +344,13 @@ const UnpaidOrderPaymentModal = ({
         setLoader(false);
         return;
       }
+    }
+
+    // Enforce room selection for ROOM
+    if (selectedPaymentMethod === "ROOM" && !booking) {
+      toast.error("Please select a room for ROOM payment.");
+      setLoader(false);
+      return;
     }
 
     try {
@@ -363,7 +374,7 @@ const UnpaidOrderPaymentModal = ({
           narration,
         };
       } else if (selectedPaymentMethod === "Void") {
-        settleBody.paymentStatus = false;
+        settleBody.paymentStatus = true; // Consistent with settleUnpaidOrder
         settleBody.paymentMethod = "Void";
         settleBody.meta = {
           payerName,
@@ -372,7 +383,7 @@ const UnpaidOrderPaymentModal = ({
       } else if (selectedPaymentMethod === "BTC") {
         settleBody.paymentMethod = "BTC";
         settleBody.meta = {
-          orderSource, // Use company name
+          orderSource,
           payerName,
           narration,
         };
@@ -383,6 +394,7 @@ const UnpaidOrderPaymentModal = ({
         settleBody.bookingInfo = booking ? { bookingId: booking.bookingId, roomNumber: booking.roomNumber } : null;
       } else {
         settleBody.paymentMethod = selectedPaymentMethod;
+        settleBody.meta = { narration };
       }
 
       if (selectedPaymentMethod === "ROOM" || isManagementFree) {
@@ -444,30 +456,55 @@ const UnpaidOrderPaymentModal = ({
     const qrAmountFinal = qrAmount || 0;
     const roomAmountFinal = roomAmount || 0;
     const btcAmountFinal = btcAmount || 0;
-    const totalPaid = cashAmountFinal + cardAmountFinal + qrAmountFinal + roomAmountFinal + btcAmountFinal;
+    const complementaryAmountFinal = complementaryAmount || 0;
+    const voidAmountFinal = voidAmount || 0;
+
+    const totalPaid =
+      cashAmountFinal +
+      cardAmountFinal +
+      qrAmountFinal +
+      roomAmountFinal +
+      btcAmountFinal +
+      complementaryAmountFinal +
+      voidAmountFinal;
 
     if (totalPaid !== totalBillAmount) {
       toast.error(`Total paid (₹${totalPaid}) must equal bill amount (₹${totalBillAmount})`);
       return;
     }
 
+    // Validation for BTC
     if (btcAmountFinal > 0) {
       if (!orderSource) {
         toast.error("Please select a company for BTC payment.");
-        setLoader(false);
         return;
       }
       if (!payerName || String(payerName).trim() === "") {
         toast.error("Payer name is required for BTC payment.");
-        setLoader(false);
         return;
       }
-      // Verify company exists
       if (!getCompanyIdByName(orderSource)) {
         toast.error("Selected company not found.");
-        setLoader(false);
         return;
       }
+    }
+
+    // Validation for Complementary
+    if (complementaryAmountFinal > 0) {
+      if (!orderSource) {
+        toast.error("Please select a complementary option.");
+        return;
+      }
+      if (!payerName || String(payerName).trim() === "") {
+        toast.error("Payer name is required for Complementary payment.");
+        return;
+      }
+    }
+
+    // Validation for ROOM
+    if (roomAmountFinal > 0 && !booking) {
+      toast.error("Please select a room for ROOM payment.");
+      return;
     }
 
     const paymentMethodsArray = [];
@@ -488,12 +525,33 @@ const UnpaidOrderPaymentModal = ({
         method: "BTC",
         amount: btcAmountFinal,
         meta: {
-          orderSource, // Use company name
+          orderSource,
           payerName,
           narration,
         },
       });
       await updateCompanyCredit(orderSource, btcAmountFinal, payerName, unpaidOrder.orderId);
+    }
+    if (complementaryAmountFinal > 0) {
+      paymentMethodsArray.push({
+        method: "Complementary",
+        amount: complementaryAmountFinal,
+        meta: {
+          orderSource: orderSource === "custom" ? customManagementInput : orderSource,
+          payerName,
+          narration,
+        },
+      });
+    }
+    if (voidAmountFinal > 0) {
+      paymentMethodsArray.push({
+        method: "Void",
+        amount: voidAmountFinal,
+        meta: {
+          payerName,
+          narration,
+        },
+      });
     }
 
     setLoader(true);
@@ -566,7 +624,13 @@ const UnpaidOrderPaymentModal = ({
 
   const remainingAmount =
     totalBillAmount -
-    ((cashAmount || 0) + (cardAmount || 0) + (qrAmount || 0) + (roomAmount || 0) + (btcAmount || 0));
+    ((cashAmount || 0) +
+      (cardAmount || 0) +
+      (qrAmount || 0) +
+      (roomAmount || 0) +
+      (btcAmount || 0) +
+      (complementaryAmount || 0) +
+      (voidAmount || 0));
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-auto flex items-center justify-center">
@@ -582,18 +646,14 @@ const UnpaidOrderPaymentModal = ({
           <p className="text-gray-600 mb-2">
             Order ID: <strong>{unpaidOrder.orderId}</strong>
           </p>
-          {isPartialPayment && (
-            <p className="text-3xl font-bold text-green-600 mt-2">
-              ₹{totalBillAmount}
-            </p>
-          )}
+          <p className="text-3xl font-bold text-green-600 mt-2">₹{totalBillAmount}</p>
         </div>
 
         {isPartialPayment ? (
           <div className="space-y-4">
             <div
               className={`grid gap-2 ${
-                institutionData.integration === "HOTEL" ? "grid-cols-5" : "grid-cols-4"
+                institutionData.integration === "HOTEL" ? "grid-cols-3" : "grid-cols-3"
               }`}
             >
               <div className="flex flex-col">
@@ -626,27 +686,81 @@ const UnpaidOrderPaymentModal = ({
                   placeholder="QR"
                 />
               </div>
-
+              <div className="flex flex-col">
+                <label className="text-gray-700 text-sm mb-1">BTC</label>
+                <input
+                  type="number"
+                  value={btcAmount === null ? "" : btcAmount}
+                  onChange={(e) => validateAmountInput(e.target.value, setBtcAmount)}
+                  className="w-full p-2 border rounded-md text-center"
+                  placeholder="BTC"
+                />
+              </div>
+              <div className="flex flex-col">
+                <label className="text-gray-700 text-sm mb-1">Complementary</label>
+                <input
+                  type="number"
+                  value={complementaryAmount === null ? "" : complementaryAmount}
+                  onChange={(e) => validateAmountInput(e.target.value, setComplementaryAmount)}
+                  className="w-full p-2 border rounded-md text-center"
+                  placeholder="Complementary"
+                />
+              </div>
+              <div className="flex flex-col">
+                <label className="text-gray-700 text-sm mb-1">Void</label>
+                <input
+                  type="number"
+                  value={voidAmount === null ? "" : voidAmount}
+                  onChange={(e) => validateAmountInput(e.target.value, setVoidAmount)}
+                  className="w-full p-2 border rounded-md text-center"
+                  placeholder="Void"
+                />
+              </div>
+              {institutionData.integration === "HOTEL" && (
+                <div className="flex flex-col">
+                  <label className="text-gray-700 text-sm mb-1">Room</label>
+                  <input
+                    type="number"
+                    value={roomAmount === null ? "" : roomAmount}
+                    onChange={(e) => validateAmountInput(e.target.value, setRoomAmount)}
+                    className="w-full p-2 border rounded-md text-center"
+                    placeholder="Room"
+                  />
+                </div>
+              )}
             </div>
 
-            {(btcAmount > 0 || selectedPaymentMethod === "BTC") && (
+            {(btcAmount > 0 || complementaryAmount > 0) && (
               <div className="mt-2">
-                <label className="text-gray-700 text-sm mb-1">Select Company</label>
+                <label className="text-gray-700 text-sm mb-1">
+                  {btcAmount > 0 ? "Select Company" : "Select Complementary Option"}
+                </label>
                 <Select
-                  options={companyOptions}
-                  value={companyOptions.find((option) => option.value === orderSource) || null}
-                  onChange={(selected) => setOrderSource(selected ? selected.value : "")}
-                  placeholder="Select a company..."
+                  options={btcAmount > 0 ? companyOptions : managementOptions}
+                  value={
+                    btcAmount > 0
+                      ? companyOptions.find((option) => option.value === orderSource) || null
+                      : managementOptions.find((option) => option.value === orderSource) || null
+                  }
+                  onChange={(selected) => {
+                    setOrderSource(selected ? selected.value : "");
+                    if (selected && selected.value !== "custom") {
+                      setCustomManagementInput("");
+                    }
+                  }}
+                  placeholder={btcAmount > 0 ? "Select a company..." : "Select an option..."}
                   isClearable
                   className="w-full"
                 />
-                <button
-                  onClick={() => setShowAddCompanyForm(true)}
-                  className="mt-2 text-blue-600 hover:underline text-sm"
-                >
-                  Add New Company
-                </button>
-                {showAddCompanyForm && (
+                {btcAmount > 0 && (
+                  <button
+                    onClick={() => setShowAddCompanyForm(true)}
+                    className="mt-2 text-blue-600 hover:underline text-sm"
+                  >
+                    Add New Company
+                  </button>
+                )}
+                {showAddCompanyForm && btcAmount > 0 && (
                   <div className="mt-2 p-3 border rounded-md bg-gray-50">
                     <h3 className="text-sm font-semibold mb-2">Add New Company</h3>
                     <input
@@ -679,15 +793,28 @@ const UnpaidOrderPaymentModal = ({
                     </div>
                   </div>
                 )}
-                <input
-                  type="text"
-                  value={payerName}
-                  onChange={(e) => setPayerName(e.target.value)}
-                  className="w-full p-2 border rounded-md mt-2"
-                  placeholder="Name (employee / payer) *"
-                />
-                {(!payerName || payerName.trim() === "") && (
-                  <div className="text-xs text-red-600 mt-1">Payer name is required for BTC payments.</div>
+                {complementaryAmount > 0 && orderSource === "custom" && (
+                  <input
+                    type="text"
+                    value={customManagementInput}
+                    onChange={(e) => setCustomManagementInput(e.target.value)}
+                    className="w-full p-2 border rounded-md mt-2"
+                    placeholder="Enter custom option"
+                  />
+                )}
+                {(btcAmount > 0 || complementaryAmount > 0) && (
+                  <input
+                    type="text"
+                    value={payerName}
+                    onChange={(e) => setPayerName(e.target.value)}
+                    className="w-full p-2 border rounded-md mt-2"
+                    placeholder="Name (employee / payer) *"
+                  />
+                )}
+                {(btcAmount > 0 || complementaryAmount > 0) && (!payerName || payerName.trim() === "") && (
+                  <div className="text-xs text-red-600 mt-1">
+                    Payer name is required for {btcAmount > 0 ? "BTC" : "Complementary"} payments.
+                  </div>
                 )}
               </div>
             )}
@@ -717,6 +844,12 @@ const UnpaidOrderPaymentModal = ({
             {institutionData.integration === "HOTEL" && roomAmount > 0 && (
               <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-3 py-2 rounded-md mt-3 text-sm">
                 <strong>Note:</strong> Room charges will be collected during hotel checkout.
+              </div>
+            )}
+
+            {voidAmount > 0 && (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded-md mt-3 text-sm">
+                <strong>Warning:</strong> Void amount will clear the bill without payment for the specified amount.
               </div>
             )}
 
@@ -783,7 +916,7 @@ const UnpaidOrderPaymentModal = ({
             ) : (
               <div>
                 <h3 className="font-semibold mb-3 text-gray-700">Choose Payment Method:</h3>
-                <div className={`grid gap-3 ${institutionData.integration === "HOTEL" ? "grid-cols-3" : "grid-cols-4"}`}>
+                <div className="grid gap-3 grid-cols-3">
                   {paymentMethods.map((method) => (
                     <button
                       key={method}

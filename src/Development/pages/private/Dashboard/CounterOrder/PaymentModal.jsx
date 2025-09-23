@@ -33,6 +33,9 @@ const PaymentModal = ({
   const [cardAmount, setCardAmount] = useState(null);
   const [qrAmount, setQrAmount] = useState(null);
   const [roomAmount, setRoomAmount] = useState(null);
+  const [btcAmount, setBtcAmount] = useState(null);
+  const [complementaryAmount, setComplementaryAmount] = useState(null);
+  const [voidAmount, setVoidAmount] = useState(null);
   const [orderSource, setOrderSource] = useState("");
   const [payerName, setPayerName] = useState("");
   const [companies, setCompanies] = useState([]);
@@ -162,8 +165,8 @@ const PaymentModal = ({
       }
 
       setCompanies((prev) => [...(prev || []), newCompanyObj]);
-      setOrderSource(newCompanyObj.name || ""); // Set orderSource to company name
-      setShowAddCompanyForm(false);
+      setOrderSource(newCompanyObj.name || ""); 
+      setShowAddCompanyForm(false); // Close the form
       setNewCompany({ gstin: "", name: "" });
       toast.success("Company added successfully");
       return newCompanyObj;
@@ -227,10 +230,10 @@ const PaymentModal = ({
 
   // Fetch companies only when BTC is selected
   useEffect(() => {
-    if (selectedPaymentMethod === "BTC") {
+    if (selectedPaymentMethod === "BTC" || btcAmount > 0) {
       fetchCompanies();
     }
-  }, [selectedPaymentMethod]);
+  }, [selectedPaymentMethod, btcAmount]);
 
   // Handle new company form submission
   const handleAddCompany = async () => {
@@ -238,6 +241,7 @@ const PaymentModal = ({
       gstin: newCompany.gstin,
       name: newCompany.name,
     });
+    await fetchCompanies();
   };
 
   // Defensive mapping for react-select options
@@ -424,8 +428,15 @@ const PaymentModal = ({
         return;
       }
     }
-    if ((selectedPaymentMethod === "BTC" || selectedPaymentMethod === "Complementary") && !orderSource) {
-      toast.error(`Please select a ${selectedPaymentMethod === "BTC" ? "company" : "complementary option"}.`);
+    // Enforce orderSource for Complementary
+    if (selectedPaymentMethod === "Complementary" && !orderSource) {
+      toast.error("Please select a complementary option.");
+      setLoader(false);
+      return;
+    }
+    // Enforce room selection for ROOM
+    if (selectedPaymentMethod === "ROOM" && !booking) {
+      toast.error("Please select a room for ROOM payment.");
       setLoader(false);
       return;
     }
@@ -441,7 +452,6 @@ const PaymentModal = ({
         selectedOrderId = extractedOrderIds[0].split(",")[0];
         billLink = `https://manasrestaurant.tekkzy.com/receipt?orderIds=${selectedOrderId}`;
       }
-      const customerPhone = customerDetails[selectedTable?.id]?.phone;
 
       const settleBody = {
         paymentStatus: true,
@@ -503,11 +513,10 @@ const PaymentModal = ({
           },
         });
       }
-if (
-  institutionData.bar_integration === "Yes" 
-) {
-  settleBody.dateId = institutionData.dateId;
-}
+
+      if (institutionData.bar_integration === "Yes") {
+        settleBody.dateId = institutionData.dateId;
+      }
       const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
       await API.post("main", `/admin/settle-bill/${institutionData.institution}/${tableIdStr}`, {
         body: settleBody,
@@ -564,9 +573,7 @@ if (
           narration: narration,
           orderSource: orderSource === "custom" ? customManagementInput : orderSource,
           name: payerName,
-           ...(institutionData?.bar_integration === "Yes" 
-        ? { dateId: institutionData.dateId }
-        : {}),
+          ...(institutionData?.bar_integration === "Yes" ? { dateId: institutionData.dateId } : {}),
         },
       });
       await completePayment();
@@ -589,12 +596,45 @@ if (
     const cardAmountFinal = cardAmount || 0;
     const qrAmountFinal = qrAmount || 0;
     const roomAmountFinal = roomAmount || 0;
-    const btcAmountFinal = selectedPaymentMethod === "BTC" ? totalBillAmount : 0;
+    const btcAmountFinal = btcAmount || 0;
+    const complementaryAmountFinal = complementaryAmount || 0;
+    const voidAmountFinal = voidAmount || 0;
 
-    const totalPaid = cashAmountFinal + cardAmountFinal + qrAmountFinal + roomAmountFinal + btcAmountFinal;
+    const totalPaid =
+      cashAmountFinal +
+      cardAmountFinal +
+      qrAmountFinal +
+      roomAmountFinal +
+      btcAmountFinal +
+      complementaryAmountFinal +
+      voidAmountFinal;
 
     if (totalPaid !== totalBillAmount) {
       toast.error(`Total paid (₹${totalPaid}) must equal bill amount (₹${totalBillAmount})`);
+      return;
+    }
+
+    // Validation for BTC
+    if (btcAmountFinal > 0) {
+      if (!orderSource) {
+        toast.error("Please select a company for BTC payment.");
+        return;
+      }
+      if (!payerName || String(payerName).trim() === "") {
+        toast.error("Payer name is required for BTC payment.");
+        return;
+      }
+    }
+
+    // Validation for Complementary
+    if (complementaryAmountFinal > 0 && !orderSource) {
+      toast.error("Please select a complementary option.");
+      return;
+    }
+
+    // Validation for ROOM
+    if (roomAmountFinal > 0 && !booking) {
+      toast.error("Please select a room for ROOM payment.");
       return;
     }
 
@@ -603,6 +643,10 @@ if (
     if (cardAmountFinal > 0) paymentMethodsPayload.push({ method: "Card", amount: cardAmountFinal });
     if (qrAmountFinal > 0) paymentMethodsPayload.push({ method: "QR", amount: qrAmountFinal });
     if (roomAmountFinal > 0) paymentMethodsPayload.push({ method: "ROOM", amount: roomAmountFinal });
+    if (btcAmountFinal > 0) paymentMethodsPayload.push({ method: "BTC", amount: btcAmountFinal });
+    if (complementaryAmountFinal > 0)
+      paymentMethodsPayload.push({ method: "Complementary", amount: complementaryAmountFinal });
+    if (voidAmountFinal > 0) paymentMethodsPayload.push({ method: "Void", amount: voidAmountFinal });
 
     let selectedOrderId = "";
     if (extractedOrderIds.length > 0) {
@@ -610,23 +654,6 @@ if (
     }
 
     if (btcAmountFinal > 0) {
-      if (!orderSource) {
-        toast.error("Please select a company for BTC payment.");
-        setLoader(false);
-        return;
-      }
-      if (!payerName || String(payerName).trim() === "") {
-        toast.error("Payer name is required for BTC payment.");
-        setLoader(false);
-        return;
-      }
-      
-      paymentMethodsPayload.push({
-        method: "BTC",
-        amount: btcAmountFinal,
-      });
-
-      // Update company credit
       await updateCompanyCredit(orderSource, btcAmountFinal, payerName, selectedOrderId);
     }
 
@@ -666,14 +693,14 @@ if (
           paymentStatus: true,
           paymentMode: "offline",
           paymentMethods: paymentMethodsPayload,
-          status: "delivered",
+          status: voidAmountFinal === totalBillAmount ? "voided" : "delivered",
           narration: narration,
           ...(booking && booking.roomNumber ? { room_number: "Hotel" + booking.roomNumber } : {}),
-          ...(orderSource ? { orderSource } : {}),
+          ...(orderSource
+            ? { orderSource: orderSource === "custom" ? customManagementInput : orderSource }
+            : {}),
           ...(payerName ? { name: payerName } : {}),
-           ...(institutionData?.bar_integration === "Yes" 
-        ? { dateId: institutionData.dateId }
-        : {}),
+          ...(institutionData?.bar_integration === "Yes" ? { dateId: institutionData.dateId } : {}),
         },
       });
       if (isHotelTable) {
@@ -730,7 +757,13 @@ if (
 
   const remainingAmount =
     totalBillAmount -
-    ((cashAmount || 0) + (cardAmount || 0) + (qrAmount || 0) + (roomAmount || 0) + (selectedPaymentMethod === "BTC" ? totalBillAmount : 0));
+    ((cashAmount || 0) +
+      (cardAmount || 0) +
+      (qrAmount || 0) +
+      (roomAmount || 0) +
+      (btcAmount || 0) +
+      (complementaryAmount || 0) +
+      (voidAmount || 0));
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-auto flex items-center justify-center">
@@ -742,16 +775,14 @@ if (
           <p className="text-gray-600">
             Table: <strong>{selectedTable?.id}</strong>
           </p>
-          {isPartialPayment && (
-            <p className="text-3xl font-bold text-green-600 mt-2">₹{totalBillAmount}</p>
-          )}
+          <p className="text-3xl font-bold text-green-600 mt-2">₹{totalBillAmount}</p>
         </div>
 
         {isPartialPayment ? (
           <div className="space-y-4">
             <div
               className={`grid gap-2 ${
-                institutionData.integration === "HOTEL" ? "grid-cols-2" : "grid-cols-3"
+                institutionData.integration === "HOTEL" ? "grid-cols-3" : "grid-cols-3"
               }`}
             >
               <div className="flex flex-col">
@@ -784,26 +815,81 @@ if (
                   placeholder="QR"
                 />
               </div>
+              <div className="flex flex-col">
+                <label className="text-gray-700 text-sm mb-1">BTC</label>
+                <input
+                  type="number"
+                  value={btcAmount === null ? "" : btcAmount}
+                  onChange={(e) => validateAmountInput(e.target.value, setBtcAmount)}
+                  className="w-full p-2 border rounded-md text-center"
+                  placeholder="BTC"
+                />
+              </div>
+              <div className="flex flex-col">
+                <label className="text-gray-700 text-sm mb-1">Complementary</label>
+                <input
+                  type="number"
+                  value={complementaryAmount === null ? "" : complementaryAmount}
+                  onChange={(e) => validateAmountInput(e.target.value, setComplementaryAmount)}
+                  className="w-full p-2 border rounded-md text-center"
+                  placeholder="Complementary"
+                />
+              </div>
+              <div className="flex flex-col">
+                <label className="text-gray-700 text-sm mb-1">Void</label>
+                <input
+                  type="number"
+                  value={voidAmount === null ? "" : voidAmount}
+                  onChange={(e) => validateAmountInput(e.target.value, setVoidAmount)}
+                  className="w-full p-2 border rounded-md text-center"
+                  placeholder="Void"
+                />
+              </div>
+              {institutionData.integration === "HOTEL" && (
+                <div className="flex flex-col">
+                  <label className="text-gray-700 text-sm mb-1">Room</label>
+                  <input
+                    type="number"
+                    value={roomAmount === null ? "" : roomAmount}
+                    onChange={(e) => validateAmountInput(e.target.value, setRoomAmount)}
+                    className="w-full p-2 border rounded-md text-center"
+                    placeholder="Room"
+                  />
+                </div>
+              )}
             </div>
 
-            {selectedPaymentMethod === "BTC" && (
+            {(btcAmount > 0 || complementaryAmount > 0) && (
               <div className="mt-2">
-                <label className="text-gray-700 text-sm mb-1">Select Company</label>
+                <label className="text-gray-700 text-sm mb-1">
+                  {btcAmount > 0 ? "Select Company" : "Select Complementary Option"}
+                </label>
                 <Select
-                  options={companyOptions}
-                  value={companyOptions.find((option) => option.value === orderSource) || null}
-                  onChange={(selected) => setOrderSource(selected ? selected.value : "")}
-                  placeholder="Select a company..."
+                  options={btcAmount > 0 ? companyOptions : managementOptions}
+                  value={
+                    btcAmount > 0
+                      ? companyOptions.find((option) => option.value === orderSource) || null
+                      : managementOptions.find((option) => option.value === orderSource) || null
+                  }
+                  onChange={(selected) => {
+                    setOrderSource(selected ? selected.value : "");
+                    if (selected && selected.value !== "custom") {
+                      setCustomManagementInput("");
+                    }
+                  }}
+                  placeholder={btcAmount > 0 ? "Select a company..." : "Select an option..."}
                   isClearable
                   className="w-full"
                 />
-                <button
-                  onClick={() => setShowAddCompanyForm(true)}
-                  className="mt-2 text-blue-600 hover:underline text-sm"
-                >
-                  Add New Company
-                </button>
-                {showAddCompanyForm && (
+                {btcAmount > 0 && (
+                  <button
+                    onClick={() => setShowAddCompanyForm(true)}
+                    className="mt-2 text-blue-600 hover:underline text-sm"
+                  >
+                    Add New Company
+                  </button>
+                )}
+                {showAddCompanyForm && btcAmount > 0 && (
                   <div className="mt-2 p-3 border rounded-md bg-gray-50">
                     <h3 className="text-sm font-semibold mb-2">Add New Company</h3>
                     <input
@@ -829,14 +915,25 @@ if (
                     </div>
                   </div>
                 )}
-                <input
-                  type="text"
-                  value={payerName}
-                  onChange={(e) => setPayerName(e.target.value)}
-                  className="w-full p-2 border rounded-md mt-2"
-                  placeholder="Name (employee / payer) *"
-                />
-                {selectedPaymentMethod === "BTC" && (!payerName || payerName.trim() === "") && (
+                {complementaryAmount > 0 && orderSource === "custom" && (
+                  <input
+                    type="text"
+                    value={customManagementInput}
+                    onChange={(e) => setCustomManagementInput(e.target.value)}
+                    className="w-full p-2 border rounded-md mt-2"
+                    placeholder="Enter custom option"
+                  />
+                )}
+                {(btcAmount > 0 || complementaryAmount > 0) && (
+                  <input
+                    type="text"
+                    value={payerName}
+                    onChange={(e) => setPayerName(e.target.value)}
+                    className="w-full p-2 border rounded-md mt-2"
+                    placeholder={`Name ${btcAmount > 0 ? "(employee / payer) *" : "(optional)"}`}
+                  />
+                )}
+                {btcAmount > 0 && (!payerName || payerName.trim() === "") && (
                   <div className="text-xs text-red-600 mt-1">Payer name is required for BTC payments.</div>
                 )}
               </div>
@@ -864,6 +961,11 @@ if (
             {institutionData.integration === "HOTEL" && roomAmount > 0 && (
               <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-3 py-2 rounded-md mt-3 text-sm">
                 <strong>Note:</strong> Room charges will be collected during hotel checkout.
+              </div>
+            )}
+            {voidAmount > 0 && (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded-md mt-3 text-sm">
+                <strong>Warning:</strong> Void amount will clear the bill without payment for the specified amount.
               </div>
             )}
             <div className="text-center mt-2">
