@@ -222,6 +222,120 @@ const ReprintKOT = ({
         }
       `;
       document.head.appendChild(style);
+    } else if (printerpaperSize === "100") {
+      printArea.innerHTML = `
+        <div class="kot">
+          <div class="header">KOT No: ${kotNo} (Reprint)</div>
+          <div class="sub-header">${orderType}</div>
+          <div class="info">Date: ${formatDateTime()}</div>
+          <div class="divider"></div>
+          <div class="header">Table: ${table.id || "N/A"}</div>
+          <div class="divider"></div>
+          <table class="table">
+            <tr>
+              <td colspan="2" style="display: flex; flex-direction: row; justify-content: space-between; align-items: center; width: 100%;">
+                <b>Item</b>
+                <b>Qty</b>
+              </td>
+            </tr>
+            ${itemsHTML}
+          </table>
+          <div class="divider"></div>
+          ${institutionData?.institution === "bhuk2323" ? `
+            <table class="table total">
+              <tr><td><b>Total Qty:</b></td><td style="text-align:right;">${totalQty}</td></tr>
+            </table>
+          ` : ''}
+          ${instruction ? `
+            <div class="spacer"></div>
+            <div class="instruction">Special Instructions: ${instruction}</div>
+            <div class="spacer"></div>
+          ` : ''}
+        </div>
+      `;
+      document.body.appendChild(printArea);
+
+      style = document.createElement("style");
+      style.id = "printStyle";
+      style.innerHTML = `
+        @media print {
+          @page {
+            size: 100mm auto;
+            margin: 0;
+          }
+          body {
+            margin: 0;
+            margin-top: 1px;
+            padding: 0;
+          }
+          body * {
+            visibility: hidden;
+          }
+          #printArea, #printArea * {
+            visibility: visible;
+          }
+          #printArea {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100mm;
+            padding: 4mm;
+            page-break-inside: avoid;
+          }
+        }
+
+        .kot {
+          font-family: monospace;
+          text-align: left;
+          font-size: 16pt;
+          padding: 0;
+          line-height: 1.3;
+          max-width: 100mm;
+          word-wrap: break-word;
+          margin: 0 auto;
+          page-break-inside: avoid;
+        }
+        .header {
+          font-size: 18pt;
+          font-weight: bold;
+          text-align: center;
+          margin: 3px 0;
+        }
+        .sub-header, .info {
+          font-size: 16pt;
+          text-align: center;
+          margin: 3px 0;
+        }
+        .instruction {
+          font-size: 16pt;
+          text-align: left;
+          margin: 6px 0;
+          word-wrap: break-word;
+        }
+        .spacer {
+          height: 30px;
+        }
+        .divider {
+          border-top: 1px dashed black;
+          margin: 4px 0;
+        }
+        .table {
+          width: 100%;
+          font-size: 16pt;
+          border-collapse: collapse;
+        }
+        .table td {
+          padding: 2px 0;
+          word-break: break-word;
+        }
+        .total {
+          font-weight: bold;
+          border-top: 1px solid black;
+          margin-top: 4px;
+        }
+      `;
+      document.head.appendChild(style);
     } else {
       printArea.innerHTML = `
         <div class="kot">
@@ -464,11 +578,11 @@ const ReprintKOT = ({
     const tableIdStr = String(table.id);
     const instruction = tableInstructions?.[tableIdStr] || tableData?.[tableIdStr]?.instruction || "";
 
-    const lineWidth = printerpaperSize === "80" ? 48 : 32;
+    const lineWidth = printerpaperSize === "80" ? 48 : printerpaperSize === "100" ? 60 : 32;
     const itemNameLength = lineWidth - 5;
 
-    const headerFont = printerpaperSize === "80" ? "\x1B\x4D\x00" : "\x1B\x4D\x00";
-    const itemFont = printerpaperSize === "80" ? "\x1B\x4D\x00" : "\x1B\x4D\x01";
+    const headerFont = printerpaperSize === "80" ? "\x1B\x4D\x00" : printerpaperSize === "100" ? "\x1B\x4D\x00" : "\x1B\x4D\x01";
+    const itemFont = printerpaperSize === "80" ? "\x1B\x4D\x00" : printerpaperSize === "100" ? "\x1B\x4D\x00" : "\x1B\x4D\x01";
     const resetFont = "\x1D\x21\x00";
 
     const centerText = (text, width = lineWidth) => {
