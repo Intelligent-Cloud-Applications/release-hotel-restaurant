@@ -202,8 +202,137 @@ const PrintKOT = ({
         }
       `;
       document.head.appendChild(style);
-    }
-    else {
+    } else if (printerpaperSize === "100") {
+      const itemsHTML = itemsToPrint
+        .map(
+          (item) => `
+            <tr>
+              <td>${item.name}</td>
+              <td style="text-align: right; white-space: nowrap;">${item.quantity}</td>
+            </tr>
+          `
+        )
+        .join("");
+      const totalQty = itemsToPrint.reduce((sum, item) => sum + item.quantity, 0);
+      
+      printArea.innerHTML = `
+        <div class="kot">
+          <div class="header">KOT No: ${kotNo}</div>
+          <div class="sub-header">${orderType}</div>
+          <div class="info">Date: ${formatDateTime()}</div>
+          <div class="divider"></div>
+          <div class="header">Table: ${table.id || "N/A"}</div>
+          ${isManagementTable && customerName ? `<div class="customer-name">Customer: ${customerName}</div>` : ''}
+          <div class="divider"></div>
+          <table class="table">
+            <tr>
+              <td colspan="2" style="display: flex; flex-direction: row; justify-content: space-between; align-items: center; width: 100%;">
+                <b>Item</b>
+                <b>Qty</b>
+              </td>
+            </tr>
+            ${itemsHTML}
+          </table>
+          <div class="divider"></div>
+          <table class="table total">
+            <tr><td><b>Total Qty:</b></td><td style="text-align:right;">${totalQty}</td></tr>
+          </table>
+          ${institutionData.institution === "bhuk2323" ? 
+              `<div class="spacer"></div>
+           ${(instruction && instruction!=="None")? ` <div class="instruction">Special Instructions: ${instruction}</div>` : ''}
+            ` : ''}
+        </div>
+      `;
+      document.body.appendChild(printArea);
+    
+      const style = document.createElement("style");
+      style.innerHTML = `
+        @media print {
+          @page {
+            size: 100mm auto; 
+            margin: 0; 
+          }
+          body {
+            margin: 0;
+            margin-top: 1px;
+            padding: 0;
+          }
+          body * {
+            visibility: hidden;
+          }
+          #printArea, #printArea * {
+            visibility: visible;
+          }
+          #printArea {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100mm;
+            padding: 4mm;
+            page-break-inside: avoid;
+          }
+        }
+    
+        .kot {
+          font-family: monospace;
+          text-align: left;
+          font-size: 16pt; 
+          padding: 0; 
+          line-height: 1.3; 
+          max-width: 100mm;
+          word-wrap: break-word;
+          margin: 0 auto;
+          page-break-inside: avoid; 
+        }
+        .header {
+          font-size: 18pt; 
+          font-weight: bold;
+          text-align: center;
+          margin: 3px 0;
+        }
+        .sub-header, .info {
+          font-size: 16pt; 
+          text-align: center;
+          margin: 3px 0;
+        }
+        .customer-name {
+          font-size: 16pt;
+          font-weight: bold;
+          text-align: center;
+          margin: 3px 0;
+          text-decoration: underline;
+        }
+        .instruction {
+          font-size: 16pt;
+          text-align: left;
+          margin: 6px 0;
+          word-wrap: break-word;
+        }
+        .spacer {
+          height: 30px;
+        }
+        .divider {
+          border-top: 1px dashed black;
+          margin: 4px 0; 
+        }
+        .table {
+          width: 100%;
+          font-size: 16pt; 
+          border-collapse: collapse;
+        }
+        .table td {
+          padding: 2px 0; 
+          word-break: break-word;
+        }
+        .total {
+          font-weight: bold;
+          border-top: 1px solid black;
+          margin-top: 4px;
+        }
+      `;
+      document.head.appendChild(style);
+    } else {
       const itemsHTML = itemsToPrint
         .map(
           (item) => `
