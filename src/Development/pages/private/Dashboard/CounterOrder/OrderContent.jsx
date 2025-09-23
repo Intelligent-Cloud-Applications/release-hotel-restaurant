@@ -82,6 +82,9 @@ const OrderContent = ({
   // New state for day session
   const [selectedDaySession, setSelectedDaySession] = useState("breakfast");
 
+  // State for custom name input when "custom" is selected
+  const [isCustomName, setIsCustomName] = useState(false);
+
   // Day session options
   const daySessionOptions = [
     { value: "breakfast", label: "Breakfast" },
@@ -89,6 +92,35 @@ const OrderContent = ({
     { value: "dinner", label: "Dinner" },
     { value: "snacks", label: "Snacks" },
     { value: "late-night", label: "Late Night" },
+  ];
+
+  // Management customer options
+  const managementCustomerOptions = [
+    { value: "Md Sir", label: "Md Sir" },
+    { value: "GM Sir", label: "GM Sir" },
+    { value: "Md House", label: "Md House" },
+    { value: "House Guest", label: "House Guest" },
+    { value: "Room Compliment", label: "Room Compliment" },
+    { value: "Account Staff", label: "Account Staff" },
+    { value: "Md Guest", label: "Md Guest" },
+    { value: "F.O.M", label: "F.O.M" },
+    { value: "HK EXE", label: "HK EXE" },
+    { value: "HR Manager", label: "HR Manager" },
+    { value: "Guest Entartaintment", label: "Guest Entartaintment" },
+    { value: "Ac Manager", label: "Ac Manager" },
+    { value: "Maintanence Eng", label: "Maintanence Eng" },
+    { value: "EXE Chef", label: "EXE Chef" },
+    { value: "C.M.D Sir", label: "C.M.D Sir" },
+    { value: "Hotel Staff Food", label: "Hotel Staff Food" },
+    { value: "Store Keeper", label: "Store Keeper" },
+    { value: "Maintanence", label: "Maintanence" },
+    { value: "Sales Manager", label: "Sales Manager" },
+    { value: "F.O Executive", label: "F.O Executive" },
+    { value: "EDP", label: "EDP" },
+    { value: "F&B Manager", label: "F&B Manager" },
+    { value: "Town Thana", label: "Town Thana" },
+    { value: "Police Staff", label: "Police Staff" },
+    { value: "custom", label: "Custom" },
   ];
 
   // Use refs to prevent input focus loss
@@ -244,6 +276,16 @@ const OrderContent = ({
       fetchStaffData();
     }
   }, [fetchStaffData]);
+
+  // Update isCustomName based on customerDetails
+  useEffect(() => {
+    if (selectedTable?.id) {
+      const currentName = customerDetails[selectedTable.id]?.name || "";
+      const isManagementTable = selectedTable?.id?.toString().toLowerCase().startsWith("management");
+      const isPredefined = managementCustomerOptions.some(option => option.value === currentName);
+      setIsCustomName(isManagementTable && currentName && !isPredefined);
+    }
+  }, [customerDetails, selectedTable?.id]);
 
   const tableUnpaidOrders = selectedTable
     ? unpaidOrders.filter((order) => String(order.tableName) === String(selectedTable.id))
@@ -547,7 +589,7 @@ const OrderContent = ({
     if (splitBillMode) {
       if (!selectedOrderId) {
         toast.error("Please select an order to print.");
-        return;
+     return;
       }
       const selectedOrder = orderGroups.find((group) => group.orderId === selectedOrderId);
       if (!selectedOrder || !selectedOrder.items.length) {
@@ -990,13 +1032,13 @@ const OrderContent = ({
   };
 
   const renderContent = () => {
+    const isManagementTable = selectedTable?.id?.toString().toLowerCase().startsWith("management");
+
     if (activeTab === "KOT") {
       const hasKOTItems = (kotcurrent?.items || []).length > 0;
       return (
         <>
           <div className="p-3">
-
-            
             <UnpaidOrdersSection />
           </div>
           <div className="flex-1 overflow-y-auto p-2 sm:p-4 max-h-[22rem] max406:max-h-[12rem]">
@@ -1005,66 +1047,120 @@ const OrderContent = ({
             ))}
           </div>
           <div className="p-2 sm:p-4 border-b space-y-2">
-  <div className="flex gap-2">
-    {/* Customer Name */}
-    <div className="relative w-1/3">
-      <User className="w-4 h-4 absolute left-2 top-2 text-gray-400" />
-      <input
-        type="text"
-        placeholder="Name"
-        className="w-full pl-7 pr-2 py-1 text-xs border rounded"
-        value={customerDetails[selectedTable?.id]?.name || ""}
-        onChange={(e) =>
-          setCustomerDetails((prev) => ({
-            ...prev,
-            [selectedTable?.id]: {
-              ...prev[selectedTable?.id],
-              name: e.target.value,
-            },
-          }))
-        }
-      />
-    </div>
+            <div className="flex gap-2">
+              {/* Customer Name (Dropdown or Input based on table name) */}
+              <div className="relative w-1/3">
+                {isManagementTable ? (
+                  isCustomName ? (
+                    <>
+                      <User className="w-4 h-4 absolute left-2 top-2 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Custom Name"
+                        className="w-full pl-7 pr-2 py-1 text-xs border rounded"
+                        value={customerDetails[selectedTable?.id]?.name || ""}
+                        onChange={(e) =>
+                          setCustomerDetails((prev) => ({
+                            ...prev,
+                            [selectedTable?.id]: {
+                              ...prev[selectedTable?.id],
+                              name: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <User className="w-4 h-4 absolute left-2 top-2 text-gray-400" />
+                      <select
+                        value={customerDetails[selectedTable?.id]?.name || ""}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setIsCustomName(value === "custom");
+                          setCustomerDetails((prev) => ({
+                            ...prev,
+                            [selectedTable?.id]: {
+                              ...prev[selectedTable?.id],
+                              name: value === "custom" ? "" : value,
+                            },
+                          }));
+                        }}
+                        className="w-full pl-7 pr-6 py-1 text-xs border rounded appearance-none"
+                      >
+                        <option value="">Select Customer</option>
+                        {managementCustomerOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="absolute inset-y-0 right-1 flex items-center pointer-events-none">
+                        <ChevronDown className="h-3 w-3 text-gray-400" />
+                      </div>
+                    </>
+                  )
+                ) : (
+                  <>
+                    <User className="w-4 h-4 absolute left-2 top-2 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Name"
+                      className="w-full pl-7 pr-2 py-1 text-xs border rounded"
+                      value={customerDetails[selectedTable?.id]?.name || ""}
+                      onChange={(e) =>
+                        setCustomerDetails((prev) => ({
+                          ...prev,
+                          [selectedTable?.id]: {
+                            ...prev[selectedTable?.id],
+                            name: e.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </>
+                )}
+              </div>
 
-    {/* Phone Number */}
-    <div className="relative w-1/3">
-      <Phone className="w-4 h-4 absolute left-2 top-2 text-gray-400" />
-      <input
-        type="tel"
-        placeholder="Phone"
-        className="w-full pl-7 pr-2 py-1 text-xs border rounded"
-        value={customerDetails[selectedTable?.id]?.phone || ""}
-        onChange={(e) =>
-          setCustomerDetails((prev) => ({
-            ...prev,
-            [selectedTable?.id]: {
-              ...prev[selectedTable?.id],
-              phone: e.target.value,
-            },
-          }))
-        }
-      />
-    </div>
+              {/* Phone Number */}
+              <div className="relative w-1/3">
+                <Phone className="w-4 h-4 absolute left-2 top-2 text-gray-400" />
+                <input
+                  type="tel"
+                  placeholder="Phone"
+                  className="w-full pl-7 pr-2 py-1 text-xs border rounded"
+                  value={customerDetails[selectedTable?.id]?.phone || ""}
+                  onChange={(e) =>
+                    setCustomerDetails((prev) => ({
+                      ...prev,
+                      [selectedTable?.id]: {
+                        ...prev[selectedTable?.id],
+                        phone: e.target.value,
+                      },
+                    }))
+                  }
+                />
+              </div>
 
-    {/* Day Session Dropdown (Compact) */}
-    <div className="relative w-1/3">
-      <select
-        value={selectedDaySession}
-        onChange={(e) => handleDaySessionChange(e.target.value)}
-        className="w-full pl-2 pr-6 py-1 text-xs border rounded appearance-none"
-      >
-        {daySessionOptions.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <div className="absolute inset-y-0 right-1 flex items-center pointer-events-none">
-        <ChevronDown className="h-3 w-3 text-gray-400" />
-      </div>
-    </div>
-  </div>
-</div>
+              {/* Day Session Dropdown (Compact) */}
+              <div className="relative w-1/3">
+                <select
+                  value={selectedDaySession}
+                  onChange={(e) => handleDaySessionChange(e.target.value)}
+                  className="w-full pl-2 pr-6 py-1 text-xs border rounded appearance-none"
+                >
+                  {daySessionOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <div className="absolute inset-y-0 right-1 flex items-center pointer-events-none">
+                  <ChevronDown className="h-3 w-3 text-gray-400" />
+                </div>
+              </div>
+            </div>
+          </div>
 
           <div className="p-4 border-t space-y-2">
             <div className="flex justify-between font-bold text-sm sm:text-base mt-3 mb-3">
@@ -1296,7 +1392,6 @@ const OrderContent = ({
         return (
           <>
             <div className="p-3">
-              
               <UnpaidOrdersSection />
             </div>
             <div className="flex-1 overflow-y-auto p-2 sm:p-4 max-h-[16rem] max406:max-h-[10rem]">
@@ -1309,22 +1404,76 @@ const OrderContent = ({
             <div className="p-2 sm:p-4 border-b space-y-3">
               <div className="flex gap-2">
                 <div className="relative w-1/2">
-                  <User className="w-4 h-4 absolute left-2 top-2 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Customer Name"
-                    className="w-full pl-8 pr-2 py-1 text-xs sm:text-sm border rounded"
-                    value={customerDetails[selectedTable?.id]?.name || ""}
-                    onChange={(e) =>
-                      setCustomerDetails((prev) => ({
-                        ...prev,
-                        [selectedTable?.id]: {
-                          ...prev[selectedTable?.id],
-                          name: e.target.value,
-                        },
-                      }))
-                    }
-                  />
+                  {isManagementTable ? (
+                    isCustomName ? (
+                      <>
+                        <User className="w-4 h-4 absolute left-2 top-2 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Custom Name"
+                          className="w-full pl-8 pr-2 py-1 text-xs sm:text-sm border rounded"
+                          value={customerDetails[selectedTable?.id]?.name || ""}
+                          onChange={(e) =>
+                            setCustomerDetails((prev) => ({
+                              ...prev,
+                              [selectedTable?.id]: {
+                                ...prev[selectedTable?.id],
+                                name: e.target.value,
+                              },
+                            }))
+                          }
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <User className="w-4 h-4 absolute left-2 top-2 text-gray-400" />
+                        <select
+                          value={customerDetails[selectedTable?.id]?.name || ""}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setIsCustomName(value === "custom");
+                            setCustomerDetails((prev) => ({
+                              ...prev,
+                              [selectedTable?.id]: {
+                                ...prev[selectedTable?.id],
+                                name: value === "custom" ? "" : value,
+                              },
+                            }));
+                          }}
+                          className="w-full pl-8 pr-10 py-1 text-xs sm:text-sm border rounded appearance-none"
+                        >
+                          <option value="">Select Customer</option>
+                          {managementCustomerOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="absolute inset-y-0 right-1 flex items-center pointer-events-none">
+                          <ChevronDown className="h-4 w-4 text-gray-400" />
+                        </div>
+                      </>
+                    )
+                  ) : (
+                    <>
+                      <User className="w-4 h-4 absolute left-2 top-2 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Customer Name"
+                        className="w-full pl-8 pr-2 py-1 text-xs sm:text-sm border rounded"
+                        value={customerDetails[selectedTable?.id]?.name || ""}
+                        onChange={(e) =>
+                          setCustomerDetails((prev) => ({
+                            ...prev,
+                            [selectedTable?.id]: {
+                              ...prev[selectedTable?.id],
+                              name: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </>
+                  )}
                 </div>
                 <div className="relative w-1/2">
                   <Phone className="w-4 h-4 absolute left-2 top-2 text-gray-400" />
@@ -1656,7 +1805,7 @@ const OrderContent = ({
               ))}
             </select>
           </div>
-          <div className="flex justify-end gap-3">
+                    <div className="flex justify-end gap-3">
             <button
               onClick={() => setMovingItem(null)}
               className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
