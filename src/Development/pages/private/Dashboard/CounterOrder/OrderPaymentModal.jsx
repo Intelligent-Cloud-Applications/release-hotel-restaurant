@@ -381,7 +381,7 @@ const OrderPaymentModal = ({
         settleBody.orderSource = orderSource === "custom" ? customManagementInput : orderSource;
         settleBody.name = payerName;
       } else if (selectedPaymentMethod === "Void") {
-        settleBody.paymentStatus = false;
+        settleBody.paymentStatus = true;
         settleBody.paymentMode = null;
         settleBody.paymentMethod = "Void";
         settleBody.status = "voided";

@@ -94,7 +94,7 @@ const MoveItemsModal = ({
                     className="w-16 p-1 border rounded mr-2"
                   />
                   <span className="text-sm">
-                    {item.itemName || item.itemId} (Available: {item.quantity})
+                    {item.itemName || item.name} (Available: {item.quantity})
                   </span>
                 </div>
               ))}
