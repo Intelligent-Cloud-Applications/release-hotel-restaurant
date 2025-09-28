@@ -30,7 +30,17 @@ export const dsDev = {
                 name: 'main',
                 endpoint: 'https://ppf65ueuea.execute-api.us-east-2.amazonaws.com/dev',
                 region: 'us-east-2',
-            }
+            },
+            {
+                name: 'hotelHouseKeeping',
+                endpoint: 'https://jsu2fk5k37.execute-api.us-east-2.amazonaws.com/dev',
+                region: 'us-east-2',
+            },
+            {
+                name: 'frontdesk',
+                endpoint: ' https://7jf47m4fd4.execute-api.us-east-2.amazonaws.com/dev',
+                region: 'us-east-2',
+            },
         ]
     }
 }
