@@ -1,13 +1,13 @@
 {
     "institutionId": "HOTEL001",
 
-    "index":"2",
+    "index":"1",
 
-    "s3BucketName": "templatebm.tekkzy.com",
+    "s3BucketName": "templatecm.awsaiapp.com",
 
     "cloudFrontId": "",
 
-    "domain": "https://templatebm.tekkzy.com",
+    "domain": "https://templatecm.awsaiapp.com",
 
     "printerType":"local",
 
@@ -15,7 +15,7 @@
 
     "paymentMethod":"",
 
-    "bar_integration":"Yes",
+    "bar_integration":"",
 
     "reprintKot":"Yes",
 
