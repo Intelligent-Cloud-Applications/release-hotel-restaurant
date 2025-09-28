@@ -3,11 +3,11 @@
 
     "index":"2",
 
-    "s3BucketName": "templatecm.awsaiapp.com",
+    "s3BucketName": "templatebm.tekkzy.com",
 
     "cloudFrontId": "",
 
-    "domain": "https://templatecm.awsaiapp.com",
+    "domain": "https://templatebm.tekkzy.com",
 
     "printerType":"local",
 
