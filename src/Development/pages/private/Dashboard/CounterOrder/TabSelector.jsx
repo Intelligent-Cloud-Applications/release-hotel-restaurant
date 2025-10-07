@@ -23,7 +23,7 @@ const TabSelector = ({
   KOTByTable,
 }) => {
   const hasItems = localBillItems.length > 0;
-  const { institutionData, userData } = useContext(Context);
+  const { institutionData, userData, hotelBookings } = useContext(Context);
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [showMoveItemsModal, setShowMoveItemsModal] = useState(false);
   const [destinationTable, setDestinationTable] = useState("");
@@ -32,6 +32,7 @@ const TabSelector = ({
   const [isLoading, setIsLoading] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [reason, setReason] = useState("");
+  const [booking, setBooking] = useState(null);
 
   // Ref for textarea to manage focus
   const reasonTextareaRef = useRef(null);
@@ -49,6 +50,17 @@ const TabSelector = ({
       setAvailableTables(filtered);
     }
   }, [tables, selectedTable]);
+
+  // Set booking for hotel tables
+  useEffect(() => {
+    if (institutionData.integration === "HOTEL" && selectedTable?.id?.toLowerCase().startsWith("hotel")) {
+      const roomNumber = selectedTable.id.replace(/^hotel/i, "");
+      const matchingBooking = hotelBookings?.find((b) => String(b.roomNumber) === roomNumber);
+      setBooking(matchingBooking || null);
+    } else {
+      setBooking(null);
+    }
+  }, [selectedTable, hotelBookings, institutionData.integration]);
 
   // Memoized handler for reason input changes
   const handleReasonChange = useCallback((e) => {
@@ -194,6 +206,24 @@ const TabSelector = ({
           },
         }
       );
+      const isHotelTable = selectedTable.id?.toLowerCase().startsWith("hotel");
+      if (isHotelTable && booking) {
+        await API.put(
+          "frontdesk",
+          `/offline/amend-booking/${booking?.bookingId}?institutionId=${institutionData.institution}`,
+          {
+            body: {
+              bookingData: {
+                booking_id: booking?.bookingId,
+                restaurant_hold: false,
+              },
+              guestDetailsData: {
+                guest_id: booking?.guest_id,
+              },
+            },
+          }
+        );
+      }
       setKOTByTable((prev) => ({
         ...prev,
         [String(selectedTable.id)]: null,
@@ -218,6 +248,7 @@ const TabSelector = ({
     setKOTByTable,
     setLocalBillItems,
     fetchPendingOrders,
+    booking,
   ]);
 
   // Memoized handler for closing cancel modal

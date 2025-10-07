@@ -480,110 +480,121 @@ const OrderContent = ({
     return " ".repeat(padding) + text + " ".repeat(width - textLength - padding);
   };
 
-  const formatBill = (orderItems, customerId) => {
-    const lineWidth = printerpaperSize === "80" ? 68 : 38;
-    const itemNameLength = Math.floor(lineWidth * 0.55);
-    const qtyLength = 4;
-    const rateLength = 6;
-    const totalLength = lineWidth - itemNameLength - qtyLength - rateLength - 3;
-    const headerFont = printerpaperSize === "80" ? "\x1B\x4D\x00" : "\x1B\x4D\x00";
-    const itemFont = printerpaperSize === "80" ? "\x1B\x4D\x00" : "\x1B\x4D\x01";
-    const resetFont = "\x1D\x21\x00";
-    const justifyBetween = (leftText, rightText, width = lineWidth) => {
-      const totalLength = leftText.length + rightText.length;
-      if (totalLength >= width) return `${leftText}${rightText}`.substring(0, width);
-      const spaceBetween = width - totalLength;
-      return `${leftText}${" ".repeat(spaceBetween)}${rightText}`;
-    };
-    const formatDateTime = () => {
-      const now = new Date();
-      return now
-        .toLocaleString("en-IN", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true,
-        })
-        .replace(",", "");
-    };
-    const items = orderItems || localBillItems;
-    const {
-      billSubtotal,
-      taxableSubtotal,
-      cgst,
-      sgst,
-      serviceTax,
-      finalTotal,
-      discountAmount,
-      discountPercentage,
-      discountMethod,
-    } = calculateTotals(items);
-    const totalQty = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
-    let bill = `\x1B\x61\x01${headerFont}`;
-    bill += `${institutionData?.companyName || "The Chai Theka"}\n`;
-    bill += `${institutionData?.Query_Address || "BhawaniPeth"}\n`;
-    bill += `Contact: ${institutionData?.Query_PhoneNumber || "+917008120727"}\n`;
-    bill += `Date: ${formatDateTime()}\n`;
-    bill += `Session: ${getCurrentDaySessionName()}\n`; // Added day session
-    bill += `${institutionData?.gstin ? `GSTIN: ${institutionData.gstin}\n` : ""}`;
-    bill += `Table: ${selectedTable?.id || "N/A"}\n`;
-    if (splitBillMode && customerId) {
-      bill += `Order ID: ${customerId}\n`;
-    }
-    bill += `${resetFont}${itemFont}${centerText(`-`.repeat(lineWidth), lineWidth)}\n`;
-    bill += `Item${" ".repeat(itemNameLength - 4)}Qty Rate Total\n`;
-    bill += `${centerText(`-`.repeat(lineWidth), lineWidth)}\n`;
-    items.forEach((item) => {
-      const itemName = (item.itemName || item.name || "Unknown")
-        .substring(0, itemNameLength)
-        .padEnd(itemNameLength, " ");
-      const qty = (Number(item.quantity) || 0).toString().padStart(qtyLength, " ");
-      const price = Number(item.price) || 0;
-      const rate = (price % 1 === 0 ? price : price.toFixed(2))
-        .toString()
-        .padStart(rateLength, " ");
-      const totalValue = price * (Number(item.quantity) || 0);
-      const total = (totalValue % 1 === 0 ? totalValue : totalValue.toFixed(2))
-        .toString()
-        .padStart(totalLength, " ");
-      const line = `${itemName}${qty}${rate}${total}`;
-      bill += `${line}\n`;
-      if ((item.itemName || item.name || "").length > itemNameLength) {
-        const remaining = (item.itemName || item.name || "").substring(itemNameLength);
-        const chunks = remaining.match(new RegExp(`.{1,${itemNameLength}}`, "g")) || [];
-        chunks.forEach((chunk) => {
-          bill += `${chunk.padEnd(itemNameLength)}${" ".repeat(lineWidth - itemNameLength)}\n`;
-        });
-      }
-    });
-    bill += `${resetFont}${centerText(`-`.repeat(lineWidth), lineWidth)}\n`;
-    bill += `${justifyBetween("Total Qty:", `${totalQty}`)}\n`;
-    bill += `${justifyBetween("Subtotal:", `₹${billSubtotal.toFixed(2)}`)}\n`;
-    if (discountAmount > 0) {
-      if (discountMethod === "percentage") {
-        bill += `${justifyBetween(`Discount (${discountPercentage}%):`, `₹${discountAmount.toFixed(2)}`)}\n`;
-      } else if (discountMethod === "amount") {
-        bill += `${justifyBetween("Discount (Fixed):", `₹${discountAmount.toFixed(2)}`)}\n`;
-      }
-    }
-    if (institutionData.cgst !== 0 && institutionData.sgst !== 0) {
-      bill += `${justifyBetween("CGST:", `₹${cgst.toFixed(2)}`)}\n`;
-      bill += `${justifyBetween("SGST:", `₹${sgst.toFixed(2)}`)}\n`;
-    }
-    if (serviceTax > 0) {
-      bill += `${justifyBetween(`Service Tax (${institutionData?.serviceTax ?? 0}%):`, `₹${serviceTax.toFixed(2)}`)}\n`;
-    }
-    bill += `${justifyBetween("Total (Rounded):", `₹${finalTotal.toFixed(2)}`)}\n`;
-    bill += `${centerText(`-`.repeat(lineWidth), lineWidth)}\n`;
-    bill += `Thanks for visiting!\n`;
-    bill += `\x1B\x34`;
-    bill += `Empower your business with tekkzy.com\n`;
-    bill += `\x1B\x35`;
-    bill += `${resetFont}\n\n\n`;
-    return bill;
+const formatBill = (orderItems, customerId) => {
+  const gstShow = institutionData?.gstshow ?? false;
+  const lineWidth = printerpaperSize === "80" ? 68 : 38;
+  const itemNameLength = Math.floor(lineWidth * 0.55);
+  const qtyLength = 4;
+  const rateLength = 6;
+  const totalLength = lineWidth - itemNameLength - qtyLength - rateLength - 3;
+  const headerFont = printerpaperSize === "80" ? "\x1B\x4D\x00" : "\x1B\x4D\x00";
+  const itemFont = printerpaperSize === "80" ? "\x1B\x4D\x00" : "\x1B\x4D\x01";
+  const resetFont = "\x1D\x21\x00";
+  const justifyBetween = (leftText, rightText, width = lineWidth) => {
+    const totalLength = leftText.length + rightText.length;
+    if (totalLength >= width) return `${leftText}${rightText}`.substring(0, width);
+    const spaceBetween = width - totalLength;
+    return `${leftText}${" ".repeat(spaceBetween)}${rightText}`;
   };
+  const formatDateTime = () => {
+    const now = new Date();
+    return now
+      .toLocaleString("en-IN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      })
+      .replace(",", "");
+  };
+  const items = orderItems || localBillItems;
+  const {
+    billSubtotal,
+    taxableSubtotal,
+    cgst,
+    sgst,
+    serviceTax,
+    finalTotal,
+    discountAmount,
+    discountPercentage,
+    discountMethod,
+  } = calculateTotals(items);
+  let adjustedCgst = cgst;
+  let adjustedSgst = sgst;
+  let adjustedFinalTotal = finalTotal;
+  if (!gstShow) {
+    adjustedCgst = 0;
+    adjustedSgst = 0;
+    adjustedFinalTotal = Math.round(billSubtotal + serviceTax);
+  }
+  const totalQty = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  let bill = `\x1B\x61\x01${headerFont}`;
+  bill += `${institutionData?.companyName || "The Chai Theka"}\n`;
+  bill += `${institutionData?.Query_Address || "BhawaniPeth"}\n`;
+  bill += `Contact: ${institutionData?.Query_PhoneNumber || "+917008120727"}\n`;
+  bill += `Date: ${formatDateTime()}\n`;
+  bill += `Session: ${getCurrentDaySessionName()}\n`; // Added day session
+  bill += `${gstShow && institutionData?.gstin ? `GSTIN: ${institutionData.gstin}\n` : ""}`;
+  bill += `Table: ${selectedTable?.id || "N/A"}\n`;
+  if (splitBillMode && customerId) {
+    bill += `Order ID: ${customerId}\n`;
+  }
+  bill += `${resetFont}${itemFont}${centerText(`-`.repeat(lineWidth), lineWidth)}\n`;
+  bill += `Item${" ".repeat(itemNameLength - 4)}Qty Rate Total\n`;
+  bill += `${centerText(`-`.repeat(lineWidth), lineWidth)}\n`;
+  items.forEach((item) => {
+    const itemName = (item.itemName || item.name || "Unknown")
+      .substring(0, itemNameLength)
+      .padEnd(itemNameLength, " ");
+    const qty = (Number(item.quantity) || 0).toString().padStart(qtyLength, " ");
+    const price = Number(item.price) || 0;
+    const rate = (price % 1 === 0 ? price : price.toFixed(2))
+      .toString()
+      .padStart(rateLength, " ");
+    const totalValue = price * (Number(item.quantity) || 0);
+    const total = (totalValue % 1 === 0 ? totalValue : totalValue.toFixed(2))
+      .toString()
+      .padStart(totalLength, " ");
+    const line = `${itemName}${qty}${rate}${total}`;
+    bill += `${line}\n`;
+    if ((item.itemName || item.name || "").length > itemNameLength) {
+      const remaining = (item.itemName || item.name || "").substring(itemNameLength);
+      const chunks = remaining.match(new RegExp(`.{1,${itemNameLength}}`, "g")) || [];
+      chunks.forEach((chunk) => {
+        bill += `${chunk.padEnd(itemNameLength)}${" ".repeat(lineWidth - itemNameLength)}\n`;
+      });
+    }
+  });
+  bill += `${resetFont}${centerText(`-`.repeat(lineWidth), lineWidth)}\n`;
+  bill += `${justifyBetween("Total Qty:", `${totalQty}`)}\n`;
+  if (gstShow && institutionData.cgst !== 0 && institutionData.sgst !== 0) {
+    bill += `${justifyBetween("Subtotal:", `₹${billSubtotal.toFixed(2)}`)}\n`;
+  }
+  if (discountAmount > 0) {
+    if (discountMethod === "percentage") {
+      bill += `${justifyBetween(`Discount (${discountPercentage}%):`, `-₹${discountAmount.toFixed(2)}`)}\n`;
+    } else if (discountMethod === "amount") {
+      bill += `${justifyBetween("Discount (Fixed):", `-₹${discountAmount.toFixed(2)}`)}\n`;
+    }
+  }
+  if (gstShow) {
+    bill += `${justifyBetween("CGST:", `₹${adjustedCgst.toFixed(2)}`)}\n`;
+    bill += `${justifyBetween("SGST:", `₹${adjustedSgst.toFixed(2)}`)}\n`;
+  }
+  if (serviceTax > 0) {
+    bill += `${justifyBetween(`Service Tax (${institutionData?.serviceTax ?? 0}%):`, `₹${serviceTax.toFixed(2)}`)}\n`;
+  }
+  bill += `${justifyBetween("Total (Rounded):", `₹${adjustedFinalTotal.toFixed(2)}`)}\n`;
+  bill += `${centerText(`-`.repeat(lineWidth), lineWidth)}\n`;
+  bill += `Thanks for visiting!\n`;
+  bill += `\x1B\x34`;
+  bill += `Empower your business with tekkzy.com\n`;
+  bill += `\x1B\x35`;
+  bill += `${resetFont}\n\n\n`;
+  return bill;
+};
 
   const handlePrintBill = async () => {
     if (splitBillMode) {

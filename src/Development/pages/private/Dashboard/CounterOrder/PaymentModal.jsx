@@ -74,6 +74,7 @@ const PaymentModal = ({
 
   const paymentMethods = ["QR", "Cash", "Card", "BTC", "Complementary", "Void"];
   const [isPartialPayment, setIsPartialPayment] = useState(institutionData.paymentMethod === "partial");
+  const smsEnabled = institutionData.sms ?? false;
 
   const isManagementSpecial = (() => {
     const inst = String(institutionData?.institution || "").trim();
@@ -225,6 +226,39 @@ const PaymentModal = ({
       console.error("updateCompanyCredit error:", error);
       toast.error(error?.message || "Failed to update company credit");
       throw error;
+    }
+  };
+
+  // Send SMS function
+  const sendSMS = async (selectedOrderId) => {
+    if (!selectedOrderId) return;
+
+    const domain = institutionData.domain;
+    if (!domain) {
+      console.warn('Domain not available');
+      return;
+    }
+    let billLink = `${domain}/receipt?orderIds=${selectedOrderId}`;
+
+    // Only send message if phone number exists and we have a bill link
+    const customerPhone = customerDetails[selectedTable?.id]?.phone;
+    if (customerPhone && billLink && smsEnabled) {
+      try {
+        await API.post(
+          "main",
+          `/admin/send-message/${institutionData.institution}`,
+          {
+            body: {
+              customerName: customerDetails[selectedTable?.id]?.name || "",
+              customerPhone: `+91${customerPhone}`,
+              billLink: billLink,
+              companyName: institutionData.companyName,
+            },
+          }
+        );
+      } catch (msgError) {
+        console.error("Error sending message:", msgError);
+      }
     }
   };
 
@@ -442,15 +476,9 @@ const PaymentModal = ({
     }
     try {
       await saveBill();
-      let billLink = "";
       let selectedOrderId = "";
       if (extractedOrderIds.length > 0) {
         selectedOrderId = extractedOrderIds[0].split(",")[0];
-        billLink = `https://bhukkadrestrocafe.awsaiapp.com/receipt?orderIds=${selectedOrderId}`;
-      }
-      if (institutionData.institution === "manas25") {
-        selectedOrderId = extractedOrderIds[0].split(",")[0];
-        billLink = `https://manasrestaurant.tekkzy.com/receipt?orderIds=${selectedOrderId}`;
       }
 
       const settleBody = {
@@ -538,6 +566,10 @@ const PaymentModal = ({
           }
         );
       }
+
+      // Send SMS if enabled
+      await sendSMS(selectedOrderId);
+
       await completePayment();
     } catch (error) {
       console.error("Payment Error:", error);
@@ -563,6 +595,10 @@ const PaymentModal = ({
     setLoader(true);
     try {
       await saveBill();
+      let selectedOrderId = "";
+      if (extractedOrderIds.length > 0) {
+        selectedOrderId = extractedOrderIds[0].split(",")[0];
+      }
       await API.post("main", `/admin/settle-bill/${institutionData.institution}/${tableIdStr}`, {
         body: {
           type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
@@ -576,6 +612,10 @@ const PaymentModal = ({
           ...(institutionData?.bar_integration === "Yes" ? { dateId: institutionData.dateId } : {}),
         },
       });
+
+      // Send SMS if enabled
+      await sendSMS(selectedOrderId);
+
       await completePayment();
     } catch (error) {
       console.error("Management Free Payment Error:", error);
@@ -720,6 +760,10 @@ const PaymentModal = ({
           }
         );
       }
+
+      // Send SMS if enabled
+      await sendSMS(selectedOrderId);
+
       await completePayment();
     } catch (error) {
       console.error("Payment Error:", error);

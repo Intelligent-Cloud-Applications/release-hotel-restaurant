@@ -238,12 +238,11 @@ const OrderPanel = ({
   const isTableOccupied = tableIdStr && tableOccupancy[tableIdStr];
   const safeBillItems = tableIdStr ? tableData[tableIdStr] || {} : {};
 
-  // Modified condition to prioritize unpaid orders
+  // Modified condition to prioritize unpaid orders and occupied tables only
   const shouldShowOrderContent =
     selectedTable &&
     (tableUnpaidOrders.length > 0 || // Show if there are unpaid orders
-      isTableOccupied ||
-      (currentTableData.mergedItems && currentTableData.mergedItems.length > 0));
+      isTableOccupied);
 
   return (
     <div className="w-full sm:w-80 md:w-96 bg-white border-t sm:border-t-0 sm:border-l flex flex-col">

@@ -20,7 +20,7 @@ export const WebSocketProvider = ({ children }) => {
   const notificationSound = useRef(null);
   const processedMessagesRef = useRef(new Set());
   const contextDataRef = useRef({});
-  const { userData, auth } = useContext(Context);
+  const { userData, auth, institutionData } = useContext(Context);
   
   // Stage-dependent queue URL
   const QUEUE_URL = process.env.REACT_APP_STAGE === 'prod' 
@@ -325,6 +325,11 @@ export const WebSocketProvider = ({ children }) => {
 
   // Main connection and polling function
   const connectAndPoll = useCallback(async () => {
+    if (!institutionData?.qr) {
+      pollingRef.current = false;
+      setIsConnected(false);
+      return;
+    }
     const { institution, cognitoId, userType } = contextDataRef.current;
     
     // Check user data validity
@@ -384,14 +389,14 @@ export const WebSocketProvider = ({ children }) => {
      
       
       // Main polling loop with minimum delay
-      while (pollingRef.current) {
+      while (pollingRef.current && institutionData?.qr) {
         const loopStartTime = Date.now();
         
         try {
           const currentData = contextDataRef.current;
           
           // Check if user is still admin
-          if (currentData.userType !== 'admin') {
+          if (currentData.userType !== 'admin' || !institutionData?.qr) {
             pollingRef.current = false;
             setIsConnected(false);
             break;
@@ -440,10 +445,15 @@ export const WebSocketProvider = ({ children }) => {
         connectAndPoll();
       }, reconnectDelay);
     }
-  }, [auth, pollMessages, refreshCredentials, debugLog]);
+  }, [auth, institutionData?.qr, pollMessages, refreshCredentials, debugLog]);
 
   // Set up SQS connection and credential refresh
   useEffect(() => {
+    if (!institutionData?.qr) {
+      pollingRef.current = false;
+      setIsConnected(false);
+      return;
+    }
     let isMounted = true;
     let credentialRefreshTimer = null;
     
@@ -513,7 +523,7 @@ export const WebSocketProvider = ({ children }) => {
         clearInterval(cleanupInterval);
       }
     };
-  }, [connectAndPoll, refreshCredentials, debugLog]);
+  }, [institutionData?.qr, connectAndPoll, refreshCredentials, debugLog]);
 
   // Context value to expose to consumers
   const value = {

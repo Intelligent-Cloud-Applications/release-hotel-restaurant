@@ -19,6 +19,7 @@ const Profile = () => {
   const [cgst, setCgst] = useState(0);
   const [sgst, setSgst] = useState(0);
   const [gstin, setGstin] = useState('');
+  const [gstshow, setGstshow] = useState(false);
   const [isTaxDetailsExpanded, setIsTaxDetailsExpanded] = useState(false)
 
   useEffect(() => {
@@ -27,6 +28,7 @@ const Profile = () => {
       setCgst(institutionData.cgst || 0);
       setSgst(institutionData.sgst || 0);
       setGstin(institutionData.gstin || '');
+      setGstshow(institutionData.gstshow || false);
     }
   }, [institutionData]);
 
@@ -70,7 +72,8 @@ const Profile = () => {
         serviceTax === userData.serviceTax &&
         sgst === userData.sgst &&
         cgst === userData.cgst &&
-        gstin === userData.gstin
+        gstin === userData.gstin &&
+        gstshow === userData.gstshow
       ))
     ) {
       return false
@@ -137,7 +140,7 @@ const Profile = () => {
             phoneNumber: phoneNumber,
             country: country,
             imgUrl: imageUrl.split('?')[0],
-            ...(userData.userType === 'admin' && { serviceTax, cgst, sgst, gstin })
+            ...(userData.userType === 'admin' && { serviceTax, cgst, sgst, gstin, gstshow })
           }
         }
       )
@@ -231,7 +234,7 @@ const Profile = () => {
               status: userData.status,
               country: country,
               imgUrl: userData.imgUrl || null,
-              ...(userData.userType === 'admin' && { serviceTax, cgst, sgst, gstin })
+              ...(userData.userType === 'admin' && { serviceTax, cgst, sgst, gstin, gstshow })
             }
           }
         )
@@ -498,6 +501,16 @@ const Profile = () => {
                                 <option value={2.5}>2.5%</option>
                               </select>
                             </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 mt-4">
+                            <input
+                              type="checkbox"
+                              id="gstshow"
+                              checked={gstshow}
+                              onChange={(e) => setGstshow(e.target.checked)}
+                            />
+                            <label htmlFor="gstshow" className="text-sm font-medium cursor-pointer">Enable GST Display</label>
                           </div>
 
                           <div className="mt-4 text-sm text-gray-600">

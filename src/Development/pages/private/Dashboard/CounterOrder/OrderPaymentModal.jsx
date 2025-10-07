@@ -76,6 +76,40 @@ const OrderPaymentModal = ({
   const paymentMethods = ["QR", "Cash", "Card", "BTC", "Complementary", "Void"];
   const [isPartialPayment, setIsPartialPayment] = useState(institutionData.paymentMethod === "partial");
 
+  // Send SMS function
+  const sendSMS = async (selectedOrderId) => {
+    if (!selectedOrderId) return;
+
+    const domain = institutionData.domain;
+    if (!domain) {
+      console.warn('Domain not available');
+      return;
+    }
+    let billLink = `${domain}/receipt?orderIds=${selectedOrderId}`;
+
+ 
+    // Only send message if phone number exists and we have a bill link
+    const customerPhone = customerDetails[selectedTable?.id]?.phone;
+    if (customerPhone && billLink && institutionData.sms === true) {
+      try {
+        await API.post(
+          "main",
+          `/admin/send-message/${institutionData.institution}`,
+          {
+            body: {
+              customerName: customerDetails[selectedTable?.id]?.name || "",
+              customerPhone: `+91${customerPhone}`,
+              billLink: billLink,
+              companyName: institutionData.companyName,
+            },
+          }
+        );
+      } catch (msgError) {
+        console.error("Error sending message:", msgError);
+      }
+    }
+  };
+
   // Detect special management institutions
   const isManagementSpecial = (() => {
     const inst = String(institutionData?.institution || "").trim();
@@ -353,34 +387,6 @@ const OrderPaymentModal = ({
     }
 
     try {
-      // Create bill link
-      let billLink = `https://bhukkadrestrocafe.awsaiapp.com/receipt?orderIds=${selectedOrderId}`;
-
-      if (institutionData.institution === "manas25") {
-        billLink = `https://manasrestaurant.tekkzy.com/receipt?orderIds=${selectedOrderId}`;
-      }
-
-      // Send message if phone number exists and we have a bill link
-      const customerPhone = customerDetails[selectedTable?.id]?.phone;
-      if (
-        customerPhone &&
-        billLink &&
-        (institutionData.institution === "bhuk2323" || institutionData.institution === "manas25")
-      ) {
-        try {
-          await API.post("main", `/admin/send-message/${institutionData.institution}`, {
-            body: {
-              customerName: customerDetails[selectedTable?.id]?.name || "",
-              customerPhone: `+91${customerPhone}`,
-              billLink: billLink,
-              companyName: institutionData.companyName,
-            },
-          });
-        } catch (msgError) {
-          console.error("Error sending message:", msgError);
-        }
-      }
-
       // Prepare settle payload
       const settleBody = {
         paymentStatus: true,
@@ -483,6 +489,7 @@ const OrderPaymentModal = ({
         );
       }
 
+      await sendSMS(selectedOrderId);
       await completePayment();
     } catch (error) {
       console.error("Payment Error:", error);
@@ -529,6 +536,7 @@ const OrderPaymentModal = ({
         }
       );
 
+      await sendSMS(selectedOrderId);
       await completePayment();
     } catch (error) {
       console.error("Management Free Payment Error:", error);
@@ -690,6 +698,8 @@ const OrderPaymentModal = ({
           }
         );
       }
+
+      await sendSMS(selectedOrderId);
       await completePayment();
     } catch (error) {
       console.error("Payment Error:", error);

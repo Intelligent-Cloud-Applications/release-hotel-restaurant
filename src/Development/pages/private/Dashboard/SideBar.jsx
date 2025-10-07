@@ -23,7 +23,7 @@ const routes = [
   // { path: 'pendingorders', label: '', icon: MdOutlinePendingActions, allowedUserTypes: ['admin', 'waiter'] },
   { path: 'addstaff', label: '', icon: IoMdPersonAdd, allowedUserTypes: ['admin'], requiresOwnerRole: true },
   { path: 'item', label: '', icon: MdOutlineProductionQuantityLimits, allowedUserTypes: ['admin', 'chef'] },
-  { path: 'stockmanagement', label: '', icon: MdInventory2, allowedUserTypes: ['admin'] },
+  { path: 'stockmanagement', label: '', icon: MdInventory2, allowedUserTypes: ['admin'], showIfBarOrStock: true },
   { path: 'qrmanage', label: '', icon: MdQrCodeScanner, allowedUserTypes: ['admin'], requiresOwnerRole: true },
   { path: 'room-details', label: '', icon: FaHotel, allowedUserTypes: ['admin', 'waiter'] ,requiresCafeIntegration: true},
   { path: 'day-end', label: '', icon: IoMdTimer, allowedUserTypes: ['admin', 'waiter'], requiresBarIntegration: true },
@@ -43,7 +43,7 @@ const SideBar = () => {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const userType = userData?.userType;
   const role = userData?.role;
-  const { institution, bar_integration } = institutionData;
+  const { institution, bar_integration, stock } = institutionData;
   const location = useLocation();
 
   // Helper function to check if route should be displayed
@@ -59,6 +59,9 @@ const SideBar = () => {
     }
      if (route.requiresCafeIntegration) {
       return hasUserType && bar_integration !== "Yes";
+    }
+    if (route.showIfBarOrStock) {
+      return hasUserType && (bar_integration === "Yes" || stock === true);
     }
     return hasUserType;
   };

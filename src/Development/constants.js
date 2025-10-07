@@ -18,6 +18,7 @@ const institution = result.institution;
 const institutionData = {
     BETA_DOMAIN: data.domain,
     PROD_DOMAIN: data.domain,
+    domain:data.domain,
     paymentMethod:data.paymentMethod,
     InstitutionId: institutionId,
     institution: institution,
