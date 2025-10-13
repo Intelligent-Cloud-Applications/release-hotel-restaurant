@@ -52,6 +52,7 @@ const OrderPanel = ({
   const [mergedItemsState, setMergedItemsState] = useState([]);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isAccepting, setIsAccepting] = useState(false);
+  // New states for split bill
   const [splitBillMode, setSplitBillMode] = useState(false);
   const [orderGroups, setOrderGroups] = useState([]);
   const [selectedOrderId, setSelectedOrderId] = useState(null);
@@ -59,12 +60,10 @@ const OrderPanel = ({
   const handleSettleBill = () => {
     setShowModal(true);
   };
-
   // Filter unpaid orders for the selected table
   const tableUnpaidOrders = selectedTable
     ? unpaidOrders.filter((order) => String(order.tableName) === String(selectedTable.id))
     : [];
-
   useEffect(() => {
     if (selectedTable) {
       const tableIdStr = String(selectedTable.id);
@@ -76,12 +75,12 @@ const OrderPanel = ({
         : currentTableData.mergedItems || [];
 
       setMergedItemsState(currentTableData.mergedItems);
-
     } else {
       setMergedItemsState([]);
     }
   }, [selectedTable, tableData, pendingOrders]);
 
+  // Moved from OrderContent
   useEffect(() => {
     if (selectedTable) {
       const tableIdStr = String(selectedTable.id);
@@ -101,7 +100,7 @@ const OrderPanel = ({
       const tableIdStr = String(selectedTable.id);
       const currentTableData = tableData[tableIdStr] || {};
       if (currentTableData.orders && Object.keys(currentTableData.orders).length > 0) {
-        const groups = Object.values(currentTableData.orders).map((order) => ({
+        const groups = Object.values(currentTableData.orders).map(order => ({
           orderId: order.orderId,
           customerName: order.name || "",
           phoneNumber: order.phoneNumber || "",
@@ -109,7 +108,7 @@ const OrderPanel = ({
           cgst: order.cgst || 0,
           sgst: order.sgst || 0,
           serviceTax: order.serviceTax || 0,
-          totalAmount: order.totalAmount || 0,
+          totalAmount: order.totalAmount || 0
         }));
         setOrderGroups(groups);
         if (groups.length > 0 && !selectedOrderId) {
@@ -119,6 +118,7 @@ const OrderPanel = ({
     }
   }, [splitBillMode, selectedTable, tableData]);
 
+  // Moved from OrderContent
   const toggleSplitBillMode = async () => {
     if (!selectedTable) {
       toast.error("No table selected.");
@@ -135,9 +135,13 @@ const OrderPanel = ({
       const tableIdStr = String(selectedTable.id);
       const newSplitBillMode = !splitBillMode;
 
-      await API.put("main", `/admin/split-bill/${institutionData.institution}/${tableIdStr}`, {
-        body: { splitBill: newSplitBillMode,type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe", },
-      });
+      await API.put(
+        "main",
+        `/admin/split-bill/${institutionData.institution}/${tableIdStr}`,
+        {
+           body: { splitBill: newSplitBillMode,type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe", },
+        }
+      );
       await fetchPendingOrders();
       setSplitBillMode(newSplitBillMode);
 
@@ -150,7 +154,7 @@ const OrderPanel = ({
           cgst: 0,
           sgst: 0,
           serviceTax: 0,
-          totalAmount: 0,
+          totalAmount: 0
         };
         setOrderGroups([initialOrder]);
         setSelectedOrderId(initialOrder.orderId);
@@ -159,12 +163,12 @@ const OrderPanel = ({
         setSelectedOrderId(null);
       }
 
+      setLoader(false);
       toast.success(newSplitBillMode ? "Split bill mode enabled" : "Split bill mode disabled");
     } catch (error) {
+      setLoader(false);
       console.error("Error toggling split bill mode:", error);
       toast.error("Failed to toggle split bill mode. Please try again.");
-    } finally {
-      setLoader(false);
     }
   };
 
@@ -203,7 +207,10 @@ const OrderPanel = ({
         },
       });
 
-      await Promise.all([fetchTableData(selectedTable.id), fetchPendingOrders()]);
+      await Promise.all([
+        fetchTableData(selectedTable.id),
+        fetchPendingOrders(),
+      ]);
 
       const tableIdStr = String(selectedTable.id);
       setMergedItemsState([]);
@@ -238,11 +245,12 @@ const OrderPanel = ({
   const isTableOccupied = tableIdStr && tableOccupancy[tableIdStr];
   const safeBillItems = tableIdStr ? tableData[tableIdStr] || {} : {};
 
-  // Modified condition to prioritize unpaid orders and occupied tables only
   const shouldShowOrderContent =
     selectedTable &&
-    (tableUnpaidOrders.length > 0 || // Show if there are unpaid orders
-      isTableOccupied);
+    ((isTableOccupied ||
+      (currentTableData.mergedItems && currentTableData.mergedItems.length > 0) ||
+      tableUnpaidOrders.length > 0) &&
+    !hasPendingOrders);
 
   return (
     <div className="w-full sm:w-80 md:w-96 bg-white border-t sm:border-t-0 sm:border-l flex flex-col">
@@ -258,7 +266,7 @@ const OrderPanel = ({
             setKOTByTable={setKOTByTable}
             setLocalBillItems={setLocalBillItems}
             localBillItems={localBillItems}
-            splitBillMode={splitBillMode}
+            splitBillMode={splitBillMode} 
             setSplitBillMode={setSplitBillMode}
             toggleSplitBillMode={toggleSplitBillMode}
             hasItems={localBillItems.length > 0}
