@@ -1,13 +1,13 @@
 {
-    "institutionId": "HOTEL001",
+    "institutionId": "DISH5877",
 
     "index":"1",
 
-    "s3BucketName": "templatecm.awsaiapp.com",
+    "s3BucketName": "disharestaurant.tekkzy.com",
 
-    "cloudFrontId": "",
+    "cloudFrontId": "E1PP7JLF28OKNG",
 
-    "domain": "https://templatecm.awsaiapp.com",
+    "domain": "https://disharestaurant.tekkzy.com",
 
     "printerType":"local",
 
