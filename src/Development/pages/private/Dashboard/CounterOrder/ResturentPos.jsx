@@ -44,7 +44,6 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
   const [isLoading, setIsLoading] = useState(false);
 
   const takeawayCount = institutionData?.institution === 'chineseq18' ? 4 : institutionData?.institution === 'Hang7438' ? 10 : 2;
-
 const [tables, setTables] = useState([
   // Restaurant tables
   ...(institutionData?.Table || []).map(t => ({
@@ -68,14 +67,17 @@ const [tables, setTables] = useState([
 
   // Hotel rooms (only if bar integration is enabled)
   ...(institutionData?.integration === "HOTEL" && hotelBookings
-    ? hotelBookings.map(booking => ({
-        id: `Hotel${booking.roomNumber}`,
-        name: `Hotel ${booking.roomNumber}`,
+    ? hotelBookings.map(booking => {
+        const sanitizedRoomNumber = booking.roomNumber.replace(/[^a-zA-Z0-9]/g, '');
+        return {
+          id: `Hotel${sanitizedRoomNumber}`,
+          name: `Hotel ${booking.roomNumber}`,
         status: "available",
         orders: [],
         currentBill: 0,
         orderType: "hotel",
-      }))
+        };
+      })
     : []
   ),
 
@@ -97,7 +99,6 @@ const [tables, setTables] = useState([
     orderType: "management",
   },
 ]);
-
 
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);
   const [selectedTable, setSelectedTable] = useState(null);
@@ -181,6 +182,18 @@ const [tables, setTables] = useState([
     };
   };
 
+  // Helper function to get booking from table name
+  const getBookingFromTableName = (tableIdStr) => {
+    const tableObj = tables.find(t => String(t.id) === tableIdStr);
+    const tableName = tableObj?.name || "";
+    let booking = null;
+    if (tableName.toLowerCase().startsWith("hotel ")) {
+      const roomNumber = tableName.replace(/^hotel\s+/i, "");
+      booking = hotelBookings?.find((b) => String(b.roomNumber) === String(roomNumber));
+    }
+    return booking;
+  };
+
   // Split Bill Modal Functions
   const handleCreateNewOrder = async () => {
     if (!pendingKOTData) return;
@@ -193,12 +206,13 @@ const [tables, setTables] = useState([
     const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
     // Resolve bookingId for hotel tables
     let bookingid = null;
+    let guestid = null;
    if (isHotelTable) {
-      const roomNumber = tableIdStr.replace(/^hotel/i, "");
-      const booking = hotelBookings?.find((b) => String(b.roomNumber) === String(roomNumber));
+      const booking = getBookingFromTableName(tableIdStr);
       bookingid = booking?.bookingId;
+      guestid = booking?.guest_id;
       if (!bookingid) {
-        console.warn(`No booking found for room number ${roomNumber}. Skipping amend-booking API call.`);
+        console.warn(`No booking found for table ${tableIdStr}. Skipping amend-booking API call.`);
       }
     }
     const getDaySessionFromStorage = () => {
@@ -242,7 +256,7 @@ const [tables, setTables] = useState([
         },
       });
 if (isHotelTable) {
-       await API.put("frontdesk" `/offline/amend-booking/${bookingid}?institutionId=${institutionData.institution}`, {
+       await API.put("frontdesk", `/offline/amend-booking/${bookingid}?institutionId=${institutionData.institution}`, {
         body: {
           restaurant_hold: true,
         },
@@ -642,8 +656,7 @@ const settleUnpaidOrder = async (order, paymentMethod, settleBody = null) => {
     } else {
       const isHotelOrder = tableIdStr.toLowerCase().startsWith("hotel");
       if (isHotelOrder) {
-        const roomNumber = tableIdStr.replace(/^hotel/i, "");
-        booking = hotelBookings?.find((b) => String(b.roomNumber) === String(roomNumber)) || null;
+        booking = getBookingFromTableName(tableIdStr);
       }
     }
 
@@ -1076,12 +1089,11 @@ const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
     let bookingid = null;
     let guestid=null;
    if (isHotelTable) {
-      const roomNumber = tableIdStr.replace(/^hotel/i, "");
-      const booking = hotelBookings?.find((b) => String(b.roomNumber) === String(roomNumber));
+      const booking = getBookingFromTableName(tableIdStr);
       bookingid = booking?.bookingId;
       guestid=booking?.guest_id;
       if (!bookingid) {
-        console.warn(`No booking found for room number ${roomNumber}. Skipping amend-booking API call.`);
+        console.warn(`No booking found for table ${tableIdStr}. Skipping amend-booking API call.`);
       }
     }
     const getDaySessionFromStorage = () => {
