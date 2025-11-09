@@ -389,8 +389,8 @@ const PaymentModal = ({
 
   // Hotel auto-select
   useEffect(() => {
-    if (institutionData.integration === "HOTEL" && tableIdStrname.toLowerCase().startsWith("hotel")) {
-      const roomNumber = tableIdStrname.replace(/^hotel/i, "");
+    if (institutionData.integration === "HOTEL" && tableIdStrname.toLowerCase().startsWith("hotel ")) {
+      const roomNumber = tableIdStrname.replace(/^hotel\s+/i, "");
       const matchingBooking = hotelBookings.find((b) => String(b.roomNumber) === roomNumber);
       setBooking(matchingBooking || null);
     }

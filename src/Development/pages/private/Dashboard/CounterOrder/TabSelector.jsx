@@ -53,8 +53,8 @@ const TabSelector = ({
 
   // Set booking for hotel tables
   useEffect(() => {
-    if (institutionData.integration === "HOTEL" && selectedTable?.name?.toLowerCase().startsWith("hotel")) {
-      const roomNumber = selectedTable.name.replace(/^hotel/i, "");
+    if (institutionData.integration === "HOTEL" && selectedTable?.name?.toLowerCase().startsWith("hotel ")) {
+      const roomNumber = selectedTable.name.replace(/^hotel\s+/i, "");
       const matchingBooking = hotelBookings?.find((b) => String(b.roomNumber) === roomNumber);
       setBooking(matchingBooking || null);
     } else {
