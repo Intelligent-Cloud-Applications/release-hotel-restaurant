@@ -25,6 +25,7 @@ const PaymentModal = ({
 }) => {
   const { setLoader, hotelBookings, addHotelService } = useContext(Context);
   const tableIdStr = String(selectedTable?.id || "");
+  const tableIdStrname = String(selectedTable.name);
   const [totalBillAmount, setTotalBillAmount] = useState(0);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
   const [booking, setBooking] = useState(null);
@@ -388,12 +389,12 @@ const PaymentModal = ({
 
   // Hotel auto-select
   useEffect(() => {
-    if (institutionData.integration === "HOTEL" && tableIdStr.toLowerCase().startsWith("hotel")) {
-      const roomNumber = tableIdStr.replace(/^hotel/i, "");
+    if (institutionData.integration === "HOTEL" && tableIdStrname.toLowerCase().startsWith("hotel")) {
+      const roomNumber = tableIdStrname.replace(/^hotel/i, "");
       const matchingBooking = hotelBookings.find((b) => String(b.roomNumber) === roomNumber);
       setBooking(matchingBooking || null);
     }
-  }, [tableIdStr, hotelBookings, institutionData.integration]);
+  }, [tableIdStrname, hotelBookings, institutionData.integration]);
 
   // Save bill
   const saveBill = async () => {

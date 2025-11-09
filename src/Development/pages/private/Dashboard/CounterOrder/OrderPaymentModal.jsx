@@ -19,6 +19,7 @@ const OrderPaymentModal = ({
   // Common state
   const { setLoader, hotelBookings, addHotelService } = useContext(Context);
   const tableIdStr = String(selectedTable.id);
+   const tableIdStrname = String(selectedTable.name);
   const [totalBillAmount, setTotalBillAmount] = useState(0);
 
   // State for single payment method
@@ -336,12 +337,12 @@ const OrderPaymentModal = ({
 
   // Hotel auto-select
   useEffect(() => {
-    if (institutionData.integration === "HOTEL" && tableIdStr.toLowerCase().startsWith("hotel")) {
-      const roomNumber = tableIdStr.replace(/^hotel/i, "");
+    if (institutionData.integration === "HOTEL" && tableIdStrname.toLowerCase().startsWith("hotel")) {
+      const roomNumber = tableIdStrname.replace(/^hotel/i, "");
       const matchingBooking = hotelBookings.find((b) => String(b.roomNumber) === roomNumber);
       setBooking(matchingBooking || null);
     }
-  }, [tableIdStr, hotelBookings, institutionData.integration]);
+  }, [tableIdStrname, hotelBookings, institutionData.integration]);
 
   // Validate amount input for partial payment
   const validateAmountInput = (value, setAmount) => {
