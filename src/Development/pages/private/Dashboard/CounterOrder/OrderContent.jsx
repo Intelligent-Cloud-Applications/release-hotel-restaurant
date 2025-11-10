@@ -12,7 +12,6 @@ import OrderPaymentModal from "./OrderPaymentModal";
 import StaffSelectionModal from "./StaffSelectionModal";
 import DiscountSection from "./DiscountSection";
 import UnpaidOrderPaymentModal from "./UnpaidOrderPaymentModal";
-
 const OrderContent = ({
   selectedTable,
   setSelectedTable,
@@ -64,7 +63,7 @@ const OrderContent = ({
   const { printerType, printerpaperSize } = data;
   const { staffData, fetchStaffData, setLoader, hotelBookings } = useContext(Context);
   const screenWidth = window.innerWidth;
-  
+ 
   // Existing state variables
   const [orderRoomSelection, setOrderRoomSelection] = useState({});
   const [showOrderPaymentModal, setShowOrderPaymentModal] = useState(false);
@@ -78,13 +77,10 @@ const OrderContent = ({
   const [targetOrderId, setTargetOrderId] = useState(null);
   const [isUnpaidOrdersOpen, setIsUnpaidOrdersOpen] = useState(false);
   const [selectedUnpaidOrder, setSelectedUnpaidOrder] = useState(null);
-
   // New state for day session
   const [selectedDaySession, setSelectedDaySession] = useState("breakfast");
-
   // State for custom name input when "custom" is selected
   const [isCustomName, setIsCustomName] = useState(false);
-
   // Day session options
   const daySessionOptions = [
     { value: "breakfast", label: "Breakfast" },
@@ -93,7 +89,6 @@ const OrderContent = ({
     { value: "snacks", label: "Snacks" },
     { value: "late-night", label: "Late Night" },
   ];
-
   // Management customer options
   const managementCustomerOptions = [
     { value: "Md Sir", label: "Md Sir" },
@@ -122,10 +117,8 @@ const OrderContent = ({
     { value: "Police Staff", label: "Police Staff" },
     { value: "custom", label: "Custom" },
   ];
-
   // Use refs to prevent input focus loss
   const discountValueInputRef = useRef(null);
-
   // Load day session from localStorage on component mount
   useEffect(() => {
     const loadDaySession = () => {
@@ -142,12 +135,10 @@ const OrderContent = ({
         setSelectedDaySession("breakfast");
       }
     };
-
     if (institutionData?.institution) {
       loadDaySession();
     }
   }, [institutionData?.institution, selectedTable?.id]);
-
   // Save day session to localStorage when it changes
   useEffect(() => {
     const saveDaySession = () => {
@@ -155,15 +146,15 @@ const OrderContent = ({
         if (institutionData?.institution) {
           const tableKey = `daySession_${institutionData.institution}_${selectedTable?.id || 'global'}`;
           const globalKey = `daySession_${institutionData.institution}_global`;
-          
+         
           // Remove existing day session for this table/institution
           localStorage.removeItem(tableKey);
           localStorage.removeItem(globalKey);
-          
+         
           // Save new day session
           localStorage.setItem(tableKey, selectedDaySession);
           localStorage.setItem(globalKey, selectedDaySession);
-          
+         
           console.log(`Day session saved: ${selectedDaySession} for institution ${institutionData.institution}, table ${selectedTable?.id || 'global'}`);
         }
       } catch (error) {
@@ -171,12 +162,10 @@ const OrderContent = ({
         toast.error("Failed to save day session settings");
       }
     };
-
     if (institutionData?.institution && selectedDaySession) {
       saveDaySession();
     }
   }, [selectedDaySession, institutionData?.institution, selectedTable?.id]);
-
   // Handle day session change
   const handleDaySessionChange = (newSession) => {
     if (newSession !== selectedDaySession) {
@@ -188,28 +177,26 @@ const OrderContent = ({
         const confirmChange = window.confirm(
           `Changing day session from ${currentSessionName} to ${newSessionName} will affect menu availability. Continue?`
         );
-        
+       
         if (!confirmChange) {
           return;
         }
       }
-      
+     
       setSelectedDaySession(newSession);
       toast.success(`Day session changed to ${daySessionOptions.find(s => s.value === newSession)?.label || newSession}`);
-      
+     
       // Optional: Refresh table data to reflect new day session menu items
       if (selectedTable?.id && fetchTableData) {
         fetchTableData(String(selectedTable.id));
       }
     }
   };
-
   // Get current day session display name
   const getCurrentDaySessionName = () => {
     const current = daySessionOptions.find(option => option.value === selectedDaySession);
     return current ? current.label : selectedDaySession.toUpperCase();
   };
-
   // Helper function to get current discount info
   const getCurrentDiscountInfo = () => {
     if (!selectedTable) return { method: "none", value: 0, amount: 0 };
@@ -225,7 +212,6 @@ const OrderContent = ({
     }
     return tableDiscountData;
   };
-
   // Helper function to set discount info
   const setCurrentDiscountInfo = (discountInfo) => {
     if (!selectedTable) return;
@@ -243,12 +229,10 @@ const OrderContent = ({
       return newData;
     });
   };
-
   const totalKotQuantity = (kotcurrent?.items || kotcurrent?.billItems || []).reduce(
     (sum, item) => sum + item.quantity,
     0
   );
-
   useEffect(() => {
     const newItems = billItems || [];
     setLocalBillItems((prev) => {
@@ -264,19 +248,16 @@ const OrderContent = ({
       return prev;
     });
   }, [billItems, setLocalBillItems]);
-
   useEffect(() => {
     if (bluetoothConnected) {
       setPrintMode("bluetooth");
     }
   }, [bluetoothConnected]);
-
   useEffect(() => {
     if (!staffData || staffData.length === 0) {
       fetchStaffData();
     }
   }, [fetchStaffData]);
-
   // Update isCustomName based on customerDetails
   useEffect(() => {
     if (selectedTable?.id) {
@@ -286,11 +267,9 @@ const OrderContent = ({
       setIsCustomName(isManagementTable && currentName && !isPredefined);
     }
   }, [customerDetails, selectedTable?.id]);
-
   const tableUnpaidOrders = selectedTable
     ? unpaidOrders.filter((order) => String(order.tableName) === String(selectedTable.id))
     : [];
-
   const getKOTNumber = (tableId) => {
     const today = new Date().toISOString().split("T")[0];
     let kotData = JSON.parse(localStorage.getItem("kotOrders")) || {
@@ -310,7 +289,6 @@ const OrderContent = ({
     localStorage.setItem("kotOrders", JSON.stringify(kotData));
     return newKOT;
   };
-
   const handleUnpaidPaymentMethodChange = (order, value) => {
     const method = (value || "").toString().trim().toUpperCase();
     if (method === "ROOM") {
@@ -324,18 +302,15 @@ const OrderContent = ({
       handleSettleUnpaidOrder(order, method);
     }
   };
-
   const handleProceedRoomSettlement = (order) => {
     const selectedBookingId = orderRoomSelection[order.orderId];
     const booking = (hotelBookings || []).find((b) => b.bookingId === selectedBookingId) || null;
     const roomNumber = booking ? String(booking.roomNumber) : formatOrderTableLabel(order);
     handleSettleUnpaidOrder(order, "ROOM", { bookingId: selectedBookingId, roomNumber });
   };
-
   const formatOrderTableLabel = (order) => {
     return order.tableName || "N/A";
   };
-
   const calculateTotals = (items) => {
     const billSubtotal = items.reduce((sum, item) => {
       const price = Number(item.price) || 0;
@@ -381,7 +356,6 @@ const OrderContent = ({
       discountMethod: discountInfo.method,
     };
   };
-
   const handleDiscountMethodChange = (method) => {
     const currentInfo = getCurrentDiscountInfo();
     setCurrentDiscountInfo({
@@ -390,7 +364,6 @@ const OrderContent = ({
       amount: method === "none" ? 0 : currentInfo.amount,
     });
   };
-
   const handleDiscountValueChange = (value) => {
     const currentInfo = getCurrentDiscountInfo();
     const newValue = Number(value) || 0;
@@ -410,7 +383,43 @@ const OrderContent = ({
       amount: discountAmount,
     });
   };
-
+  // New function to update order items via API (without loader for incremental updates)
+  const updateOrderItems = async (items, orderId = null) => {
+    if (!selectedTable) return;
+    const tableIdStr = String(selectedTable.id);
+    try {
+      const endpoint = orderId
+        ? `/admin/orderId-save/${institutionData.institution}/${tableIdStr}/${orderId}`
+        : `/admin/orders-items/${institutionData.institution}/${tableIdStr}`;
+      const discountInfo = getCurrentDiscountInfo();
+      const { cgst, sgst, serviceTax, discountAmount, discountPercentage, discountMethod } = calculateTotals(items);
+      await API.put("main", endpoint, {
+        body: {
+          items,
+          serviceTaxPercentage: institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0,
+          cgstPercentage: institutionData?.cgst ?? 2.5,
+          sgstPercentage: institutionData?.sgst ?? 2.5,
+          discountMethod: discountInfo.method,
+          discountValue: discountInfo.value,
+          discountPercentage: discountInfo.method === "percentage" ? discountInfo.value : 0,
+          discountAmount,
+          cgst,
+          sgst,
+          serviceTax,
+          type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
+        },
+      });
+      if (!orderId) {
+        const billEndpoint = `/admin/orders-bill/${institutionData.institution}/${tableIdStr}`;
+        await API.post("main", billEndpoint, {
+          body: { items, type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe" },
+        });
+      }
+    } catch (error) {
+      console.error("Error updating order items:", error);
+      toast.error("Failed to update items. Please try again.");
+    }
+  };
   const formatKOT = () => {
     const formatDateTime = () => {
       const now = new Date();
@@ -472,14 +481,12 @@ const OrderContent = ({
     kot += `${resetFont}\n\n\n`;
     return kot;
   };
-
   const centerText = (text, width) => {
     const textLength = text.length;
     if (textLength >= width) return text.substring(0, width);
     const padding = Math.floor((width - textLength) / 2);
     return " ".repeat(padding) + text + " ".repeat(width - textLength - padding);
   };
-
 const formatBill = (orderItems, customerId) => {
   const gstShow = institutionData?.gstshow ?? false;
   const lineWidth = printerpaperSize === "80" ? 68 : 38;
@@ -595,7 +602,6 @@ const formatBill = (orderItems, customerId) => {
   bill += `${resetFont}\n\n\n`;
   return bill;
 };
-
   const handlePrintBill = async () => {
     if (splitBillMode) {
       if (!selectedOrderId) {
@@ -653,7 +659,6 @@ const formatBill = (orderItems, customerId) => {
     }
     setShowStaffSelectionModal(true);
   };
-
   const handleAssignStaffToBill = async () => {
     if (!selectedStaff) {
       toast.error("Please select a staff member.");
@@ -684,7 +689,6 @@ const formatBill = (orderItems, customerId) => {
       setLoader(false);
     }
   };
-
   const handlePrintKOT = async () => {
     if (!kotcurrent?.items?.length) {
       console.log("No items in KOT.");
@@ -706,7 +710,6 @@ const formatBill = (orderItems, customerId) => {
       printKOT(selectedTable, kotData);
     }
   };
-
   const handleReprintKOT = async () => {
     if (!selectedTable) {
       console.error("Selected table is undefined.");
@@ -715,7 +718,6 @@ const formatBill = (orderItems, customerId) => {
     }
     setShowReprintKOT(true);
   };
-
   const saveBill = async (selectedTable, orderItems, orderId) => {
     if (!selectedTable) {
       console.error("Selected table is undefined in saveBill.");
@@ -766,7 +768,6 @@ const formatBill = (orderItems, customerId) => {
       toast.error("Failed to save bill. Please try again.");
     }
   };
-
   const handleSettleBill = async () => {
     if (splitBillMode) {
       if (!selectedOrderId) {
@@ -780,7 +781,6 @@ const formatBill = (orderItems, customerId) => {
       settleBill();
     }
   };
-
   const handleSettleUnpaidOrder = (order, paymentMethod, bookingInfo = null) => {
     const normalizedMethod = (paymentMethod || "").toString().trim().toUpperCase();
     const orderWithPayment = {
@@ -797,7 +797,6 @@ const formatBill = (orderItems, customerId) => {
       setShowUnpaidOrderPaymentModal(true);
     }
   };
-
   const confirmSettleOrder = async (order, paymentMethod, settleBody) => {
     if (!order || !settleUnpaidOrder) {
       toast.error("Unable to settle order. Please try again.");
@@ -814,7 +813,6 @@ const formatBill = (orderItems, customerId) => {
       toast.error("Failed to settle order. Please try again.");
     }
   };
-
   const moveItemBetweenOrders = async (item, fromOrderId, toOrderId, quantity) => {
     if (!fromOrderId || !toOrderId) {
       toast.error("Please select source and target orders.");
@@ -899,14 +897,13 @@ const formatBill = (orderItems, customerId) => {
       setLoader(false);
     }
   };
-
   const handleUpdateItemQuantity = (tableId, itemId, newQuantity) => {
     if (newQuantity < 1) return handleRemoveItemFromKOT(tableId, itemId);
     if (activeTab === "KOT") {
       updateItemQuantity(tableId, itemId, newQuantity);
     } else if (splitBillMode) {
-      setOrderGroups((prevGroups) =>
-        prevGroups.map((group) => {
+      setOrderGroups((prevGroups) => {
+        const newGroups = prevGroups.map((group) => {
           if (group.orderId === selectedOrderId) {
             const updatedItems = group.items
               .map((item) =>
@@ -916,37 +913,43 @@ const formatBill = (orderItems, customerId) => {
             return { ...group, items: updatedItems };
           }
           return group;
-        })
-      );
+        }).filter((group) => group.items.length > 0); // Remove empty groups
+        const updatedItemsForApi = newGroups.find((g) => g.orderId === selectedOrderId)?.items || [];
+        updateOrderItems(updatedItemsForApi, selectedOrderId);
+        return newGroups;
+      });
     } else {
-      setLocalBillItems((prev) =>
-        prev
-          .map((item) =>
-            item.itemId === itemId ? { ...item, quantity: newQuantity } : item
-          )
-          .filter((item) => item.quantity > 0)
-      );
+      const updatedItems = localBillItems
+        .map((item) =>
+          item.itemId === itemId ? { ...item, quantity: newQuantity } : item
+        )
+        .filter((item) => item.quantity > 0);
+      setLocalBillItems(updatedItems);
+      updateOrderItems(updatedItems);
     }
   };
-
   const handleRemoveItemFromKOT = (tableId, itemId) => {
     if (activeTab === "KOT") {
       removeItemFromKOT(tableId, itemId);
     } else if (splitBillMode) {
-      setOrderGroups((prevGroups) =>
-        prevGroups.map((group) => {
+      setOrderGroups((prevGroups) => {
+        const newGroups = prevGroups.map((group) => {
           if (group.orderId === selectedOrderId) {
             const updatedItems = group.items.filter((item) => item.itemId !== itemId);
             return { ...group, items: updatedItems };
           }
           return group;
-        })
-      );
+        }).filter((group) => group.items.length > 0); // Remove empty groups
+        const updatedItemsForApi = newGroups.find((g) => g.orderId === selectedOrderId)?.items || [];
+        updateOrderItems(updatedItemsForApi, selectedOrderId);
+        return newGroups;
+      });
     } else {
-      setLocalBillItems((prev) => prev.filter((item) => item.itemId !== itemId));
+      const updatedItems = localBillItems.filter((item) => item.itemId !== itemId);
+      setLocalBillItems(updatedItems);
+      updateOrderItems(updatedItems);
     }
   };
-
   const renderOrderTabs = () => {
     if (!splitBillMode || !orderGroups.length) return null;
     return (
@@ -967,7 +970,6 @@ const formatBill = (orderItems, customerId) => {
       </div>
     );
   };
-
   const UnpaidOrdersSection = () => {
     if (tableUnpaidOrders.length === 0) return null;
     return (
@@ -1027,7 +1029,7 @@ const formatBill = (orderItems, customerId) => {
                   </div>
                   <div className="flex flex-col space-y-1">
                     <button
-                      onClick={() => handleUnpaidPaymentMethodChange(order, "cash")} 
+                      onClick={() => handleUnpaidPaymentMethodChange(order, "cash")}
                       className="text-xs border rounded px-3 py-1.5 bg-red-100 text-red-700 font-medium hover:bg-red-200 transition-colors"
                     >
                       Settle
@@ -1041,10 +1043,8 @@ const formatBill = (orderItems, customerId) => {
       </div>
     );
   };
-
   const renderContent = () => {
     const isManagementTable = selectedTable?.id?.toString().toLowerCase().startsWith("management");
-
     if (activeTab === "KOT") {
       const hasKOTItems = (kotcurrent?.items || []).length > 0;
       return (
@@ -1132,7 +1132,6 @@ const formatBill = (orderItems, customerId) => {
                   </>
                 )}
               </div>
-
               {/* Phone Number */}
               <div className="relative w-1/3">
                 <Phone className="w-4 h-4 absolute left-2 top-2 text-gray-400" />
@@ -1152,7 +1151,6 @@ const formatBill = (orderItems, customerId) => {
                   }
                 />
               </div>
-
               {/* Day Session Dropdown (Compact) */}
               <div className="relative w-1/3">
                 <select
@@ -1172,7 +1170,6 @@ const formatBill = (orderItems, customerId) => {
               </div>
             </div>
           </div>
-
           <div className="p-4 border-t space-y-2">
             <div className="flex justify-between font-bold text-sm sm:text-base mt-3 mb-3">
               <span>Total Items:</span>
@@ -1630,7 +1627,6 @@ const formatBill = (orderItems, customerId) => {
       }
     }
   };
-
   const ItemControls = ({ item, orderId }) => (
     <div key={item.itemId} className="flex items-center justify-between p-3 border-b group">
       <div className="flex-1">
@@ -1686,7 +1682,6 @@ const formatBill = (orderItems, customerId) => {
       </div>
     </div>
   );
-
   const PrintModal = () => (
     <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white p-6 rounded-lg shadow-lg relative">
@@ -1733,7 +1728,6 @@ const formatBill = (orderItems, customerId) => {
       </div>
     </div>
   );
-
   const MoveItemModal = () => {
     if (!movingItem) return null;
     const otherOrders = orderGroups.filter((group) => group.orderId !== selectedOrderId);
@@ -1839,11 +1833,10 @@ const formatBill = (orderItems, customerId) => {
       </div>
     );
   };
-
   return (
     <>
       <div className="flex-1 flex flex-col">{renderContent()}</div>
-      
+     
       {showOrderPaymentModal && (
         <OrderPaymentModal
           selectedTable={selectedTable}
@@ -1856,10 +1849,10 @@ const formatBill = (orderItems, customerId) => {
           customerDetails={customerDetails}
           discountData={discountData}
           setDiscountData={setDiscountData}
-         
+        
         />
       )}
-      
+     
       {showUnpaidOrderPaymentModal && selectedUnpaidOrder && (
         <UnpaidOrderPaymentModal
           selectedTable={selectedTable}
@@ -1875,10 +1868,10 @@ const formatBill = (orderItems, customerId) => {
           customerDetails={customerDetails}
           discountData={discountData}
           setDiscountData={setDiscountData}
-         
+        
         />
       )}
-      
+     
       {showReprintKOT && (
         <ReprintKOT
           selectedTable={selectedTable}
@@ -1899,9 +1892,7 @@ const formatBill = (orderItems, customerId) => {
           fetchPendingOrders={fetchPendingOrders}
           setLoader={setLoader}
         />
-
     </>
   );
 };
-
 export default OrderContent;

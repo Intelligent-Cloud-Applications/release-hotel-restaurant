@@ -10,9 +10,9 @@ const PrintBill = ({ table, items, institutionData, screenWidth, orderId, discou
   // Calculate totals based on provided items
   const billSubtotal = items.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
 
-  // Tax rates from institutionData (fallbacks)
-  const cgstRate = gstShow ? Number(institutionData?.cgst ?? 2.5) : 0;
-  const sgstRate = gstShow ? Number(institutionData?.sgst ?? 2.5) : 0;
+  // Tax rates from institutionData (fallbacks) - always apply rates, ignore gstShow for calculation
+  const cgstRate = Number(institutionData?.cgst ?? 2.5);
+  const sgstRate = Number(institutionData?.sgst ?? 2.5);
   const serviceTaxRate = Number(institutionData?.serviceTax ?? 0);
 
   // Taxable subtotal: exclude 'bar' type items
@@ -80,25 +80,21 @@ const PrintBill = ({ table, items, institutionData, screenWidth, orderId, discou
     // Function to proceed with printing
     const proceedWithPrint = () => {
       if (printerpaperSize === "80") {
-        const showSubtotal = cgstRate > 0 || sgstRate > 0;
-        const subtotalRow = showSubtotal
-          ? `<div class="summary-row">
-              <span>Subtotal:</span>
-              <span>₹${billSubtotal.toFixed(2)}</span>
-            </div>`
-          : '';
-        const cgstRow = gstShow
-          ? `<div class="summary-row">
-              <span>CGST (${cgstRate}%):</span>
-              <span>₹${calculatedCgst.toFixed(2)}</span>
-            </div>`
-          : '';
-        const sgstRow = gstShow
-          ? `<div class="summary-row">
-              <span>SGST (${sgstRate}%):</span>
-              <span>₹${calculatedSgst.toFixed(2)}</span>
-            </div>`
-          : '';
+        // Always show subtotal
+        const subtotalRow = `<div class="summary-row">
+            <span>Subtotal:</span>
+            <span>₹${billSubtotal.toFixed(2)}</span>
+          </div>`;
+        // Always show CGST row
+        const cgstRow = `<div class="summary-row">
+            <span>CGST (${cgstRate}%):</span>
+            <span>₹${calculatedCgst.toFixed(2)}</span>
+          </div>`;
+        // Always show SGST row
+        const sgstRow = `<div class="summary-row">
+            <span>SGST (${sgstRate}%):</span>
+            <span>₹${calculatedSgst.toFixed(2)}</span>
+          </div>`;
         const itemsHTML = items
           .map(
             (item) => `
@@ -350,25 +346,21 @@ const PrintBill = ({ table, items, institutionData, screenWidth, orderId, discou
         `;
         document.head.appendChild(style);
       } else if (printerpaperSize === "100") {
-        const showSubtotal = cgstRate > 0 || sgstRate > 0;
-        const subtotalRow = showSubtotal
-          ? `<div class="summary-row">
-              <span>Subtotal:</span>
-              <span>₹${billSubtotal.toFixed(2)}</span>
-            </div>`
-          : '';
-        const cgstRow = gstShow
-          ? `<div class="summary-row">
-              <span>CGST (${cgstRate}%):</span>
-              <span>₹${calculatedCgst.toFixed(2)}</span>
-            </div>`
-          : '';
-        const sgstRow = gstShow
-          ? `<div class="summary-row">
-              <span>SGST (${sgstRate}%):</span>
-              <span>₹${calculatedSgst.toFixed(2)}</span>
-            </div>`
-          : '';
+        // Always show subtotal
+        const subtotalRow = `<div class="summary-row">
+            <span>Subtotal:</span>
+            <span>₹${billSubtotal.toFixed(2)}</span>
+          </div>`;
+        // Always show CGST row
+        const cgstRow = `<div class="summary-row">
+            <span>CGST (${cgstRate}%):</span>
+            <span>₹${calculatedCgst.toFixed(2)}</span>
+          </div>`;
+        // Always show SGST row
+        const sgstRow = `<div class="summary-row">
+            <span>SGST (${sgstRate}%):</span>
+            <span>₹${calculatedSgst.toFixed(2)}</span>
+          </div>`;
         const itemsHTML = items
           .map(
             (item) => `
@@ -620,16 +612,12 @@ const PrintBill = ({ table, items, institutionData, screenWidth, orderId, discou
         `;
         document.head.appendChild(style);
       } else {
-        const showSubtotal = cgstRate > 0 || sgstRate > 0;
-        const subtotalRow = showSubtotal
-          ? `<tr><td><b>Subtotal:</b></td><td>₹${billSubtotal.toFixed(2)}</td></tr>`
-          : '';
-        const cgstRow = gstShow
-          ? `<tr><td>CGST (${cgstRate}%):</td><td>₹${calculatedCgst.toFixed(2)}</td></tr>`
-          : '';
-        const sgstRow = gstShow
-          ? `<tr><td>SGST (${sgstRate}%):</td><td>₹${calculatedSgst.toFixed(2)}</td></tr>`
-          : '';
+        // Always show subtotal
+        const subtotalRow = `<tr><td><b>Subtotal:</b></td><td>₹${billSubtotal.toFixed(2)}</td></tr>`;
+        // Always show CGST row
+        const cgstRow = `<tr><td>CGST (${cgstRate}%):</td><td>₹${calculatedCgst.toFixed(2)}</td></tr>`;
+        // Always show SGST row
+        const sgstRow = `<tr><td>SGST (${sgstRate}%):</td><td>₹${calculatedSgst.toFixed(2)}</td></tr>`;
         const itemsHTML = items
           .map(
             (item) => `
