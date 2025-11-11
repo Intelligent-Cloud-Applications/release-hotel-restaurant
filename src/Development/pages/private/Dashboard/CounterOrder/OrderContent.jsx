@@ -311,51 +311,54 @@ const OrderContent = ({
   const formatOrderTableLabel = (order) => {
     return order.tableName || "N/A";
   };
-  const calculateTotals = (items) => {
-    const billSubtotal = items.reduce((sum, item) => {
-      const price = Number(item.price) || 0;
-      const quantity = Number(item.quantity) || 0;
-      return sum + price * quantity;
-    }, 0);
-    const taxableSubtotal = items.reduce((sum, item) => {
-      const price = Number(item.price) || 0;
-      const quantity = Number(item.quantity) || 0;
-      return sum + (item.type !== "bar" ? price * quantity : 0);
-    }, 0);
-    const cgstRate = institutionData?.cgst ?? 2.5;
-    const sgstRate = institutionData?.sgst ?? 2.5;
-    const serviceTaxRate = institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0;
-    const discountInfo = getCurrentDiscountInfo();
-    let discountAmount = 0;
-    let discountPercentage = 0;
-    if (discountInfo.method === "percentage" && discountInfo.value > 0) {
-      discountPercentage = Math.min(Number(discountInfo.value), 100);
-      discountAmount = (billSubtotal * discountPercentage) / 100;
-    } else if (discountInfo.method === "amount" && discountInfo.value > 0) {
-      discountAmount = Math.min(Number(discountInfo.value), billSubtotal);
-    }
-    const discountedSubtotal = billSubtotal - discountAmount;
-    const discountedTaxableSubtotal = Math.max(0, taxableSubtotal - discountAmount);
-    const cgst = (discountedTaxableSubtotal * cgstRate) / 100;
-    const sgst = (discountedTaxableSubtotal * sgstRate) / 100;
-    const serviceTax = (discountedSubtotal * serviceTaxRate) / 100;
-    const finalTotal =
-      institutionData?.cgst === 0 || institutionData?.sgst === 0
-        ? Math.round(discountedSubtotal + serviceTax)
-        : Math.round(discountedSubtotal + cgst + sgst + serviceTax);
-    return {
-      billSubtotal,
-      taxableSubtotal,
-      cgst,
-      sgst,
-      serviceTax,
-      finalTotal,
-      serviceTaxRate,
-      discountAmount,
-      discountPercentage,
-      discountMethod: discountInfo.method,
-    };
+ const calculateTotals = (items) => {
+  const billSubtotal = items.reduce((sum, item) => {
+    const price = Number(item.price) || 0;
+    const quantity = Number(item.quantity) || 0;
+    return sum + price * quantity;
+  }, 0);
+  // Updated: Exclude 'bar' type AND 'No Tax Beverage' category from taxable subtotal
+  const taxableSubtotal = items.reduce((sum, item) => {
+    const price = Number(item.price) || 0;
+    const quantity = Number(item.quantity) || 0;
+    const isTaxable = item.type !== "bar" && item.category !== "No Tax Beverage";
+    return sum + (isTaxable ? price * quantity : 0);
+  }, 0);
+  const cgstRate = institutionData?.cgst ?? 2.5;
+  const sgstRate = institutionData?.sgst ?? 2.5;
+  const serviceTaxRate = institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0;
+  const discountInfo = getCurrentDiscountInfo();
+  let discountAmount = 0;
+  let discountPercentage = 0;
+  if (discountInfo.method === "percentage" && discountInfo.value > 0) {
+    discountPercentage = Math.min(Number(discountInfo.value), 100);
+    discountAmount = (billSubtotal * discountPercentage) / 100;
+  } else if (discountInfo.method === "amount" && discountInfo.value > 0) {
+    discountAmount = Math.min(Number(discountInfo.value), billSubtotal);
+  }
+  const discountedSubtotal = billSubtotal - discountAmount;
+  // Updated: Apply discount to taxable subtotal (prorate or cap at taxable amount)
+  const discountedTaxableSubtotal = Math.max(0, taxableSubtotal - Math.min(discountAmount, taxableSubtotal));
+  const cgst = (discountedTaxableSubtotal * cgstRate) / 100;
+  const sgst = (discountedTaxableSubtotal * sgstRate) / 100;
+  const serviceTax = (discountedSubtotal * serviceTaxRate) / 100;
+  const finalTotal =
+    institutionData?.cgst === 0 || institutionData?.sgst === 0
+      ? Math.round(discountedSubtotal + serviceTax)
+      : Math.round(discountedSubtotal + cgst + sgst + serviceTax);
+  return {
+    billSubtotal,
+    taxableSubtotal,
+    cgst,
+    sgst,
+    serviceTax,
+    finalTotal,
+    serviceTaxRate,
+    discountAmount,
+    discountPercentage,
+    discountMethod: discountInfo.method,
   };
+};
   const handleDiscountMethodChange = (method) => {
     const currentInfo = getCurrentDiscountInfo();
     setCurrentDiscountInfo({

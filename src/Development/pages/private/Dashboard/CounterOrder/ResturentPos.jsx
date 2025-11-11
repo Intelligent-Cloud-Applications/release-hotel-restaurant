@@ -136,51 +136,56 @@ const [tables, setTables] = useState([
     }
   };
 
-  // Helper function to calculate totals with discount
-  const calculateTotals = (items, discountInfo = null) => {
-    const billSubtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const taxableSubtotal = items.reduce((sum, item) => sum + (item.type !== 'bar' ? item.price * item.quantity : 0), 0);
-    
-    const cgstRate = institutionData?.cgst ?? 2.5;
-    const sgstRate = institutionData?.sgst ?? 2.5;
-    const serviceTaxRate = institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0;
+// Helper function to calculate totals with discount
+const calculateTotals = (items, discountInfo = null) => {
+  const billSubtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  // Updated: Exclude 'bar' type AND 'No Tax Beverage' category from taxable subtotal
+  const taxableSubtotal = items.reduce((sum, item) => {
+    const isTaxable = item.type !== 'bar' && item.category !== 'No Tax Beverage';
+    return sum + (isTaxable ? item.price * item.quantity : 0);
+  }, 0);
+  
+  const cgstRate = institutionData?.cgst ?? 2.5;
+  const sgstRate = institutionData?.sgst ?? 2.5;
+  const serviceTaxRate = institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0;
 
-    // Calculate discount
-    let discountAmount = 0;
-    let discountPercentage = 0;
-    
-    if (discountInfo) {
-      if (discountInfo.method === "percentage" && discountInfo.value > 0) {
-        discountPercentage = Math.min(Number(discountInfo.value), 100);
-        discountAmount = (billSubtotal * discountPercentage) / 100;
-      } else if (discountInfo.method === "amount" && discountInfo.value > 0) {
-        discountAmount = Math.min(Number(discountInfo.value), billSubtotal);
-      }
+  // Calculate discount
+  let discountAmount = 0;
+  let discountPercentage = 0;
+  
+  if (discountInfo) {
+    if (discountInfo.method === "percentage" && discountInfo.value > 0) {
+      discountPercentage = Math.min(Number(discountInfo.value), 100);
+      discountAmount = (billSubtotal * discountPercentage) / 100;
+    } else if (discountInfo.method === "amount" && discountInfo.value > 0) {
+      discountAmount = Math.min(Number(discountInfo.value), billSubtotal);
     }
+  }
 
-    const discountedSubtotal = billSubtotal - discountAmount;
-    const discountedTaxableSubtotal = Math.max(0, taxableSubtotal - discountAmount);
-    
-    const cgst = (discountedTaxableSubtotal * cgstRate) / 100;
-    const sgst = (discountedTaxableSubtotal * sgstRate) / 100;
-    const serviceTax = (discountedSubtotal * serviceTaxRate) / 100;
+  const discountedSubtotal = billSubtotal - discountAmount;
+  // Updated: Apply discount to taxable subtotal (prorate or cap at taxable amount)
+  const discountedTaxableSubtotal = Math.max(0, taxableSubtotal - Math.min(discountAmount, taxableSubtotal));
+  
+  const cgst = (discountedTaxableSubtotal * cgstRate) / 100;
+  const sgst = (discountedTaxableSubtotal * sgstRate) / 100;
+  const serviceTax = (discountedSubtotal * serviceTaxRate) / 100;
 
-    const finalTotal = institutionData?.cgst === 0 || institutionData?.sgst === 0
-      ? Math.round(discountedSubtotal + serviceTax)
-      : Math.round(discountedSubtotal + cgst + sgst + serviceTax);
+  const finalTotal = institutionData?.cgst === 0 || institutionData?.sgst === 0
+    ? Math.round(discountedSubtotal + serviceTax)
+    : Math.round(discountedSubtotal + cgst + sgst + serviceTax);
 
-    return {
-      billSubtotal,
-      taxableSubtotal,
-      cgst,
-      sgst,
-      serviceTax,
-      finalTotal,
-      discountAmount,
-      discountPercentage,
-      discountMethod: discountInfo?.method || "none"
-    };
+  return {
+    billSubtotal,
+    taxableSubtotal,
+    cgst,
+    sgst,
+    serviceTax,
+    finalTotal,
+    discountAmount,
+    discountPercentage,
+    discountMethod: discountInfo?.method || "none"
   };
+};
 
   // Helper function to get booking from table name
   const getBookingFromTableName = (tableIdStr) => {

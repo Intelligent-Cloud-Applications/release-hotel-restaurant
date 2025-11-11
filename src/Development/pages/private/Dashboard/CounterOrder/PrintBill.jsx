@@ -7,47 +7,48 @@ const PrintBill = ({ table, items, institutionData, screenWidth, orderId, discou
 
   const gstShow = institutionData?.gstshow ?? false;
 
-  // Calculate totals based on provided items
-  const billSubtotal = items.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
+ // Calculate totals based on provided items
+const billSubtotal = items.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
 
-  // Tax rates from institutionData (fallbacks) - always apply rates, ignore gstShow for calculation
-  const cgstRate = Number(institutionData?.cgst ?? 2.5);
-  const sgstRate = Number(institutionData?.sgst ?? 2.5);
-  const serviceTaxRate = Number(institutionData?.serviceTax ?? 0);
+// Tax rates from institutionData (fallbacks) - always apply rates, ignore gstShow for calculation
+const cgstRate = Number(institutionData?.cgst ?? 2.5);
+const sgstRate = Number(institutionData?.sgst ?? 2.5);
+const serviceTaxRate = Number(institutionData?.serviceTax ?? 0);
 
-  // Taxable subtotal: exclude 'bar' type items
-  const taxableSubtotal = items.reduce((sum, item) => {
-    return sum + ((item.type !== 'bar') ? (Number(item.price) || 0) * (Number(item.quantity) || 0) : 0);
-  }, 0);
+// Updated: Exclude 'bar' type AND 'No Tax Beverage' category from taxable subtotal
+const taxableSubtotal = items.reduce((sum, item) => {
+  const isTaxable = item.type !== 'bar' && item.category !== 'No Tax Beverage';
+  return sum + (isTaxable ? (Number(item.price) || 0) * (Number(item.quantity) || 0) : 0);
+}, 0);
 
-  // ---- Discount calculation ----
-  let discountAmount = 0;
-  let discountPercentShown = 0;
+// ---- Discount calculation ----
+let discountAmount = 0;
+let discountPercentShown = 0;
 
-  if (discountMethod === "percentage" && Number(discountValue) > 0) {
-    discountPercentShown = Math.min(100, Number(discountValue));
-    discountAmount = (billSubtotal * discountPercentShown) / 100;
-  } else if (discountMethod === "amount" && Number(discountValue) > 0) {
-    discountAmount = Math.min(Number(discountValue), billSubtotal);
-  }
+if (discountMethod === "percentage" && Number(discountValue) > 0) {
+  discountPercentShown = Math.min(100, Number(discountValue));
+  discountAmount = (billSubtotal * discountPercentShown) / 100;
+} else if (discountMethod === "amount" && Number(discountValue) > 0) {
+  discountAmount = Math.min(Number(discountValue), billSubtotal);
+}
 
-  // Subtotals after discount
-  const discountedSubtotal = Math.max(0, billSubtotal - discountAmount);
-  const discountedTaxableSubtotal = Math.max(0, taxableSubtotal - Math.min(discountAmount, taxableSubtotal));
+// Subtotals after discount
+const discountedSubtotal = Math.max(0, billSubtotal - discountAmount);
+// Updated: Apply discount to taxable subtotal (prorate or cap at taxable amount)
+const discountedTaxableSubtotal = Math.max(0, taxableSubtotal - Math.min(discountAmount, taxableSubtotal));
 
-  // Recalculate taxes on discountedTaxableSubtotal
-  const calculatedCgst = (discountedTaxableSubtotal * cgstRate) / 100;
-  const calculatedSgst = (discountedTaxableSubtotal * sgstRate) / 100;
-  const calculatedServiceTax = (discountedSubtotal * serviceTaxRate) / 100;
+// Recalculate taxes on discountedTaxableSubtotal
+const calculatedCgst = (discountedTaxableSubtotal * cgstRate) / 100;
+const calculatedSgst = (discountedTaxableSubtotal * sgstRate) / 100;
+const calculatedServiceTax = (discountedSubtotal * serviceTaxRate) / 100;
 
-  // Final total: if cgst or sgst are zero, use alternate rounding rule
-  let calculatedTotal;
-  if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) {
-    calculatedTotal = Math.round(discountedSubtotal + calculatedServiceTax);
-  } else {
-    calculatedTotal = Math.round(discountedSubtotal + calculatedCgst + calculatedSgst + calculatedServiceTax);
-  }
-
+// Final total: if cgst or sgst are zero, use alternate rounding rule
+let calculatedTotal;
+if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) {
+  calculatedTotal = Math.round(discountedSubtotal + calculatedServiceTax);
+} else {
+  calculatedTotal = Math.round(discountedSubtotal + calculatedCgst + calculatedSgst + calculatedServiceTax);
+}
   const printBill = () => {
     // Clean up any existing print area or styles
     const existingPrintArea = document.getElementById("printArea");
