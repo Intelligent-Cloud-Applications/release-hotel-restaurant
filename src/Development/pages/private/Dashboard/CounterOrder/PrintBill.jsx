@@ -128,7 +128,7 @@ if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) 
                 <div>Contact: ${institutionData?.Query_PhoneNumber || "N/A"}</div>
                 <div>${formatDateTime()}</div>
               </div>
-              ${gstShow && institutionData?.gstin ? `<div class="gstin">GSTIN: ${institutionData.gstin}</div>` : ""}
+              ${ institutionData?.gstin ? `<div class="gstin">GSTIN: ${institutionData.gstin}</div>` : ""}
             </div>
 
             <div class="bill-details">
@@ -394,7 +394,7 @@ if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) 
                 <div>Contact: ${institutionData?.Query_PhoneNumber || "N/A"}</div>
                 <div>${formatDateTime()}</div>
               </div>
-              ${gstShow && institutionData?.gstin ? `<div class="gstin">GSTIN: ${institutionData.gstin}</div>` : ""}
+              ${institutionData?.gstin ? `<div class="gstin">GSTIN: ${institutionData.gstin}</div>` : ""}
             </div>
 
             <div class="bill-details">
@@ -640,7 +640,7 @@ if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) 
             <div class="header">${institutionData?.companyName || ""}</div>
             <div class="sub-header">${institutionData?.Query_Address || ""}</div>
             <div class="info">Contact: ${institutionData?.Query_PhoneNumber || ""}<br>Date: ${formatDateTime()}</div>
-            ${gstShow && institutionData?.gstin ? `<div class="info">GSTIN: ${institutionData.gstin}</div>` : ""}
+            ${institutionData?.gstin ? `<div class="info">GSTIN: ${institutionData.gstin}</div>` : ""}
             ${orderId ? `<div class="info">Order ID: ${orderId}</div>` : ""}
             <div class="divider"></div>
             <div><b>Table:</b> ${table.id}</div>
