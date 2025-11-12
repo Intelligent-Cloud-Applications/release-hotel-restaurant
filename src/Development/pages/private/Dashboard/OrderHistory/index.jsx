@@ -3,6 +3,7 @@ import { API } from "aws-amplify";
 import { Context } from "../../../../Context";
 import { PaginatedTable } from "../../../../common/DataDisplay";
 import { FaEye } from "react-icons/fa6";
+import {  FaEdit, FaPlus, FaTrash } from "react-icons/fa";
 import { Button } from "flowbite-react";
 import { getCurrencySymbol } from "../../../../common/Inputs";
 import { RiBillLine } from "react-icons/ri";
@@ -43,6 +44,9 @@ const OrderHistory = () => {
   const [showMonthlySummaries, setShowMonthlySummaries] = useState(true);
   const [showPrintBill, setShowPrintBill] = useState(false); 
   const [selectedPrintOrder, setSelectedPrintOrder] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedEditOrder, setSelectedEditOrder] = useState(null);
+  const [editPaymentMethods, setEditPaymentMethods] = useState([]);
 
   // Helper function to check if payment method is complementary
   const isComplementaryPayment = (paymentMethod) => {
@@ -186,6 +190,69 @@ const OrderHistory = () => {
     });
   };
 
+  const handleAddPaymentMethod = () => {
+    setEditPaymentMethods(prev => [...prev, { method: "Cash", amount: 0 }]);
+  };
+
+  const handleRemovePaymentMethod = (index) => {
+    setEditPaymentMethods(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handlePaymentMethodChange = (index, field, value) => {
+    setEditPaymentMethods(prev => 
+      prev.map((pm, i) => 
+        i === index ? { ...pm, [field]: field === 'amount' ? Number(value) || 0 : value } : pm
+      )
+    );
+  };
+
+  const getCurrentPaymentMethods = useCallback((order) => {
+    if (order.paymentMethods && Array.isArray(order.paymentMethods)) {
+      return order.paymentMethods;
+    } else {
+      const total = order.totalAmount || 0;
+      const method = order.paymentMethod || "Cash";
+      return [{ method, amount: total }];
+    }
+  }, []);
+
+  const calculateTotal = () => {
+    return editPaymentMethods.reduce((sum, pm) => sum + pm.amount, 0);
+  };
+
+  const handleUpdatePayment = async () => {
+    const total = calculateTotal();
+    const orderTotal = selectedEditOrder.totalAmount || 0;
+    if (Math.abs(total - orderTotal) > 0.01) {
+      toast.error(`Total payment amount (₹${total.toFixed(2)}) does not match order total (₹${orderTotal.toFixed(2)})`);
+      return;
+    }
+    if (editPaymentMethods.length === 0) {
+      toast.error("At least one payment method is required.");
+      return;
+    }
+    try {
+      await API.put("main", `/admin/update-payment/${institution}/${selectedEditOrder.orderId}`, {
+        body: { paymentMethods: editPaymentMethods }
+      });
+      // Update local state
+      setAllOrders((prev) =>
+        prev.map((o) =>
+          o.orderId === selectedEditOrder.orderId
+            ? { ...o, paymentMethods: editPaymentMethods }
+            : o
+        )
+      );
+      toast.success("Payment methods updated successfully");
+      setShowEditModal(false);
+      setSelectedEditOrder(null);
+      setEditPaymentMethods([]);
+    } catch (error) {
+      console.error("Error updating payment methods:", error);
+      toast.error("Error updating payment methods");
+    }
+  };
+
   if (userData?.userType !== 'admin') {
     return <Error message="Access Denied: Admins Only" />;
   }
@@ -195,6 +262,14 @@ const OrderHistory = () => {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  useEffect(() => {
+    if (showEditModal && selectedEditOrder) {
+      setEditPaymentMethods(getCurrentPaymentMethods(selectedEditOrder));
+    } else {
+      setEditPaymentMethods([]);
+    }
+  }, [showEditModal, selectedEditOrder, getCurrentPaymentMethods]);
 
   useEffect(() => {
     if (institution && userData?.userType && userData?.cognitoId) {
@@ -846,10 +921,21 @@ const OrderHistory = () => {
     setShowOrderModal(true);
   };
 
+  const openEditModal = (order) => {
+    setSelectedEditOrder(order);
+    setShowEditModal(true);
+  };
+
   const closeOrderModal = () => {
     setShowOrderModal(false);
     setSelectedOrderItems([]);
     setSelectedOrder(null);
+  };
+
+  const closeEditModal = () => {
+    setShowEditModal(false);
+    setSelectedEditOrder(null);
+    setEditPaymentMethods([]);
   };
 
   const Loader = () => (
@@ -865,6 +951,10 @@ const OrderHistory = () => {
   if (loader) {
     return <Loader />;
   }
+
+  const currentTotal = calculateTotal();
+  const orderTotal = selectedEditOrder?.totalAmount || 0;
+  const isTotalValid = Math.abs(currentTotal - orderTotal) <= 0.01;
 
   return (
     <>
@@ -1114,6 +1204,12 @@ const OrderHistory = () => {
                   >
                     <FaEye />
                   </Button>
+                  <Button
+                    onClick={() => openEditModal(obj)}
+                    className="bg-yellow-500"
+                  >
+                    <FaEdit />
+                  </Button>
                   {institution === "bhuk2323" && (
                     <Button
                       onClick={() => handlePrintBill(obj)}
@@ -1192,6 +1288,12 @@ const OrderHistory = () => {
                         className="text-primaryColor text-lg"
                       >
                         <FaEye />
+                      </button>
+                      <button
+                        onClick={() => openEditModal(order)}
+                        className="text-yellow-500 text-lg"
+                      >
+                        <FaEdit />
                       </button>
                       {institution === "bhuk2323" && (
                         <button
@@ -1290,6 +1392,75 @@ const OrderHistory = () => {
             screenWidth={screenWidth}
             onClose={() => setShowPrintBill(false)}
           />
+        )}
+        {showEditModal && selectedEditOrder && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white p-6 rounded-lg max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+              <h2 className="text-xl font-bold mb-4">Edit Payment Methods</h2>
+              <div className="mb-2">
+                <label className="block text-sm font-medium mb-1">Order Total: ₹{orderTotal.toFixed(2)}</label>
+              </div>
+              <div className="mb-4 max-h-60 overflow-y-auto">
+                {editPaymentMethods.map((pm, index) => (
+                  <div key={index} className="flex items-center gap-2 mb-3 p-3 border rounded">
+                    <select
+                      value={pm.method}
+                      onChange={(e) => handlePaymentMethodChange(index, 'method', e.target.value)}
+                      className="border rounded p-2 flex-1"
+                    >
+                      <option value="Cash">Cash</option>
+                      <option value="Card">Card</option>
+                      <option value="QR">QR</option>
+                      <option value="Complementary">Complementary</option>
+                    </select>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={pm.amount}
+                      onChange={(e) => handlePaymentMethodChange(index, 'amount', e.target.value)}
+                      className="border rounded p-2 w-24 text-right"
+                      placeholder="0.00"
+                    />
+                    <Button
+                      onClick={() => handleRemovePaymentMethod(index)}
+                      size="xs"
+                      color="failure"
+                    >
+                      <FaTrash />
+                    </Button>
+                  </div>
+                ))}
+                {editPaymentMethods.length < 5 && ( // Limit to 5 for simplicity
+                  <Button
+                    onClick={handleAddPaymentMethod}
+                    className="w-full mb-2"
+                    color="gray"
+                  >
+                    <FaPlus className="mr-2" /> Add Payment Method
+                  </Button>
+                )}
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1">Current Total: ₹{currentTotal.toFixed(2)}</label>
+                {!isTotalValid && (
+                  <p className="text-red-500 text-sm">Total does not match order amount!</p>
+                )}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button onClick={closeEditModal} color="gray">
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleUpdatePayment} 
+                  disabled={!isTotalValid || editPaymentMethods.length === 0}
+                  color="blue"
+                >
+                  Update
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </>
