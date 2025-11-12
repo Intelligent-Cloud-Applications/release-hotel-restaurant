@@ -81,6 +81,9 @@ if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) 
     // Function to proceed with printing
     const proceedWithPrint = () => {
       if (printerpaperSize === "80") {
+        // Check if duplicate copy is needed
+        const needsDuplicate = institutionData?.institution === "DISH5877";
+        
         // Always show subtotal
         const subtotalRow = `<div class="summary-row">
             <span>Subtotal:</span>
@@ -116,10 +119,9 @@ if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) 
             </div>
           `
           : '';
-        // Create print area
-        const printArea = document.createElement("div");
-        printArea.id = "printArea";
-        printArea.innerHTML = `
+        
+        // Bill content template
+        const billContent = `
           <div class="bill-container">
             <div class="bill-header">
               <h1>${institutionData?.companyName || "Restaurant Name"}</h1>
@@ -176,6 +178,25 @@ if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) 
             </div>
           </div>
         `;
+        
+        // Create print area
+        const printArea = document.createElement("div");
+        printArea.id = "printArea";
+        
+        if (needsDuplicate) {
+          // Two copies with cut line in between
+          printArea.innerHTML = `
+            ${billContent}
+            <div>
+              <span>✂ ------------------------------------✂</span>
+            </div>
+            ${billContent}
+          `;
+        } else {
+          // Single copy
+          printArea.innerHTML = billContent;
+        }
+        
         document.body.appendChild(printArea);
 
         // Add print styles
@@ -217,6 +238,16 @@ if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) 
             font-size: 11pt;
             line-height: 1.3;
             color: #000;
+          }
+          .cut-line {
+            text-align: center;
+            margin: 5mm 0;
+            padding: 3mm 0;
+            border-top: 1px dashed #000;
+            border-bottom: 1px dashed #000;
+            font-size: 10pt;
+            font-weight: bold;
+            letter-spacing: 1px;
           }
           .bill-header {
             text-align: center;
@@ -347,17 +378,16 @@ if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) 
         `;
         document.head.appendChild(style);
       } else if (printerpaperSize === "100") {
-        // Always show subtotal
+        // ... rest of the 100mm code remains the same
+        // (keeping original 100mm implementation)
         const subtotalRow = `<div class="summary-row">
             <span>Subtotal:</span>
             <span>₹${billSubtotal.toFixed(2)}</span>
           </div>`;
-        // Always show CGST row
         const cgstRow = `<div class="summary-row">
             <span>CGST (${cgstRate}%):</span>
             <span>₹${calculatedCgst.toFixed(2)}</span>
           </div>`;
-        // Always show SGST row
         const sgstRow = `<div class="summary-row">
             <span>SGST (${sgstRate}%):</span>
             <span>₹${calculatedSgst.toFixed(2)}</span>
@@ -382,7 +412,6 @@ if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) 
             </div>
           `
           : '';
-        // Create print area
         const printArea = document.createElement("div");
         printArea.id = "printArea";
         printArea.innerHTML = `
@@ -444,7 +473,6 @@ if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) 
         `;
         document.body.appendChild(printArea);
 
-        // Add print styles
         const style = document.createElement("style");
         style.id = "printAreaStyle";
         style.innerHTML = `
@@ -613,11 +641,10 @@ if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) 
         `;
         document.head.appendChild(style);
       } else {
-        // Always show subtotal
+        // ... rest of the 58mm code remains the same
+        // (keeping original 58mm implementation)
         const subtotalRow = `<tr><td><b>Subtotal:</b></td><td>₹${billSubtotal.toFixed(2)}</td></tr>`;
-        // Always show CGST row
         const cgstRow = `<tr><td>CGST (${cgstRate}%):</td><td>₹${calculatedCgst.toFixed(2)}</td></tr>`;
-        // Always show SGST row
         const sgstRow = `<tr><td>SGST (${sgstRate}%):</td><td>₹${calculatedSgst.toFixed(2)}</td></tr>`;
         const itemsHTML = items
           .map(
@@ -632,7 +659,6 @@ if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) 
           )
           .join("");
 
-        // Create print area
         const printArea = document.createElement("div");
         printArea.id = "printArea";
         printArea.innerHTML = `
@@ -671,7 +697,6 @@ if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) 
         `;
         document.body.appendChild(printArea);
 
-        // Add print styles
         const style = document.createElement("style");
         style.id = "printAreaStyle";
         style.innerHTML = screenWidth <= 1025

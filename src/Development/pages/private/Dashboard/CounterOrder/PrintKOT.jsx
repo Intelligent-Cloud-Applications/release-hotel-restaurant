@@ -73,6 +73,9 @@ const PrintKOT = ({
     printArea.id = "printArea";
     
     if (printerpaperSize === "80") {
+      // Check if duplicate copy is needed
+      const needsDuplicate = institutionData?.institution === "DISH5877";
+      
       const itemsHTML = itemsToPrint
         .map(
           (item) => `
@@ -85,7 +88,8 @@ const PrintKOT = ({
         .join("");
       const totalQty = itemsToPrint.reduce((sum, item) => sum + item.quantity, 0);
       
-      printArea.innerHTML = `
+      // KOT content template
+      const kotContent = `
         <div class="kot">
           <div class="header">KOT No: ${kotNo}</div>
           <div class="sub-header">${orderType}</div>
@@ -112,6 +116,21 @@ const PrintKOT = ({
             
         </div>
       `;
+      
+      if (needsDuplicate) {
+        // Two copies with cut line in between
+        printArea.innerHTML = `
+          ${kotContent}
+          <div>
+              <span>✂ ------------------------------------✂</span>
+            </div>
+          ${kotContent}
+        `;
+      } else {
+        // Single copy
+        printArea.innerHTML = kotContent;
+      }
+      
       document.body.appendChild(printArea);
     
       const style = document.createElement("style");
@@ -153,6 +172,16 @@ const PrintKOT = ({
           word-wrap: break-word;
           margin: 0 auto;
           page-break-inside: avoid; 
+        }
+        .cut-line {
+          text-align: center;
+          margin: 5mm 0;
+          padding: 3mm 0;
+          border-top: 1px dashed #000;
+          border-bottom: 1px dashed #000;
+          font-size: 10pt;
+          font-weight: bold;
+          letter-spacing: 1px;
         }
         .header {
           font-size: 14pt; 
