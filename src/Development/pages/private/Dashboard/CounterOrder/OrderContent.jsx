@@ -59,11 +59,12 @@ const OrderContent = ({
   settleUnpaidOrder,
   discountData,
   setDiscountData,
+  tableInstructions,
+  setTableInstructions,
 }) => {
   const { printerType, printerpaperSize } = data;
   const { staffData, fetchStaffData, setLoader, hotelBookings } = useContext(Context);
   const screenWidth = window.innerWidth;
- 
   // Existing state variables
   const [orderRoomSelection, setOrderRoomSelection] = useState({});
   const [showOrderPaymentModal, setShowOrderPaymentModal] = useState(false);
@@ -146,15 +147,15 @@ const OrderContent = ({
         if (institutionData?.institution) {
           const tableKey = `daySession_${institutionData.institution}_${selectedTable?.id || 'global'}`;
           const globalKey = `daySession_${institutionData.institution}_global`;
-         
+        
           // Remove existing day session for this table/institution
           localStorage.removeItem(tableKey);
           localStorage.removeItem(globalKey);
-         
+        
           // Save new day session
           localStorage.setItem(tableKey, selectedDaySession);
           localStorage.setItem(globalKey, selectedDaySession);
-         
+        
           console.log(`Day session saved: ${selectedDaySession} for institution ${institutionData.institution}, table ${selectedTable?.id || 'global'}`);
         }
       } catch (error) {
@@ -177,15 +178,15 @@ const OrderContent = ({
         const confirmChange = window.confirm(
           `Changing day session from ${currentSessionName} to ${newSessionName} will affect menu availability. Continue?`
         );
-       
+      
         if (!confirmChange) {
           return;
         }
       }
-     
+    
       setSelectedDaySession(newSession);
       toast.success(`Day session changed to ${daySessionOptions.find(s => s.value === newSession)?.label || newSession}`);
-     
+    
       // Optional: Refresh table data to reflect new day session menu items
       if (selectedTable?.id && fetchTableData) {
         fetchTableData(String(selectedTable.id));
@@ -1047,6 +1048,9 @@ const formatBill = (orderItems, customerId) => {
     );
   };
   const renderContent = () => {
+    if (!selectedTable) {
+      return <div className="p-4 text-center text-gray-500">Please select a table</div>;
+    }
     const isManagementTable = selectedTable?.id?.toString().toLowerCase().startsWith("management");
     if (activeTab === "KOT") {
       const hasKOTItems = (kotcurrent?.items || []).length > 0;
@@ -1055,7 +1059,7 @@ const formatBill = (orderItems, customerId) => {
           <div className="p-3">
             <UnpaidOrdersSection />
           </div>
-          <div className="flex-1 overflow-y-auto p-2 sm:p-4 max-h-[22rem] max406:max-h-[12rem]">
+          <div className="flex-1 overflow-y-auto p-2 sm:p-4 max-h-[18rem] max406:max-h-[12rem]">
             {(kotcurrent?.items || []).map((item) => (
               <ItemControls key={item.itemId} item={item} />
             ))}
@@ -1077,7 +1081,7 @@ const formatBill = (orderItems, customerId) => {
                           setCustomerDetails((prev) => ({
                             ...prev,
                             [selectedTable?.id]: {
-                              ...prev[selectedTable?.id],
+                              ...(prev[selectedTable?.id] || {}),
                               name: e.target.value,
                             },
                           }))
@@ -1095,7 +1099,7 @@ const formatBill = (orderItems, customerId) => {
                           setCustomerDetails((prev) => ({
                             ...prev,
                             [selectedTable?.id]: {
-                              ...prev[selectedTable?.id],
+                              ...(prev[selectedTable?.id] || {}),
                               name: value === "custom" ? "" : value,
                             },
                           }));
@@ -1126,7 +1130,7 @@ const formatBill = (orderItems, customerId) => {
                         setCustomerDetails((prev) => ({
                           ...prev,
                           [selectedTable?.id]: {
-                            ...prev[selectedTable?.id],
+                            ...(prev[selectedTable?.id] || {}),
                             name: e.target.value,
                           },
                         }))
@@ -1147,7 +1151,7 @@ const formatBill = (orderItems, customerId) => {
                     setCustomerDetails((prev) => ({
                       ...prev,
                       [selectedTable?.id]: {
-                        ...prev[selectedTable?.id],
+                        ...(prev[selectedTable?.id] || {}),
                         phone: e.target.value,
                       },
                     }))
@@ -1171,6 +1175,22 @@ const formatBill = (orderItems, customerId) => {
                   <ChevronDown className="h-3 w-3 text-gray-400" />
                 </div>
               </div>
+            </div>
+            {/* Instructions Section */}
+            <div className="w-full mt-2">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Special Instructions</label>
+              <textarea
+                rows={2}
+                placeholder="Enter any special instructions for the kitchen..."
+                className="w-full p-2 text-sm border rounded resize-none"
+                value={tableInstructions[selectedTable?.id] || ''}
+                onChange={(e) => 
+                  setTableInstructions((prev) => ({
+                    ...prev,
+                    [selectedTable?.id]: e.target.value
+                  }))
+                }
+              />
             </div>
           </div>
           <div className="p-4 border-t space-y-2">
@@ -1428,7 +1448,7 @@ const formatBill = (orderItems, customerId) => {
                             setCustomerDetails((prev) => ({
                               ...prev,
                               [selectedTable?.id]: {
-                                ...prev[selectedTable?.id],
+                                ...(prev[selectedTable?.id] || {}),
                                 name: e.target.value,
                               },
                             }))
@@ -1446,7 +1466,7 @@ const formatBill = (orderItems, customerId) => {
                             setCustomerDetails((prev) => ({
                               ...prev,
                               [selectedTable?.id]: {
-                                ...prev[selectedTable?.id],
+                                ...(prev[selectedTable?.id] || {}),
                                 name: value === "custom" ? "" : value,
                               },
                             }));
@@ -1477,7 +1497,7 @@ const formatBill = (orderItems, customerId) => {
                           setCustomerDetails((prev) => ({
                             ...prev,
                             [selectedTable?.id]: {
-                              ...prev[selectedTable?.id],
+                              ...(prev[selectedTable?.id] || {}),
                               name: e.target.value,
                             },
                           }))
@@ -1497,7 +1517,7 @@ const formatBill = (orderItems, customerId) => {
                       setCustomerDetails((prev) => ({
                         ...prev,
                         [selectedTable?.id]: {
-                          ...prev[selectedTable?.id],
+                          ...(prev[selectedTable?.id] || {}),
                           phone: e.target.value,
                         },
                       }))
@@ -1839,7 +1859,7 @@ const formatBill = (orderItems, customerId) => {
   return (
     <>
       <div className="flex-1 flex flex-col">{renderContent()}</div>
-     
+    
       {showOrderPaymentModal && (
         <OrderPaymentModal
           selectedTable={selectedTable}
@@ -1852,10 +1872,10 @@ const formatBill = (orderItems, customerId) => {
           customerDetails={customerDetails}
           discountData={discountData}
           setDiscountData={setDiscountData}
-        
+       
         />
       )}
-     
+    
       {showUnpaidOrderPaymentModal && selectedUnpaidOrder && (
         <UnpaidOrderPaymentModal
           selectedTable={selectedTable}
@@ -1871,10 +1891,10 @@ const formatBill = (orderItems, customerId) => {
           customerDetails={customerDetails}
           discountData={discountData}
           setDiscountData={setDiscountData}
-        
+       
         />
       )}
-     
+    
       {showReprintKOT && (
         <ReprintKOT
           selectedTable={selectedTable}

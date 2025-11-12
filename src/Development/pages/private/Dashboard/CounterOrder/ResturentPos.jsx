@@ -255,6 +255,7 @@ const calculateTotals = (items, discountInfo = null) => {
           cgst,
           sgst,
           serviceTax,
+          instruction: tableInstructions[tableIdStr] || '',
           ...(userData && { orderBy: userData.cognitoId }),
           tableOccupied: true,
           daySession: currentDaySession,
@@ -310,6 +311,7 @@ if (isHotelTable) {
           cgst,
           sgst,
           serviceTax,
+          instruction: tableInstructions[tableIdStr] || '',
           type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
         },
       });
@@ -1136,6 +1138,7 @@ const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
             cgst,
             sgst,
             serviceTax,
+            instruction: tableInstructions[tableIdStr] || '',
             ...(userData && { orderBy: userData.cognitoId }),
             tableOccupied: true,
             type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
@@ -1156,7 +1159,11 @@ if (isHotelTable) {
       });
     }
         await API.post("main", `/admin/orders-kot/${institutionData.institution}/${tableIdStr}`, {
-          body: { items: tableDataForTable.mergedItems,type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe", }
+          body: { 
+            items: tableDataForTable.mergedItems,
+            instruction: tableInstructions[tableIdStr] || '',
+            type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe", 
+          }
         });
 
         toast.success("KOT Saved Successfully");
@@ -1637,6 +1644,9 @@ if (isHotelTable) {
             // Pass discount props
             discountData={discountData}
             setDiscountData={setDiscountData}
+            // Pass instructions props
+            tableInstructions={tableInstructions}
+            setTableInstructions={setTableInstructions}
           />
           {showModal && (
             <PaymentModal
@@ -1706,6 +1716,8 @@ if (isHotelTable) {
             showReprintKOT={showReprintKOT}
             unpaidOrders={unpaidOrders} // Pass unpaid orders
             settleUnpaidOrder={settleUnpaidOrder} // Pass settle function
+            tableInstructions={tableInstructions}
+            setTableInstructions={setTableInstructions}
           />
           {showModal && (
             <PaymentModal

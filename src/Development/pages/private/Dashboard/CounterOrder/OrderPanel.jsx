@@ -45,8 +45,9 @@ const OrderPanel = ({
   setShowReprintKOT,
   unpaidOrders,
   settleUnpaidOrder,
-     discountData,
-  setDiscountData,
+  discountData,
+  setDiscountData,     
+  setTableInstructions
 }) => {
   const { institutionData, setLoader } = useContext(Context);
   const [mergedItemsState, setMergedItemsState] = useState([]);
@@ -272,9 +273,11 @@ const OrderPanel = ({
             hasItems={localBillItems.length > 0}
             KOTByTable={KOTByTable}
             tableData={tableData} // Added
-  fetchTableData={fetchTableData} // Added
+            fetchTableData={fetchTableData} // Added
           />
           <OrderContent
+            tableInstructions={tableInstructions}
+            setTableInstructions={setTableInstructions}
             unpaidOrders={unpaidOrders}
             settleUnpaidOrder={settleUnpaidOrder}
             selectedTable={selectedTable}

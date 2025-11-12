@@ -107,10 +107,9 @@ const PrintKOT = ({
           <table class="table total">
             <tr><td><b>Total Qty:</b></td><td style="text-align:right;">${totalQty}</td></tr>
           </table>
-          ${institutionData.institution === "bhuk2323" ? 
-              `<div class="spacer"></div>
+            <div class="spacer"></div>
            ${(instruction && instruction!=="None")? ` <div class="instruction">Special Instructions: ${instruction}</div>` : ''}
-            ` : ''}
+            
         </div>
       `;
       document.body.appendChild(printArea);
@@ -237,10 +236,9 @@ const PrintKOT = ({
           <table class="table total">
             <tr><td><b>Total Qty:</b></td><td style="text-align:right;">${totalQty}</td></tr>
           </table>
-          ${institutionData.institution === "bhuk2323" ? 
-              `<div class="spacer"></div>
+          <div class="spacer"></div>
            ${(instruction && instruction!=="None")? ` <div class="instruction">Special Instructions: ${instruction}</div>` : ''}
-            ` : ''}
+        
         </div>
       `;
       document.body.appendChild(printArea);

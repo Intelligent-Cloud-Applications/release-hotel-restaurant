@@ -42,7 +42,9 @@ const ResponsivePOSLayout = ({
   bluetoothConnected,
   bluetoothDeviceName,
   connectBluetooth,
-  printBluetooth,showReprintKOT, setShowReprintKOT
+  printBluetooth,showReprintKOT, setShowReprintKOT,
+  setTableInstructions,
+  tableInstructions
 }) => {
   const [orderPanelOpen, setOrderPanelOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("KOT");
@@ -230,6 +232,8 @@ const ResponsivePOSLayout = ({
           printBluetooth={printBluetooth}
           setShowReprintKOT={setShowReprintKOT}
           showReprintKOT={showReprintKOT}
+          tableInstructions={tableInstructions}
+          setTableInstructions={setTableInstructions}
         />
       </div>
 
