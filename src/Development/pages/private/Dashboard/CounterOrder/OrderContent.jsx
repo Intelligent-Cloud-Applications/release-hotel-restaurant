@@ -390,6 +390,7 @@ const OrderContent = ({
   // New function to update order items via API (without loader for incremental updates)
   const updateOrderItems = async (items, orderId = null) => {
     if (!selectedTable) return;
+     setLoader(true);
     const tableIdStr = String(selectedTable.id);
     try {
       const endpoint = orderId
@@ -419,9 +420,15 @@ const OrderContent = ({
           body: { items, type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe" },
         });
       }
+      if (fetchPendingOrders) {
+        await fetchPendingOrders();
+      }
     } catch (error) {
       console.error("Error updating order items:", error);
       toast.error("Failed to update items. Please try again.");
+    }
+    finally {
+      setLoader(false);
     }
   };
   const formatKOT = () => {
