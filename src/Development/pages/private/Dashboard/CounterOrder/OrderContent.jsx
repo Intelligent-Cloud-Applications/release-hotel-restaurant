@@ -1,6 +1,6 @@
 "use client";
 import { User, Phone, X, MoveRight, ChevronDown, ChevronUp, AlertTriangle, Clock, Bluetooth, Printer, Percent, DollarSign } from "lucide-react";
-import { useState, useEffect, useContext, useRef } from "react";
+import { useState, useEffect, useContext, useRef, useCallback } from "react";
 import { toast } from "react-toastify";
 import { API } from "aws-amplify";
 import { Context } from "../../../../Context";
@@ -16,6 +16,7 @@ const OrderContent = ({
   selectedTable,
   setSelectedTable,
   KOTByTable,
+  setKOTByTable,
   customerDetails,
   setCustomerDetails,
   updateItemQuantity,
@@ -193,6 +194,11 @@ const OrderContent = ({
       }
     }
   };
+  // Reset instruction states when table changes
+  useEffect(() => {
+    setInstructionStates({});
+  }, [selectedTable?.id]);
+
   // Get current day session display name
   const getCurrentDaySessionName = () => {
     const current = daySessionOptions.find(option => option.value === selectedDaySession);
@@ -484,10 +490,39 @@ const OrderContent = ({
           }
         });
       }
+      
+      // Add item instruction if present
+      if (item.instruction && item.instruction.trim()) {
+        const instructionText = `-> ${item.instruction}`;
+        if (instructionText.length <= lineWidth) {
+          kot += `${instructionText}\n`;
+        } else {
+          const instructionChunks = instructionText.match(new RegExp(`.{1,${lineWidth}}`, "g"));
+          instructionChunks.forEach((chunk) => {
+            kot += `${chunk}\n`;
+          });
+        }
+      }
     });
     kot += `\x1B\x61\x01`;
     kot += `${"-".repeat(lineWidth)}\n`;
     kot += `Total Qty: ${totalQty}\n`;
+    
+    // Add table instruction if present
+    const tableIdStr = String(selectedTable?.id);
+    const tableInstruction = tableInstructions?.[tableIdStr] || "";
+    if (tableInstruction && tableInstruction.trim()) {
+      kot += `\nSpecial Instructions:\n`;
+      if (tableInstruction.length <= lineWidth) {
+        kot += `${tableInstruction}\n`;
+      } else {
+        const chunks = tableInstruction.match(new RegExp(`.{1,${lineWidth}}`, "g"));
+        chunks.forEach((chunk) => {
+          kot += `${chunk}\n`;
+        });
+      }
+    }
+    
     kot += `${"-".repeat(lineWidth)}\n`;
     kot += `${resetFont}\n\n\n`;
     return kot;
@@ -939,6 +974,42 @@ const formatBill = (orderItems, customerId) => {
       updateOrderItems(updatedItems);
     }
   };
+  const handleUpdateItemInstruction = (tableId, itemId, instruction) => {
+    if (activeTab === "KOT") {
+      // Update KOT items with instruction (local state only)
+      setKOTByTable((prev) => {
+        const currentKOT = prev[String(tableId)] || { items: [], totalAmount: 0, billItems: [] };
+        const updatedItems = currentKOT.items.map((item) =>
+          item.itemId === itemId ? { ...item, instruction } : item
+        );
+        return {
+          ...prev,
+          [String(tableId)]: { ...currentKOT, items: updatedItems }
+        };
+      });
+    } else if (splitBillMode) {
+      // Update split bill items with instruction (local state only)
+      setOrderGroups((prevGroups) => {
+        const newGroups = prevGroups.map((group) => {
+          if (group.orderId === selectedOrderId) {
+            const updatedItems = group.items.map((item) =>
+              item.itemId === itemId ? { ...item, instruction } : item
+            );
+            return { ...group, items: updatedItems };
+          }
+          return group;
+        });
+        return newGroups;
+      });
+    } else {
+      // Update local bill items with instruction (local state only)
+      const updatedItems = localBillItems.map((item) =>
+        item.itemId === itemId ? { ...item, instruction } : item
+      );
+      setLocalBillItems(updatedItems);
+    }
+  };
+
   const handleRemoveItemFromKOT = (tableId, itemId) => {
     if (activeTab === "KOT") {
       removeItemFromKOT(tableId, itemId);
@@ -1657,61 +1728,144 @@ const formatBill = (orderItems, customerId) => {
       }
     }
   };
-  const ItemControls = ({ item, orderId }) => (
-    <div key={item.itemId} className="flex items-center justify-between p-3 border-b group">
-      <div className="flex-1">
-        <div className="flex justify-between">
-          <p className="font-medium text-sm">{item.itemName || item.name}</p>
-          {splitBillMode && activeTab !== "KOT" && orderGroups.length > 1 ? (
-            <button
-              onClick={() => {
-                setMovingItem(item);
-                setTargetOrderId(null);
-              }}
-              className="text-blue-500 transition-opacity"
-              title="Move item to another order"
-            >
-              <MoveRight className="w-4 h-4" />
-            </button>
-          ) : (
-            <button
-              onClick={() => handleRemoveItemFromKOT(selectedTable?.id, item.itemId)}
-              className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-        <div className="flex items-center justify-between mt-1">
-          <div className="flex items-center">
-            <button
-              onClick={() =>
-                handleUpdateItemQuantity(selectedTable?.id, item.itemId, item.quantity - 1)
-              }
-              className="w-6 h-6 flex items-center justify-center border rounded"
-            >
-              -
-            </button>
-            <span className="mx-2 text-sm">{item.quantity}</span>
-            <button
-              onClick={() =>
-                handleUpdateItemQuantity(selectedTable?.id, item.itemId, item.quantity + 1)
-              }
-              className="w-6 h-6 flex items-center justify-center border rounded"
-            >
-              +
-            </button>
+  // Add state to track which items have instruction input open
+  const [instructionStates, setInstructionStates] = useState({});
+  
+  // Handle instruction input state
+  const toggleInstructionInput = useCallback((itemId) => {
+    setInstructionStates(prev => ({
+      ...prev,
+      [itemId]: !prev[itemId]
+    }));
+  }, []);
+
+  const ItemControls = ({ item, orderId }) => {
+    const [localInstruction, setLocalInstruction] = useState(item.instruction || '');
+    const showInstruction = instructionStates[item.itemId] || false;
+    
+    // Update local state when item instruction changes from outside
+    useEffect(() => {
+      setLocalInstruction(item.instruction || '');
+    }, [item.instruction]);
+
+    const handleSaveInstruction = () => {
+      // Only save if instruction has changed
+      if (localInstruction !== item.instruction) {
+        handleUpdateItemInstruction(selectedTable?.id, item.itemId, localInstruction);
+      }
+    };
+
+    return (
+      <div className="p-3 border-b group">
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            <div className="flex justify-between">
+              <p className="font-medium text-sm">{item.itemName || item.name}</p>
+              <div className="flex items-center gap-2">
+                {/* Show Note button only in KOT tab */}
+                {activeTab === "KOT" && (
+                  <button
+                    onClick={() => toggleInstructionInput(item.itemId)}
+                    className={`text-xs px-2 py-1 rounded transition-colors ${
+                      showInstruction || item.instruction 
+                        ? 'bg-blue-100 text-blue-600' 
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                    title="Add item instruction"
+                  >
+                    Note
+                  </button>
+                )}
+                {splitBillMode && activeTab !== "KOT" && orderGroups.length > 1 ? (
+                  <button
+                    onClick={() => {
+                      setMovingItem(item);
+                      setTargetOrderId(null);
+                    }}
+                    className="text-blue-500 transition-opacity"
+                    title="Move item to another order"
+                  >
+                    <MoveRight className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleRemoveItemFromKOT(selectedTable?.id, item.itemId)}
+                    className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center justify-between mt-1">
+              <div className="flex items-center">
+                <button
+                  onClick={() =>
+                    handleUpdateItemQuantity(selectedTable?.id, item.itemId, item.quantity - 1)
+                  }
+                  className="w-6 h-6 flex items-center justify-center border rounded"
+                >
+                  -
+                </button>
+                <span className="mx-2 text-sm">{item.quantity}</span>
+                <button
+                  onClick={() =>
+                    handleUpdateItemQuantity(selectedTable?.id, item.itemId, item.quantity + 1)
+                  }
+                  className="w-6 h-6 flex items-center justify-center border rounded"
+                >
+                  +
+                </button>
+              </div>
+              <span className="text-sm">₹{(item.price * item.quantity).toFixed(2)}</span>
+            </div>
+            {/* Show instruction input only in KOT tab */}
+            {activeTab === "KOT" && showInstruction && (
+              <div className="mt-2">
+                <input
+                  key={`instruction-${item.itemId}`}
+                  type="text"
+                  placeholder="Add special instruction for this item..."
+                  className="w-full p-2 text-xs border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={localInstruction}
+                  onChange={(e) => setLocalInstruction(e.target.value)}
+                  onBlur={handleSaveInstruction}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSaveInstruction();
+                      toggleInstructionInput(item.itemId); // Close the input
+                    }
+                    if (e.key === 'Escape') {
+                      setLocalInstruction(item.instruction || ''); // Reset to original value
+                      toggleInstructionInput(item.itemId); // Close the input
+                    }
+                  }}
+                  autoFocus
+                />
+                <div className="mt-1 text-xs text-gray-500">
+                  Press Enter to save, Escape to cancel
+                </div>
+              </div>
+            )}
+            {/* Show instruction display only in KOT tab when not editing */}
+            {activeTab === "KOT" && item.instruction && !showInstruction && (
+              <div className="mt-1">
+                <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                  Note: {item.instruction}
+                </span>
+              </div>
+            )}
+            {splitBillMode && orderId && (
+              <div className="mt-1">
+                <span className="text-xs text-gray-500">Order ID: {orderId}</span>
+              </div>
+            )}
           </div>
-          <span className="text-sm">₹{(item.price * item.quantity).toFixed(2)}</span>
         </div>
-        {splitBillMode && orderId && (
-          <div className="mt-1">
-            <span className="text-xs text-gray-500">Order ID: {orderId}</span>
-          </div>
-        )}
       </div>
-    </div>
-  );
+    );
+  };
   const PrintModal = () => (
     <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white p-6 rounded-lg shadow-lg relative">

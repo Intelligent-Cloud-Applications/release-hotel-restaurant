@@ -57,6 +57,17 @@ const PrintKOT = ({
     const tableIdStr = String(table.id);
     const instruction = tableInstructions?.[tableIdStr] || tableData?.[tableIdStr]?.instruction || "None";
 
+
+    itemsToPrint.forEach((item, index) => {
+      console.log(`PrintKOT Debug - Item ${index}:`, {
+        name: item.name,
+        itemName: item.itemName,
+        quantity: item.quantity,
+        instruction: item.instruction,
+        fullItem: item
+      });
+    });
+
     // Check if table is management and get customer name
     const isManagementTable = String(table.id).toLowerCase().startsWith("management");
     const customerName = customerDetails[table.id]?.name || "";
@@ -78,12 +89,26 @@ const PrintKOT = ({
       
       const itemsHTML = itemsToPrint
         .map(
-          (item) => `
+          (item) => {
+            console.log("PrintKOT Debug - Processing item for HTML:", {
+              name: item.name,
+              instruction: item.instruction,
+              hasInstruction: !!item.instruction
+            });
+            return `
             <tr>
               <td>${item.name}</td>
               <td style="text-align: right; white-space: nowrap;">${item.quantity}</td>
             </tr>
-          `
+            ${item.instruction ? `
+            <tr>
+              <td colspan="2" style="font-size: 10pt; color: #666; font-style: italic; padding-left: 10px;">
+                → ${item.instruction}
+              </td>
+            </tr>
+            ` : ''}
+          `;
+          }
         )
         .join("");
       const totalQty = itemsToPrint.reduce((sum, item) => sum + item.quantity, 0);
@@ -238,6 +263,13 @@ const PrintKOT = ({
               <td>${item.name}</td>
               <td style="text-align: right; white-space: nowrap;">${item.quantity}</td>
             </tr>
+            ${item.instruction ? `
+            <tr>
+              <td colspan="2" style="font-size: 14pt; color: #666; font-style: italic; padding-left: 10px;">
+                → ${item.instruction}
+              </td>
+            </tr>
+            ` : ''}
           `
         )
         .join("");
@@ -367,6 +399,13 @@ const PrintKOT = ({
               <td>${item.name}</td>
               <td style="text-align: right; white-space: nowrap;">${item.quantity}</td>
             </tr>
+            ${item.instruction ? `
+            <tr>
+              <td colspan="2" style="font-size: 12px; color: #666; font-style: italic; padding-left: 10px;">
+                → ${item.instruction}
+              </td>
+            </tr>
+            ` : ''}
           `
         )
         .join("");

@@ -47,6 +47,9 @@ const OrderHistory = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedEditOrder, setSelectedEditOrder] = useState(null);
   const [editPaymentMethods, setEditPaymentMethods] = useState([]);
+  const [editDiscountAmount, setEditDiscountAmount] = useState(0);
+  const [editDiscountPercentage, setEditDiscountPercentage] = useState(0);
+  const [editDiscountType, setEditDiscountType] = useState('amount'); // 'amount' or 'percentage'
 
   // Helper function to check if payment method is complementary
   const isComplementaryPayment = (paymentMethod) => {
@@ -216,15 +219,30 @@ const OrderHistory = () => {
     }
   }, []);
 
-  const calculateTotal = () => {
+  const calculatePaymentTotal = () => {
     return editPaymentMethods.reduce((sum, pm) => sum + pm.amount, 0);
   };
 
-  const handleUpdatePayment = async () => {
-    const total = calculateTotal();
-    const orderTotal = selectedEditOrder.totalAmount || 0;
-    if (Math.abs(total - orderTotal) > 0.01) {
-      toast.error(`Total payment amount (₹${total.toFixed(2)}) does not match order total (₹${orderTotal.toFixed(2)})`);
+  const calculateDiscountTotal = () => {
+    const subtotal = selectedEditOrder?.subtotal || 0;
+    if (editDiscountType === 'percentage') {
+      return (subtotal * (editDiscountPercentage / 100));
+    }
+    return editDiscountAmount;
+  };
+
+  const calculateOrderTotal = () => {
+    const subtotal = selectedEditOrder?.subtotal || 0;
+    const discount = calculateDiscountTotal();
+    // Assuming no taxes; add if needed: + taxes
+    return subtotal - discount;
+  };
+
+  const handleUpdateOrder = async () => {
+    const paymentTotal = calculatePaymentTotal();
+    const orderTotal = calculateOrderTotal();
+    if (Math.abs(paymentTotal - orderTotal) > 0.01) {
+      toast.error(`Total payment amount (₹${paymentTotal.toFixed(2)}) does not match order total (₹${orderTotal.toFixed(2)})`);
       return;
     }
     if (editPaymentMethods.length === 0) {
@@ -232,24 +250,42 @@ const OrderHistory = () => {
       return;
     }
     try {
+      const updateBody = {
+        paymentMethods: editPaymentMethods,
+      };
+      // Add discount only if it's not zero
+      if (editDiscountType === 'amount' && editDiscountAmount > 0) {
+        updateBody.discountAmount = editDiscountAmount;
+      } else if (editDiscountType === 'percentage' && editDiscountPercentage > 0) {
+        updateBody.discountPercentage = editDiscountPercentage;
+      }
+
       await API.put("main", `/admin/update-payment/${institution}/${selectedEditOrder.orderId}`, {
-        body: { paymentMethods: editPaymentMethods }
+        body: updateBody
       });
       // Update local state
       setAllOrders((prev) =>
         prev.map((o) =>
           o.orderId === selectedEditOrder.orderId
-            ? { ...o, paymentMethods: editPaymentMethods }
+            ? { 
+                ...o, 
+                paymentMethods: editPaymentMethods,
+                ...(editDiscountType === 'amount' ? { discountAmount: editDiscountAmount, discountPercentage: 0 } : { discountPercentage: editDiscountPercentage, discountAmount: calculateDiscountTotal() }),
+                totalAmount: orderTotal
+              }
             : o
         )
       );
-      toast.success("Payment methods updated successfully");
+      toast.success("Order updated successfully");
       setShowEditModal(false);
       setSelectedEditOrder(null);
       setEditPaymentMethods([]);
+      setEditDiscountAmount(0);
+      setEditDiscountPercentage(0);
+      setEditDiscountType('amount');
     } catch (error) {
-      console.error("Error updating payment methods:", error);
-      toast.error("Error updating payment methods");
+      console.error("Error updating order:", error);
+      toast.error("Error updating order");
     }
   };
 
@@ -266,8 +302,21 @@ const OrderHistory = () => {
   useEffect(() => {
     if (showEditModal && selectedEditOrder) {
       setEditPaymentMethods(getCurrentPaymentMethods(selectedEditOrder));
+      // Determine discount type: prefer percentage if it's non-zero, else amount
+      if (selectedEditOrder.discountPercentage > 0) {
+        setEditDiscountType('percentage');
+        setEditDiscountPercentage(selectedEditOrder.discountPercentage);
+        setEditDiscountAmount(0); // Reset amount
+      } else {
+        setEditDiscountType('amount');
+        setEditDiscountAmount(selectedEditOrder.discountAmount || 0);
+        setEditDiscountPercentage(0); // Reset percentage
+      }
     } else {
       setEditPaymentMethods([]);
+      setEditDiscountAmount(0);
+      setEditDiscountPercentage(0);
+      setEditDiscountType('amount');
     }
   }, [showEditModal, selectedEditOrder, getCurrentPaymentMethods]);
 
@@ -421,6 +470,9 @@ const OrderHistory = () => {
       "Time": "",
       "Download Link": "",
       "Payment Method": "",
+      "Discount Amount": "",
+      "Discount Percentage": "",
+      "Subtotal": "",
       "Item Name": "",
       "Quantity": "",
       "Item Price": "",
@@ -445,6 +497,9 @@ const OrderHistory = () => {
       "Time": "",
       "Download Link": "",
       "Payment Method": "",
+      "Discount Amount": "",
+      "Discount Percentage": "",
+      "Subtotal": "",
       "Item Name": "",
       "Quantity": "",
       "Item Price": "",
@@ -474,6 +529,9 @@ const OrderHistory = () => {
           "Time": formatTime(order.createdAt),
           "Download Link": order.downloadLink || "",
           "Payment Method": getPaymentMethodForExport(order),
+          "Discount Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.discountAmount || 0}`,
+          "Discount Percentage": `${order.discountPercentage || 0}%`,
+          "Subtotal": `${getCurrencySymbol(order.currency || 'INR')}${order.subtotal || 0}`,
           "Item Name": "",
           "Quantity": "",
           "Item Price": "",
@@ -506,6 +564,9 @@ const OrderHistory = () => {
               "Time": "",
               "Download Link": "",
               "Payment Method": "",
+              "Discount Amount": "",
+              "Discount Percentage": "",
+              "Subtotal": "",
               "Item Name": `Payment Method: ${method}${isComplementary ? ' (Complementary)' : ''}`,
               "Quantity": "",
               "Item Price": "",
@@ -532,6 +593,9 @@ const OrderHistory = () => {
           "Time": formatTime(order.createdAt),
           "Download Link": "",
           "Payment Method": getPaymentMethodForExport(order),
+          "Discount Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.discountAmount || 0}`,
+          "Discount Percentage": `${order.discountPercentage || 0}%`,
+          "Subtotal": `${getCurrencySymbol(order.currency || 'INR')}${order.subtotal || 0}`,
           "Item Name": "",
           "Quantity": "",
           "Item Price": "",
@@ -559,6 +623,9 @@ const OrderHistory = () => {
               "Time": "",
               "Download Link": "",
               "Payment Method": "",
+              "Discount Amount": "",
+              "Discount Percentage": "",
+              "Subtotal": "",
               "Item Name": item.name || "N/A",
               "Quantity": item.quantity || 0,
               "Item Price": `${getCurrencySymbol(order.currency || 'INR')}${item.price || 0}`,
@@ -592,6 +659,9 @@ const OrderHistory = () => {
               "Time": "",
               "Download Link": "",
               "Payment Method": "",
+              "Discount Amount": "",
+              "Discount Percentage": "",
+              "Subtotal": "",
               "Item Name": `Payment Method: ${method}${isComplementary ? ' (Complementary)' : ''}`,
               "Quantity": "",
               "Item Price": "",
@@ -619,6 +689,9 @@ const OrderHistory = () => {
         "Time": "",
         "Download Link": "",
         "Payment Method": "",
+        "Discount Amount": "",
+        "Discount Percentage": "",
+        "Subtotal": "",
         "Item Name": "",
         "Quantity": "",
         "Item Price": "",
@@ -702,6 +775,10 @@ const OrderHistory = () => {
         doc.text(`SGST: ${order.sgst ? `${order.sgst}` : 'N/A'}`, 80, yPos);
         doc.text(`Service Tax: ${order.serviceTax ? `${order.serviceTax}` : 'N/A'}`, 150, yPos);
         yPos += 7;
+        doc.text(`Discount Amount: ${order.discountAmount || 0}`, 10, yPos);
+        doc.text(`Discount %: ${order.discountPercentage || 0}%`, 80, yPos);
+        doc.text(`Subtotal: ${order.subtotal || 0}`, 150, yPos);
+        yPos += 7;
         doc.text(`Download Link: ${order.downloadLink || 'N/A'}`, 10, yPos);
         yPos += 10;
 
@@ -748,6 +825,10 @@ const OrderHistory = () => {
         yPos += 7;
         doc.text(`Total Amount: ${order.totalAmount}`, 10, yPos);
         doc.text(`Revenue Amount: ${orderRevenue}`, 80, yPos);
+        yPos += 7;
+        doc.text(`Discount Amount: ${order.discountAmount || 0}`, 10, yPos);
+        doc.text(`Discount %: ${order.discountPercentage || 0}%`, 80, yPos);
+        doc.text(`Subtotal: ${order.subtotal || 0}`, 150, yPos);
         yPos += 7;
 
         if (order.cgst || order.sgst || order.serviceTax) {
@@ -911,6 +992,8 @@ const OrderHistory = () => {
     "Payment Method",
     "Amount",
     "Revenue",
+    "Discount",
+    "Subtotal",
     "Date",
     "Actions"
   ].filter(item => item !== null);
@@ -936,6 +1019,9 @@ const OrderHistory = () => {
     setShowEditModal(false);
     setSelectedEditOrder(null);
     setEditPaymentMethods([]);
+    setEditDiscountAmount(0);
+    setEditDiscountPercentage(0);
+    setEditDiscountType('amount');
   };
 
   const Loader = () => (
@@ -952,9 +1038,11 @@ const OrderHistory = () => {
     return <Loader />;
   }
 
-  const currentTotal = calculateTotal();
-  const orderTotal = selectedEditOrder?.totalAmount || 0;
-  const isTotalValid = Math.abs(currentTotal - orderTotal) <= 0.01;
+  const paymentTotal = calculatePaymentTotal();
+  const discountTotal = calculateDiscountTotal();
+  const orderTotal = calculateOrderTotal();
+  const originalSubtotal = selectedEditOrder?.subtotal || 0;
+  const isTotalValid = Math.abs(paymentTotal - orderTotal) <= 0.01;
 
   return (
     <>
@@ -1173,6 +1261,8 @@ const OrderHistory = () => {
                   formatPaymentMethod(obj),
                   `₹${obj.totalAmount}`,
                   `₹${orderRevenue}`,
+                  `₹${obj.discountAmount || 0} (${obj.discountPercentage || 0}%)`,
+                  `₹${obj.subtotal || 0}`,
                   formatDate(obj.createdAt),
                   <div className="flex gap-2">
                     <Button
@@ -1196,6 +1286,8 @@ const OrderHistory = () => {
                 formatPaymentMethod(obj),
                 `₹${obj.totalAmount}`,
                 `₹${orderRevenue}`,
+                `₹${obj.discountAmount || 0} (${obj.discountPercentage || 0}%)`,
+                `₹${obj.subtotal || 0}`,
                 formatDate(obj.createdAt),
                 <div className="flex gap-2">
                   <Button
@@ -1321,6 +1413,14 @@ const OrderHistory = () => {
                       ₹{orderRevenue}
                     </div>
                   </div>
+                  <div className="text-xs text-gray-600 mb-2">
+                    <span className="font-semibold">Discount:</span>{" "}
+                    ₹{order.discountAmount || 0} ({order.discountPercentage || 0}%)
+                  </div>
+                  <div className="text-xs text-gray-600 mb-2">
+                    <span className="font-semibold">Subtotal:</span>{" "}
+                    ₹{order.subtotal || 0}
+                  </div>
                   {institution === "bhuk2323" && (
                     <div className="text-xs text-gray-600 mb-2">
                       <span className="font-semibold">Phone:</span>{" "}
@@ -1396,10 +1496,71 @@ const OrderHistory = () => {
         {showEditModal && selectedEditOrder && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white p-6 rounded-lg max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
-              <h2 className="text-xl font-bold mb-4">Edit Payment Methods</h2>
-              <div className="mb-2">
-                <label className="block text-sm font-medium mb-1">Order Total: ₹{orderTotal.toFixed(2)}</label>
+              <h2 className="text-xl font-bold mb-4">Edit Order Details</h2>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1">Original Subtotal: ₹{originalSubtotal.toFixed(2)}</label>
               </div>
+              {/* Discount Section */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Discount Type:</label>
+                <div className="flex gap-2 mb-2">
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      value="amount"
+                      checked={editDiscountType === 'amount'}
+                      onChange={(e) => {
+                        setEditDiscountType(e.target.value);
+                        if (e.target.value === 'amount') {
+                          setEditDiscountPercentage(0);
+                        }
+                      }}
+                      className="mr-1"
+                    />
+                    Amount
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      value="percentage"
+                      checked={editDiscountType === 'percentage'}
+                      onChange={(e) => {
+                        setEditDiscountType(e.target.value);
+                        if (e.target.value === 'percentage') {
+                          setEditDiscountAmount(0);
+                        }
+                      }}
+                      className="mr-1"
+                    />
+                    Percentage
+                  </label>
+                </div>
+                {editDiscountType === 'amount' ? (
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max={originalSubtotal}
+                    value={editDiscountAmount}
+                    onChange={(e) => setEditDiscountAmount(Number(e.target.value) || 0)}
+                    className="border rounded p-2 w-full"
+                    placeholder="Discount Amount"
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    value={editDiscountPercentage}
+                    onChange={(e) => setEditDiscountPercentage(Number(e.target.value) || 0)}
+                    className="border rounded p-2 w-full"
+                    placeholder="Discount Percentage"
+                  />
+                )}
+                <p className="text-sm text-gray-600 mt-1">Discount Total: ₹{discountTotal.toFixed(2)}</p>
+              </div>
+              {/* Payment Methods Section */}
               <div className="mb-4 max-h-60 overflow-y-auto">
                 {editPaymentMethods.map((pm, index) => (
                   <div key={index} className="flex items-center gap-2 mb-3 p-3 border rounded">
@@ -1442,9 +1603,10 @@ const OrderHistory = () => {
                 )}
               </div>
               <div className="mb-4">
-                <label className="block text-sm font-medium mb-1">Current Total: ₹{currentTotal.toFixed(2)}</label>
+                <label className="block text-sm font-medium mb-1">New Order Total: ₹{orderTotal.toFixed(2)}</label>
+                <label className="block text-sm font-medium mb-1">Payment Total: ₹{paymentTotal.toFixed(2)}</label>
                 {!isTotalValid && (
-                  <p className="text-red-500 text-sm">Total does not match order amount!</p>
+                  <p className="text-red-500 text-sm">Payment total does not match order total!</p>
                 )}
               </div>
               <div className="flex justify-end gap-2">
@@ -1452,7 +1614,7 @@ const OrderHistory = () => {
                   Cancel
                 </Button>
                 <Button 
-                  onClick={handleUpdatePayment} 
+                  onClick={handleUpdateOrder} 
                   disabled={!isTotalValid || editPaymentMethods.length === 0}
                   color="blue"
                 >

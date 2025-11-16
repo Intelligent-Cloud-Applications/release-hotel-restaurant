@@ -284,6 +284,7 @@ const OrderPanel = ({
             setSelectedTable={setSelectedTable}
             fetchPendingOrders={fetchPendingOrders}
             KOTByTable={KOTByTable}
+            setKOTByTable={setKOTByTable}
             customerDetails={customerDetails}
             setCustomerDetails={setCustomerDetails}
             updateItemQuantity={updateItemQuantity}
