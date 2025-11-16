@@ -101,6 +101,13 @@ const ReprintKOT = ({
             <td>${item.itemName || item.name}</td>
             <td style="text-align: right; white-space: nowrap;">${item.quantity}</td>
           </tr>
+          ${item.instruction ? `
+          <tr>
+            <td colspan="2" style="font-size: 10pt; color: #666; font-style: italic; padding-left: 10px;">
+              → ${item.instruction}
+            </td>
+          </tr>
+          ` : ''}
         `
       )
       .join("");
@@ -615,6 +622,19 @@ const ReprintKOT = ({
             kot += `${chunk.padEnd(itemNameLength)}${" ".repeat(4)}\n`;
           }
         });
+      }
+      
+      // Add item instruction if present
+      if (item.instruction && item.instruction.trim()) {
+        const instructionText = `-> ${item.instruction}`;
+        if (instructionText.length <= lineWidth) {
+          kot += `${instructionText}\n`;
+        } else {
+          const instructionChunks = instructionText.match(new RegExp(`.{1,${lineWidth}}`, "g"));
+          instructionChunks.forEach((chunk) => {
+            kot += `${chunk}\n`;
+          });
+        }
       }
     });
 
