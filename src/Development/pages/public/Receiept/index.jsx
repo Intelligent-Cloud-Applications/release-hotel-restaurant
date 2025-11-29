@@ -101,8 +101,8 @@ const BillPage = () => {
     ? billData.mergedItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
     : 0;
 
-  const cgstRate = 2.5;
-  const sgstRate = 2.5;
+  const cgstRate = institutionData?.cgst !== undefined ? institutionData.cgst : 0;
+  const sgstRate = institutionData?.sgst !== undefined ? institutionData.sgst : 0;
   const serviceTaxRate = institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0;
 
   const calculatedCgst = (billSubtotal * cgstRate) / 100;

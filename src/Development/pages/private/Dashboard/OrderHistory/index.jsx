@@ -58,6 +58,72 @@ const OrderHistory = () => {
            paymentMethod.toLowerCase().includes('complimentary');
   };
 
+  // Helper function to check if an item category is non-taxable
+  const isNonTaxableCategory = (category) => {
+    if (!category) return false;
+    const categoryLower = category.toLowerCase();
+    return categoryLower.includes('no tax') || 
+           categoryLower.includes('notax') || 
+           categoryLower.includes('no tax beverage') ||
+           categoryLower.includes('exempt');
+  };
+
+  // Helper function to calculate taxes properly based on institution settings and item categories
+  const calculateTaxesForOrder = (subtotal, discountAmount = 0, orderItems = []) => {
+    const afterDiscountAmount = subtotal - discountAmount;
+    const cgstRate = institutionData?.cgst || 0;
+    const sgstRate = institutionData?.sgst || 0;
+    const serviceTaxRate = institutionData?.serviceTax || 0;
+    
+    // If no items provided, calculate tax on full amount (backward compatibility)
+    if (!orderItems || orderItems.length === 0) {
+      const cgst = afterDiscountAmount * (cgstRate / 100);
+      const sgst = afterDiscountAmount * (sgstRate / 100);
+      const serviceTax = afterDiscountAmount * (serviceTaxRate / 100);
+      
+      return {
+        cgst,
+        sgst,
+        serviceTax,
+        totalTax: cgst + sgst + serviceTax,
+        totalWithTax: Math.round(afterDiscountAmount + cgst + sgst + serviceTax)
+      };
+    }
+    
+    // Calculate total amount of taxable vs non-taxable items
+    let taxableAmount = 0;
+    let nonTaxableAmount = 0;
+    const totalItemAmount = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    
+    orderItems.forEach(item => {
+      const itemTotal = item.price * item.quantity;
+      if (isNonTaxableCategory(item.category)) {
+        nonTaxableAmount += itemTotal;
+      } else {
+        taxableAmount += itemTotal;
+      }
+    });
+    
+    // Apply discount proportionally to taxable items only
+    const discountRatio = afterDiscountAmount / totalItemAmount;
+    const adjustedTaxableAmount = taxableAmount * discountRatio;
+    
+    // Calculate taxes only on taxable amount
+    const cgst = adjustedTaxableAmount * (cgstRate / 100);
+    const sgst = adjustedTaxableAmount * (sgstRate / 100);
+    const serviceTax = adjustedTaxableAmount * (serviceTaxRate / 100);
+    
+    return {
+      cgst,
+      sgst,
+      serviceTax,
+      totalTax: cgst + sgst + serviceTax,
+      taxableAmount: adjustedTaxableAmount,
+      nonTaxableAmount: nonTaxableAmount * discountRatio,
+      totalWithTax: Math.round(afterDiscountAmount + cgst + sgst + serviceTax)
+    };
+  };
+
   // Helper function to get revenue amount excluding complementary payments
   const getRevenueFromOrder = (order) => {
     if (order.downloadLink) {
@@ -234,8 +300,11 @@ const OrderHistory = () => {
   const calculateOrderTotal = () => {
     const subtotal = selectedEditOrder?.subtotal || 0;
     const discount = calculateDiscountTotal();
-    // Assuming no taxes; add if needed: + taxes
-    return subtotal - discount;
+    const orderItems = selectedEditOrder?.items || [];
+    
+    // Use the updated tax calculation that considers non-taxable items
+    const taxCalc = calculateTaxesForOrder(subtotal, discount, orderItems);
+    return taxCalc.totalWithTax;
   };
 
   const handleUpdateOrder = async () => {
@@ -531,7 +600,7 @@ const OrderHistory = () => {
           "Payment Method": getPaymentMethodForExport(order),
           "Discount Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.discountAmount || 0}`,
           "Discount Percentage": `${order.discountPercentage || 0}%`,
-          "Subtotal": `${getCurrencySymbol(order.currency || 'INR')}${order.subtotal || 0}`,
+          // "Subtotal": `${getCurrencySymbol(order.currency || 'INR')}${order.subtotal || 0}`,
           "Item Name": "",
           "Quantity": "",
           "Item Price": "",
@@ -566,7 +635,7 @@ const OrderHistory = () => {
               "Payment Method": "",
               "Discount Amount": "",
               "Discount Percentage": "",
-              "Subtotal": "",
+              // "Subtotal": "",
               "Item Name": `Payment Method: ${method}${isComplementary ? ' (Complementary)' : ''}`,
               "Quantity": "",
               "Item Price": "",
@@ -595,7 +664,7 @@ const OrderHistory = () => {
           "Payment Method": getPaymentMethodForExport(order),
           "Discount Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.discountAmount || 0}`,
           "Discount Percentage": `${order.discountPercentage || 0}%`,
-          "Subtotal": `${getCurrencySymbol(order.currency || 'INR')}${order.subtotal || 0}`,
+          // "Subtotal": `${getCurrencySymbol(order.currency || 'INR')}${order.subtotal || 0}`,
           "Item Name": "",
           "Quantity": "",
           "Item Price": "",
@@ -625,7 +694,7 @@ const OrderHistory = () => {
               "Payment Method": "",
               "Discount Amount": "",
               "Discount Percentage": "",
-              "Subtotal": "",
+              // "Subtotal": "",
               "Item Name": item.name || "N/A",
               "Quantity": item.quantity || 0,
               "Item Price": `${getCurrencySymbol(order.currency || 'INR')}${item.price || 0}`,
@@ -661,7 +730,7 @@ const OrderHistory = () => {
               "Payment Method": "",
               "Discount Amount": "",
               "Discount Percentage": "",
-              "Subtotal": "",
+              // "Subtotal": "",
               "Item Name": `Payment Method: ${method}${isComplementary ? ' (Complementary)' : ''}`,
               "Quantity": "",
               "Item Price": "",
@@ -691,7 +760,7 @@ const OrderHistory = () => {
         "Payment Method": "",
         "Discount Amount": "",
         "Discount Percentage": "",
-        "Subtotal": "",
+        // "Subtotal": "",
         "Item Name": "",
         "Quantity": "",
         "Item Price": "",
@@ -833,11 +902,13 @@ const OrderHistory = () => {
 
         if (order.cgst || order.sgst || order.serviceTax) {
           if (order.cgst) {
-            doc.text(`CGST: ${order.cgst}% (${(order.totalAmount * (order.cgst / 100)).toFixed(2)})`, 10, yPos);
+            const afterDiscountAmount = (order.subtotal || 0) - (order.discountAmount || 0);
+            doc.text(`CGST: ${order.cgst}% (${(afterDiscountAmount * (order.cgst / 100)).toFixed(2)})`, 10, yPos);
             yPos += 7;
           }
           if (order.sgst) {
-            doc.text(`SGST: ${order.sgst}% (${(order.totalAmount * (order.sgst / 100)).toFixed(2)})`, 10, yPos);
+            const afterDiscountAmount = (order.subtotal || 0) - (order.discountAmount || 0);
+            doc.text(`SGST: ${order.sgst}% (${(afterDiscountAmount * (order.sgst / 100)).toFixed(2)})`, 10, yPos);
             yPos += 7;
           }
           if (order.serviceTax) {
@@ -993,7 +1064,7 @@ const OrderHistory = () => {
     "Amount",
     "Revenue",
     "Discount",
-    "Subtotal",
+    // "Subtotal",
     "Date",
     "Actions"
   ].filter(item => item !== null);
@@ -1262,7 +1333,7 @@ const OrderHistory = () => {
                   `₹${obj.totalAmount}`,
                   `₹${orderRevenue}`,
                   `₹${obj.discountAmount || 0} (${obj.discountPercentage || 0}%)`,
-                  `₹${obj.subtotal || 0}`,
+                  // `₹${obj.subtotal || 0}`,
                   formatDate(obj.createdAt),
                   <div className="flex gap-2">
                     <Button
@@ -1287,7 +1358,7 @@ const OrderHistory = () => {
                 `₹${obj.totalAmount}`,
                 `₹${orderRevenue}`,
                 `₹${obj.discountAmount || 0} (${obj.discountPercentage || 0}%)`,
-                `₹${obj.subtotal || 0}`,
+                // `₹${obj.subtotal || 0}`,
                 formatDate(obj.createdAt),
                 <div className="flex gap-2">
                   <Button
@@ -1417,10 +1488,10 @@ const OrderHistory = () => {
                     <span className="font-semibold">Discount:</span>{" "}
                     ₹{order.discountAmount || 0} ({order.discountPercentage || 0}%)
                   </div>
-                  <div className="text-xs text-gray-600 mb-2">
+                  {/* <div className="text-xs text-gray-600 mb-2">
                     <span className="font-semibold">Subtotal:</span>{" "}
                     ₹{order.subtotal || 0}
-                  </div>
+                  </div> */}
                   {institution === "bhuk2323" && (
                     <div className="text-xs text-gray-600 mb-2">
                       <span className="font-semibold">Phone:</span>{" "}
@@ -1560,6 +1631,31 @@ const OrderHistory = () => {
                 )}
                 <p className="text-sm text-gray-600 mt-1">Discount Total: ₹{discountTotal.toFixed(2)}</p>
               </div>
+              {/* Tax Breakdown */}
+              {selectedEditOrder && (
+                <div className="mb-4 p-3 bg-gray-50 rounded">
+                  <label className="block text-sm font-medium mb-2">Tax Breakdown:</label>
+                  {(() => {
+                    const orderItems = selectedEditOrder?.items || [];
+                    const taxCalc = calculateTaxesForOrder(selectedEditOrder.subtotal || 0, discountTotal, orderItems);
+                    return (
+                      <div className="text-sm text-gray-600 space-y-1">
+                        <div>Subtotal after discount: ₹{(selectedEditOrder.subtotal - discountTotal).toFixed(2)}</div>
+                        {taxCalc.taxableAmount !== undefined && (
+                          <>
+                            <div>Taxable amount: ₹{taxCalc.taxableAmount.toFixed(2)}</div>
+                            {taxCalc.nonTaxableAmount > 0 && <div>Non-taxable amount: ₹{taxCalc.nonTaxableAmount.toFixed(2)}</div>}
+                          </>
+                        )}
+                        {taxCalc.cgst > 0 && <div>CGST ({institutionData?.cgst || 0}%): ₹{taxCalc.cgst.toFixed(2)}</div>}
+                        {taxCalc.sgst > 0 && <div>SGST ({institutionData?.sgst || 0}%): ₹{taxCalc.sgst.toFixed(2)}</div>}
+                        {taxCalc.serviceTax > 0 && <div>Service Tax ({institutionData?.serviceTax || 0}%): ₹{taxCalc.serviceTax.toFixed(2)}</div>}
+                        <div className="font-medium pt-1 border-t">Total Tax: ₹{taxCalc.totalTax.toFixed(2)}</div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
               {/* Payment Methods Section */}
               <div className="mb-4 max-h-60 overflow-y-auto">
                 {editPaymentMethods.map((pm, index) => (
