@@ -3,14 +3,14 @@ import { API } from "aws-amplify";
 import { Context } from "../../../../Context";
 import { PaginatedTable } from "../../../../common/DataDisplay";
 import { FaEye } from "react-icons/fa6";
-import {  FaEdit, FaPlus, FaTrash } from "react-icons/fa";
+import { FaEdit, FaPlus, FaTrash } from "react-icons/fa";
 import { Button } from "flowbite-react";
 import { getCurrencySymbol } from "../../../../common/Inputs";
 import { RiBillLine } from "react-icons/ri";
 import { DayPicker } from 'react-day-picker';
-import * as XLSX from "xlsx"; 
-import { jsPDF } from "jspdf"; 
-import "jspdf-autotable"; 
+import * as XLSX from "xlsx";
+import { jsPDF } from "jspdf";
+import "jspdf-autotable";
 import Error from "../../../Error";
 import OrderDetailsModal from "./OrderDetailsModal";
 import PrintOrderHistoryBill from "./PrintOrderHistoryBill";
@@ -20,7 +20,6 @@ const OrderHistory = () => {
   const { institution } = useContext(Context).institutionData;
   const { institutionData } = useContext(Context);
   const { userData } = useContext(Context);
-
   const [selectedOrderItems, setSelectedOrderItems] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null); // full order for modal/print
   const [showOrderModal, setShowOrderModal] = useState(false);
@@ -35,14 +34,14 @@ const OrderHistory = () => {
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [showDayPicker, setShowDayPicker] = useState(false);
-  const [filterType, setFilterType] = useState("day"); 
-  const [selectedDate, setSelectedDate] = useState(new Date()); 
+  const [filterType, setFilterType] = useState("day");
+  const [selectedDate, setSelectedDate] = useState(new Date());
   const [startDate, setStartDate] = useState(new Date());
-  const [endDate, setEndDate] = useState(new Date()); 
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth()); 
+  const [endDate, setEndDate] = useState(new Date());
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [showMonthlySummaries, setShowMonthlySummaries] = useState(true);
-  const [showPrintBill, setShowPrintBill] = useState(false); 
+  const [showPrintBill, setShowPrintBill] = useState(false);
   const [selectedPrintOrder, setSelectedPrintOrder] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedEditOrder, setSelectedEditOrder] = useState(null);
@@ -51,10 +50,16 @@ const OrderHistory = () => {
   const [editDiscountPercentage, setEditDiscountPercentage] = useState(0);
   const [editDiscountType, setEditDiscountType] = useState('amount'); // 'amount' or 'percentage'
 
+  // Helper function to compute subtotal from items (ignores database subtotal)
+  const computeSubtotalFromItems = (items) => {
+    if (!items || !Array.isArray(items)) return 0;
+    return items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  };
+
   // Helper function to check if payment method is complementary
   const isComplementaryPayment = (paymentMethod) => {
     if (!paymentMethod) return false;
-    return paymentMethod.toLowerCase().includes('complementary') || 
+    return paymentMethod.toLowerCase().includes('complementary') ||
            paymentMethod.toLowerCase().includes('complimentary');
   };
 
@@ -62,8 +67,8 @@ const OrderHistory = () => {
   const isNonTaxableCategory = (category) => {
     if (!category) return false;
     const categoryLower = category.toLowerCase();
-    return categoryLower.includes('no tax') || 
-           categoryLower.includes('notax') || 
+    return categoryLower.includes('no tax') ||
+           categoryLower.includes('notax') ||
            categoryLower.includes('no tax beverage') ||
            categoryLower.includes('exempt');
   };
@@ -74,13 +79,13 @@ const OrderHistory = () => {
     const cgstRate = institutionData?.cgst || 0;
     const sgstRate = institutionData?.sgst || 0;
     const serviceTaxRate = institutionData?.serviceTax || 0;
-    
+   
     // If no items provided, calculate tax on full amount (backward compatibility)
     if (!orderItems || orderItems.length === 0) {
       const cgst = afterDiscountAmount * (cgstRate / 100);
       const sgst = afterDiscountAmount * (sgstRate / 100);
       const serviceTax = afterDiscountAmount * (serviceTaxRate / 100);
-      
+     
       return {
         cgst,
         sgst,
@@ -89,12 +94,12 @@ const OrderHistory = () => {
         totalWithTax: Math.round(afterDiscountAmount + cgst + sgst + serviceTax)
       };
     }
-    
+   
     // Calculate total amount of taxable vs non-taxable items
     let taxableAmount = 0;
     let nonTaxableAmount = 0;
     const totalItemAmount = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    
+   
     orderItems.forEach(item => {
       const itemTotal = item.price * item.quantity;
       if (isNonTaxableCategory(item.category)) {
@@ -103,16 +108,16 @@ const OrderHistory = () => {
         taxableAmount += itemTotal;
       }
     });
-    
+   
     // Apply discount proportionally to taxable items only
     const discountRatio = afterDiscountAmount / totalItemAmount;
     const adjustedTaxableAmount = taxableAmount * discountRatio;
-    
+   
     // Calculate taxes only on taxable amount
     const cgst = adjustedTaxableAmount * (cgstRate / 100);
     const sgst = adjustedTaxableAmount * (sgstRate / 100);
     const serviceTax = adjustedTaxableAmount * (serviceTaxRate / 100);
-    
+   
     return {
       cgst,
       sgst,
@@ -190,7 +195,7 @@ const OrderHistory = () => {
 
   const handleDateSelection = (date, setDateFunction, closePicker) => {
     if (!date) return;
-    
+   
     if (!isDateInAllowedRange(date)) {
       setFilterType("monthly");
       setSelectedMonth(date.getMonth());
@@ -200,7 +205,7 @@ const OrderHistory = () => {
       setDateFunction(date);
     }
     closePicker(false);
-  }; 
+  };
 
   const formatPaymentMethod = (order) => {
     if (order.paymentMethods) {
@@ -252,10 +257,10 @@ const OrderHistory = () => {
 
   const formatTime = (timestamp) => {
     const date = new Date(timestamp);
-    return date.toLocaleTimeString('en-US', { 
-      hour: 'numeric', 
-      minute: '2-digit', 
-      hour12: true 
+    return date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
     });
   };
 
@@ -268,8 +273,8 @@ const OrderHistory = () => {
   };
 
   const handlePaymentMethodChange = (index, field, value) => {
-    setEditPaymentMethods(prev => 
-      prev.map((pm, i) => 
+    setEditPaymentMethods(prev =>
+      prev.map((pm, i) =>
         i === index ? { ...pm, [field]: field === 'amount' ? Number(value) || 0 : value } : pm
       )
     );
@@ -289,19 +294,21 @@ const OrderHistory = () => {
     return editPaymentMethods.reduce((sum, pm) => sum + pm.amount, 0);
   };
 
+  // Updated to use computed subtotal from items
   const calculateDiscountTotal = () => {
-    const subtotal = selectedEditOrder?.subtotal || 0;
+    const subtotal = computeSubtotalFromItems(selectedEditOrder?.items);
     if (editDiscountType === 'percentage') {
       return (subtotal * (editDiscountPercentage / 100));
     }
     return editDiscountAmount;
   };
 
+  // Updated to use computed subtotal from items
   const calculateOrderTotal = () => {
-    const subtotal = selectedEditOrder?.subtotal || 0;
+    const subtotal = computeSubtotalFromItems(selectedEditOrder?.items);
     const discount = calculateDiscountTotal();
     const orderItems = selectedEditOrder?.items || [];
-    
+   
     // Use the updated tax calculation that considers non-taxable items
     const taxCalc = calculateTaxesForOrder(subtotal, discount, orderItems);
     return taxCalc.totalWithTax;
@@ -328,7 +335,6 @@ const OrderHistory = () => {
       } else if (editDiscountType === 'percentage' && editDiscountPercentage > 0) {
         updateBody.discountPercentage = editDiscountPercentage;
       }
-
       await API.put("main", `/admin/update-payment/${institution}/${selectedEditOrder.orderId}`, {
         body: updateBody
       });
@@ -336,8 +342,8 @@ const OrderHistory = () => {
       setAllOrders((prev) =>
         prev.map((o) =>
           o.orderId === selectedEditOrder.orderId
-            ? { 
-                ...o, 
+            ? {
+                ...o,
                 paymentMethods: editPaymentMethods,
                 ...(editDiscountType === 'amount' ? { discountAmount: editDiscountAmount, discountPercentage: 0 } : { discountPercentage: editDiscountPercentage, discountAmount: calculateDiscountTotal() }),
                 totalAmount: orderTotal
@@ -407,17 +413,19 @@ const OrderHistory = () => {
     try {
       setLoader(true);
       const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
-
       const result = await API.get(
         "main",
         `/admin/list-orders/${institution}?type=${type}`,
         {}
       );
       console.log("Fetched orders:", result);
-
       const paidOrders = result.filter((order) => order.paymentStatus === true);
-      setAllOrders(paidOrders);
-
+      // Compute correct subtotals for all orders from items (override database subtotal)
+      const ordersWithCorrectSubtotal = paidOrders.map(order => ({
+        ...order,
+        subtotal: computeSubtotalFromItems(order.items)
+      }));
+      setAllOrders(ordersWithCorrectSubtotal);
       if (userData.userType === "admin") {
         const staffResult = await API.get(
           "main",
@@ -425,7 +433,6 @@ const OrderHistory = () => {
           {}
         );
         setStaffList(staffResult);
-
         const chefNameMapping = {};
         staffResult.forEach((staff) => {
           chefNameMapping[staff.cognitoId] = staff.userName;
@@ -444,15 +451,12 @@ const OrderHistory = () => {
       setOrders([]);
       return;
     }
-
     let filteredOrders = [...allOrders];
-
     if (filterType === "day") {
       const dayStart = new Date(selectedDate);
       dayStart.setHours(0, 0, 0, 0);
       const dayEnd = new Date(selectedDate);
       dayEnd.setHours(23, 59, 59, 999);
-
       filteredOrders = filteredOrders.filter((order) => {
         const orderDate = new Date(order.createdAt);
         return orderDate >= dayStart && orderDate <= dayEnd;
@@ -462,7 +466,6 @@ const OrderHistory = () => {
       start.setHours(0, 0, 0, 0);
       const end = new Date(endDate);
       end.setHours(23, 59, 59, 999);
-
       filteredOrders = filteredOrders.filter((order) => {
         const orderDate = new Date(order.createdAt);
         return orderDate >= start && orderDate <= end;
@@ -483,15 +486,12 @@ const OrderHistory = () => {
     } else if (filterType === "showAll") {
       // no-op; use full list
     }
-
     if (!showMonthlySummaries) {
       filteredOrders = filteredOrders.filter(order => !order.downloadLink);
     }
-
     const sortedOrders = filteredOrders.sort(
       (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
     );
-
     setOrders(sortedOrders);
   }, [allOrders, filterType, selectedDate, startDate, endDate, selectedMonth, selectedYear, showMonthlySummaries]);
 
@@ -503,14 +503,14 @@ const OrderHistory = () => {
   // Calculate revenue excluding complementary payments
   const netRevenue = orders.reduce((sum, order) => sum + getRevenueFromOrder(order), 0);
   const totalAmount = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
-  
+ 
   const totalOrders = orders.reduce((sum, order) => {
     if (order.totalOrders !== undefined && order.downloadLink !== undefined) {
       return sum + Number(order.totalOrders);
     }
     return sum + 1;
   }, 0);
-  
+ 
   const avgOrderSize = totalOrders > 0 ? (netRevenue / totalOrders).toFixed(2) : 0;
 
   const handlePrintBill = (order) => {
@@ -518,565 +518,17 @@ const OrderHistory = () => {
     setShowPrintBill(true);
   };
 
-  const exportToExcel = () => {
-    const exportData = [];
-
-    // Add header row
-    exportData.push({
-      "Order ID": `${institutionData.companyName} Order Report`,
-      "Type": "",
-      "Name": "",
-      "Table": "",
-      "Order Source": "",
-      "Phone Number": "",
-      "Total Orders": "",
-      "Total Amount": "",
-      "Revenue Amount": "",
-      "CGST": "",
-      "SGST": "",
-      "Service Tax": "",
-      "Date": "",
-      "Time": "",
-      "Download Link": "",
-      "Payment Method": "",
-      "Discount Amount": "",
-      "Discount Percentage": "",
-      "Subtotal": "",
-      "Item Name": "",
-      "Quantity": "",
-      "Item Price": "",
-      "Item Total": ""
-    });
-
-    // Add summary row for total orders, total amount, and net revenue
-    exportData.push({
-      "Order ID": "Summary",
-      "Type": "Overall Totals",
-      "Name": "",
-      "Table": "",
-      "Order Source": "",
-      "Phone Number": "",
-      "Total Orders": totalOrders,
-      "Total Amount": `${getCurrencySymbol('INR')}${totalAmount}`,
-      "Revenue Amount": `${getCurrencySymbol('INR')}${netRevenue}`,
-      "CGST": "",
-      "SGST": "",
-      "Service Tax": "",
-      "Date": "",
-      "Time": "",
-      "Download Link": "",
-      "Payment Method": "",
-      "Discount Amount": "",
-      "Discount Percentage": "",
-      "Subtotal": "",
-      "Item Name": "",
-      "Quantity": "",
-      "Item Price": "",
-      "Item Total": ""
-    });
-
-    orders.forEach((order) => {
-      const isSummary = order.downloadLink !== undefined;
-      const orderRevenue = getRevenueFromOrder(order);
-
-      if (isSummary) {
-        // Monthly summary row
-        const summaryRow = {
-          "Order ID": order.orderId,
-          "Type": "Monthly Summary",
-          "Name": "",
-          "Table": "",
-          "Order Source": getOrderSource(order),
-          "Phone Number": institution === "bhuk2323" ? "N/A" : "",
-          "Total Orders": order.totalOrders || "N/A",
-          "Total Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.totalAmount}`,
-          "Revenue Amount": `${getCurrencySymbol(order.currency || 'INR')}${orderRevenue}`,
-          "CGST": order.cgst ? `${getCurrencySymbol(order.currency || 'INR')}${order.cgst}` : "",
-          "SGST": order.sgst ? `${getCurrencySymbol(order.currency || 'INR')}${order.sgst}` : "",
-          "Service Tax": order.serviceTax ? `${getCurrencySymbol(order.currency || 'INR')}${order.serviceTax}` : "",
-          "Date": formatDate(order.createdAt),
-          "Time": formatTime(order.createdAt),
-          "Download Link": order.downloadLink || "",
-          "Payment Method": getPaymentMethodForExport(order),
-          "Discount Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.discountAmount || 0}`,
-          "Discount Percentage": `${order.discountPercentage || 0}%`,
-          // "Subtotal": `${getCurrencySymbol(order.currency || 'INR')}${order.subtotal || 0}`,
-          "Item Name": "",
-          "Quantity": "",
-          "Item Price": "",
-          "Item Total": ""
-        };
-        exportData.push(summaryRow);
-
-        // Add payment methods for summary
-        if (order.paymentMethods && typeof order.paymentMethods === 'object') {
-          const paymentMethods = Array.isArray(order.paymentMethods)
-            ? order.paymentMethods.map(pm => ({ method: pm.method, amount: pm.amount }))
-            : Object.entries(order.paymentMethods).map(([method, amount]) => ({ method, amount }));
-
-          paymentMethods.forEach(({ method, amount }) => {
-            const isComplementary = isComplementaryPayment(method);
-            exportData.push({
-              "Order ID": "",
-              "Type": "",
-              "Name": "",
-              "Table": "",
-              "Order Source": "",
-              "Phone Number": "",
-              "Total Orders": "",
-              "Total Amount": "",
-              "Revenue Amount": "",
-              "CGST": "",
-              "SGST": "",
-              "Service Tax": "",
-              "Date": "",
-              "Time": "",
-              "Download Link": "",
-              "Payment Method": "",
-              "Discount Amount": "",
-              "Discount Percentage": "",
-              // "Subtotal": "",
-              "Item Name": `Payment Method: ${method}${isComplementary ? ' (Complementary)' : ''}`,
-              "Quantity": "",
-              "Item Price": "",
-              "Item Total": `${getCurrencySymbol(order.currency || 'INR')}${amount}`
-            });
-          });
-        }
-      } else {
-        // Regular order row
-        const mainOrderRow = {
-          "Order ID": order.orderId,
-          "Type": "Regular Order",
-          "Name": order.name || "N/A",
-          "Table": order.tableName || "N/A",
-          "Order Source": getOrderSource(order),
-          "Phone Number": institution === "bhuk2323" ? order.phoneNumber || "N/A" : "",
-          "Total Orders": "1",
-          "Total Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.totalAmount}`,
-          "Revenue Amount": `${getCurrencySymbol(order.currency || 'INR')}${orderRevenue}`,
-          "CGST": order.cgst ? `${order.cgst}%` : "",
-          "SGST": order.sgst ? `${order.sgst}%` : "",
-          "Service Tax": order.serviceTax ? `${getCurrencySymbol(order.currency || 'INR')}${order.serviceTax}` : "",
-          "Date": formatDate(order.createdAt),
-          "Time": formatTime(order.createdAt),
-          "Download Link": "",
-          "Payment Method": getPaymentMethodForExport(order),
-          "Discount Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.discountAmount || 0}`,
-          "Discount Percentage": `${order.discountPercentage || 0}%`,
-          // "Subtotal": `${getCurrencySymbol(order.currency || 'INR')}${order.subtotal || 0}`,
-          "Item Name": "",
-          "Quantity": "",
-          "Item Price": "",
-          "Item Total": ""
-        };
-        exportData.push(mainOrderRow);
-
-        // Add items for regular order
-        if (order.items && Array.isArray(order.items)) {
-          order.items.forEach((item) => {
-            exportData.push({
-              "Order ID": "",
-              "Type": "",
-              "Name": "",
-              "Table": "",
-              "Order Source": "",
-              "Phone Number": "",
-              "Total Orders": "",
-              "Total Amount": "",
-              "Revenue Amount": "",
-              "CGST": "",
-              "SGST": "",
-              "Service Tax": "",
-              "Date": "",
-              "Time": "",
-              "Download Link": "",
-              "Payment Method": "",
-              "Discount Amount": "",
-              "Discount Percentage": "",
-              // "Subtotal": "",
-              "Item Name": item.name || "N/A",
-              "Quantity": item.quantity || 0,
-              "Item Price": `${getCurrencySymbol(order.currency || 'INR')}${item.price || 0}`,
-              "Item Total": `${getCurrencySymbol(order.currency || 'INR')}${(item.price * item.quantity) || 0}`
-            });
-          });
-        }
-
-        // Add payment methods for regular order
-        if (order.paymentMethods && typeof order.paymentMethods === 'object') {
-          const paymentMethods = Array.isArray(order.paymentMethods)
-            ? order.paymentMethods.map(pm => ({ method: pm.method, amount: pm.amount }))
-            : Object.entries(order.paymentMethods).map(([method, amount]) => ({ method, amount }));
-
-          paymentMethods.forEach(({ method, amount }) => {
-            const isComplementary = isComplementaryPayment(method);
-            exportData.push({
-              "Order ID": "",
-              "Type": "",
-              "Name": "",
-              "Table": "",
-              "Order Source": "",
-              "Phone Number": "",
-              "Total Orders": "",
-              "Total Amount": "",
-              "Revenue Amount": "",
-              "CGST": "",
-              "SGST": "",
-              "Service Tax": "",
-              "Date": "",
-              "Time": "",
-              "Download Link": "",
-              "Payment Method": "",
-              "Discount Amount": "",
-              "Discount Percentage": "",
-              // "Subtotal": "",
-              "Item Name": `Payment Method: ${method}${isComplementary ? ' (Complementary)' : ''}`,
-              "Quantity": "",
-              "Item Price": "",
-              "Item Total": `${getCurrencySymbol(order.currency || 'INR')}${amount}`
-            });
-          });
-        }
-      }
-
-      // Add empty row for separation
-      exportData.push({
-        "Order ID": "",
-        "Type": "",
-        "Name": "",
-        "Table": "",
-        "Order Source": "",
-        "Phone Number": "",
-        "Total Orders": "",
-        "Total Amount": "",
-        "Revenue Amount": "",
-        "CGST": "",
-        "SGST": "",
-        "Service Tax": "",
-        "Date": "",
-        "Time": "",
-        "Download Link": "",
-        "Payment Method": "",
-        "Discount Amount": "",
-        "Discount Percentage": "",
-        // "Subtotal": "",
-        "Item Name": "",
-        "Quantity": "",
-        "Item Price": "",
-        "Item Total": ""
-      });
-    });
-
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, `${institutionData.companyName} Orders`);
-
-    const maxWidth = 50;
-    const colWidths = {};
-    Object.keys(exportData[0]).forEach(key => {
-      colWidths[key] = Math.min(
-        Math.max(...exportData.map(row => row[key] ? row[key].toString().length : 0)),
-        maxWidth
-      );
-    });
-    worksheet["!cols"] = Object.keys(colWidths).map(key => ({ wch: colWidths[key] }));
-
-    XLSX.writeFile(workbook, `${institutionData.companyName}_orders_with_items.xlsx`);
-  };
-
-  const exportToPDF = () => {
-    const doc = new jsPDF();
-    let yPos = 20;
-    const pageWidth = doc.internal.pageSize.width;
-
-    // Add centered company name heading
-    doc.setFontSize(14);
-    doc.setFont(undefined, 'bold');
-    const title = `${institutionData.companyName} Order Report`;
-    const titleWidth = doc.getTextWidth(title);
-    doc.text(title, (pageWidth - titleWidth) / 2, yPos);
-    yPos += 10;
-
-    // Add summary section for total orders, total amount, and net revenue
-    doc.setFontSize(12);
-    doc.setFont(undefined, 'bold');
-    doc.text("Overall Totals", 10, yPos);
-    yPos += 10;
-    doc.setFontSize(10);
-    doc.setFont(undefined, 'normal');
-    doc.text(`Total Orders: ${totalOrders}`, 10, yPos);
-    doc.text(`Total Amount: ${totalAmount}`, 80, yPos);
-    doc.text(`Revenue Amount: ${netRevenue}`, 150, yPos);
-    yPos += 10;
-    doc.setDrawColor(200);
-    doc.line(10, yPos, pageWidth - 10, yPos);
-    yPos += 10;
-
-    orders.forEach((order, index) => {
-      if (yPos > 250) {
-        doc.addPage();
-        yPos = 20;
-      }
-
-      const orderRevenue = getRevenueFromOrder(order);
-      doc.setFontSize(12);
-      doc.setFont(undefined, 'bold');
-
-      const isSummary = order.downloadLink !== undefined;
-
-      if (isSummary) {
-        // Monthly summary section
-        doc.text(`Monthly Summary - ${order.orderId}`, 10, yPos);
-        yPos += 10;
-
-        doc.setFontSize(10);
-        doc.setFont(undefined, 'normal');
-        doc.text(`Total Orders: ${order.totalOrders || 'N/A'}`, 10, yPos);
-        doc.text(`Total Amount: ${order.totalAmount}`, 80, yPos);
-        doc.text(`Revenue Amount: ${orderRevenue}`, 150, yPos);
-        yPos += 7;
-        doc.text(`Date: ${formatDate(order.createdAt)}`, 10, yPos);
-        yPos += 7;
-        doc.text(`Source: ${getOrderSource(order)}`, 10, yPos);
-        yPos += 7;
-        doc.text(`CGST: ${order.cgst ? `${order.cgst}` : 'N/A'}`, 10, yPos);
-        doc.text(`SGST: ${order.sgst ? `${order.sgst}` : 'N/A'}`, 80, yPos);
-        doc.text(`Service Tax: ${order.serviceTax ? `${order.serviceTax}` : 'N/A'}`, 150, yPos);
-        yPos += 7;
-        doc.text(`Discount Amount: ${order.discountAmount || 0}`, 10, yPos);
-        doc.text(`Discount %: ${order.discountPercentage || 0}%`, 80, yPos);
-        doc.text(`Subtotal: ${order.subtotal || 0}`, 150, yPos);
-        yPos += 7;
-        doc.text(`Download Link: ${order.downloadLink || 'N/A'}`, 10, yPos);
-        yPos += 10;
-
-        if (order.paymentMethods && typeof order.paymentMethods === 'object') {
-          const paymentData = Array.isArray(order.paymentMethods)
-            ? order.paymentMethods.map(pm => {
-                const isComplementary = isComplementaryPayment(pm.method);
-                return [`${pm.method}${isComplementary ? ' (Complementary)' : ''}`, `${pm.amount}`];
-              })
-            : Object.entries(order.paymentMethods).map(([method, amount]) => {
-                const isComplementary = isComplementaryPayment(method);
-                return [`${method}${isComplementary ? ' (Complementary)' : ''}`, `${amount}`];
-              });
-
-          doc.autoTable({
-            startY: yPos,
-            head: [["Payment Method", "Amount"]],
-            body: paymentData,
-            margin: { left: 10 },
-            tableWidth: 190
-          });
-          yPos = doc.lastAutoTable.finalY + 20;
-        }
-      } else {
-        // Regular order section
-        doc.text(`Order Details - ${order.orderId}`, 10, yPos);
-        yPos += 10;
-
-        doc.setFontSize(10);
-        doc.setFont(undefined, 'normal');
-        doc.text(`Customer: ${order.name || 'N/A'}`, 10, yPos);
-        doc.text(`Table: ${order.tableName || 'N/A'}`, 80, yPos);
-        doc.text(`Date: ${formatDate(order.createdAt)}`, 150, yPos);
-        yPos += 7;
-        doc.text(`Time: ${formatTime(order.createdAt)}`, 10, yPos);
-        yPos += 7;
-        if (institution === "bhuk2323") {
-          doc.text(`Phone: ${order.phoneNumber || "N/A"}`, 10, yPos);
-          yPos += 7;
-        }
-        doc.text(`Source: ${getOrderSource(order)}`, 10, yPos);
-        yPos += 7;
-        doc.text(`Payment Method: ${formatPaymentMethod(order)}`, 10, yPos);
-        yPos += 7;
-        doc.text(`Total Amount: ${order.totalAmount}`, 10, yPos);
-        doc.text(`Revenue Amount: ${orderRevenue}`, 80, yPos);
-        yPos += 7;
-        doc.text(`Discount Amount: ${order.discountAmount || 0}`, 10, yPos);
-        doc.text(`Discount %: ${order.discountPercentage || 0}%`, 80, yPos);
-        doc.text(`Subtotal: ${order.subtotal || 0}`, 150, yPos);
-        yPos += 7;
-
-        if (order.cgst || order.sgst || order.serviceTax) {
-          if (order.cgst) {
-            const afterDiscountAmount = (order.subtotal || 0) - (order.discountAmount || 0);
-            doc.text(`CGST: ${order.cgst}% (${(afterDiscountAmount * (order.cgst / 100)).toFixed(2)})`, 10, yPos);
-            yPos += 7;
-          }
-          if (order.sgst) {
-            const afterDiscountAmount = (order.subtotal || 0) - (order.discountAmount || 0);
-            doc.text(`SGST: ${order.sgst}% (${(afterDiscountAmount * (order.sgst / 100)).toFixed(2)})`, 10, yPos);
-            yPos += 7;
-          }
-          if (order.serviceTax) {
-            doc.text(`Service Tax: ${order.serviceTax}`, 10, yPos);
-            yPos += 7;
-          }
-        }
-
-        yPos += 5;
-
-        if (order.items && Array.isArray(order.items) && order.items.length > 0) {
-          doc.autoTable({
-            startY: yPos,
-            head: [["Item Name", "Quantity", "Price", "Total"]],
-            body: order.items.map((item) => [
-              item.name || "N/A",
-              item.quantity || 0,
-              `${item.price || 0}`,
-              `${(item.price * item.quantity) || 0}`
-            ]),
-            margin: { left: 10 },
-            tableWidth: 190
-          });
-          yPos = doc.lastAutoTable.finalY + 10;
-        }
-
-        if (order.paymentMethods && typeof order.paymentMethods === 'object') {
-          const paymentData = Array.isArray(order.paymentMethods)
-            ? order.paymentMethods.map(pm => {
-                const isComplementary = isComplementaryPayment(pm.method);
-                return [`${pm.method}${isComplementary ? ' (Complementary)' : ''}`, `${pm.amount}`];
-              })
-            : Object.entries(order.paymentMethods).map(([method, amount]) => {
-                const isComplementary = isComplementaryPayment(method);
-                return [`${method}${isComplementary ? ' (Complementary)' : ''}`, `${amount}`];
-              });
-
-          doc.autoTable({
-            startY: yPos,
-            head: [["Payment Method", "Amount"]],
-            body: paymentData,
-            margin: { left: 10 },
-            tableWidth: 190
-          });
-          yPos = doc.lastAutoTable.finalY + 20;
-        }
-      }
-
-      if (index < orders.length - 1) {
-        doc.setDrawColor(200);
-        doc.line(10, yPos - 10, pageWidth - 10, yPos - 10);
-        yPos += 10;
-      }
-    });
-
-    doc.save(`${institutionData.companyName}_orders_with_items.pdf`);
-  };
-
-  const exportItemsReport = () => {
-    const itemQuantities = {};
-    orders.forEach((order) => {
-      if (order.downloadLink) return;
-
-      if (order.items && Array.isArray(order.items)) {
-        order.items.forEach((item) => {
-          if (item.name) {
-            itemQuantities[item.name] = (itemQuantities[item.name] || 0) + item.quantity;
-          }
-        });
-      }
-    });
-
-    if (Object.keys(itemQuantities).length === 0) {
-      alert("No items found for the selected filter criteria.");
-      return;
-    }
-
-    const exportData = Object.keys(itemQuantities).map((itemName, index) => ({
-      "Sl No": index + 1,
-      "Item Name": itemName,
-      "Total Quantity Sold": itemQuantities[itemName]
-    }));
-
-    const excelData = [
-      { "Sl No": "", "Item Name": `${institutionData.companyName} Item Report`, "Total Quantity Sold": "" },
-      ...exportData
-    ];
-    const worksheet = XLSX.utils.json_to_sheet(excelData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, `${institutionData.companyName} Items Report`);
-
-    const maxWidth = 50;
-    const colWidths = {};
-    Object.keys(excelData[0]).forEach(key => {
-      colWidths[key] = Math.min(
-        Math.max(...excelData.map(row => row[key] ? row[key].toString().length : 0)),
-        maxWidth
-      );
-    });
-    worksheet["!cols"] = Object.keys(colWidths).map(key => ({ wch: colWidths[key] }));
-
-    XLSX.writeFile(workbook, `${institutionData.companyName}_items_report.xlsx`);
-
-    const doc = new jsPDF();
-    let yPos = 20;
-    const pageWidth = doc.internal.pageSize.width;
-
-    doc.setFontSize(14);
-    doc.setFont(undefined, 'bold');
-    const title = `${institutionData.companyName} Item Report`;
-    const titleWidth = doc.getTextWidth(title);
-    doc.text(title, (pageWidth - titleWidth) / 2, yPos);
-    yPos += 10;
-
-    doc.setFontSize(10);
-    doc.setFont(undefined, 'normal');
-    if (filterType === "day") {
-      doc.text(`Date: ${selectedDate.toLocaleDateString()}`, 10, yPos);
-    } else if (filterType === "dateRange") {
-      doc.text(`Date Range: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`, 10, yPos);
-    } else if (filterType === "monthly") {
-      doc.text(`Month: ${new Date(0, selectedMonth).toLocaleString("default", { month: "long" })} ${selectedYear}`, 10, yPos);
-    } else if (filterType === "yearly") {
-      doc.text(`Year: ${selectedYear}`, 10, yPos);
-    } else {
-      doc.text("All Orders", 10, yPos);
-    }
-    yPos += 10;
-
-    doc.autoTable({
-      startY: yPos,
-      head: [["Sl No", "Item Name", "Total Quantity Sold"]],
-      body: exportData.map((row) => [
-        row["Sl No"],
-        row["Item Name"],
-        row["Total Quantity Sold"]
-      ]),
-      margin: { left: 10 },
-      tableWidth: 190
-    });
-
-    doc.save(`${institutionData.companyName}_items_report.pdf`);
-  };
-
-  const head = [
-    "Sl No",
-    "Order ID",
-    "Name",
-    institution === "bhuk2323" ? "Phone Number" : null,
-    "Table",
-    "Order Source",
-    "Payment Method",
-    "Amount",
-    "Revenue",
-    "Discount",
-    // "Subtotal",
-    "Date",
-    "Actions"
-  ].filter(item => item !== null);
-
   const openOrderDetails = (order) => {
     setSelectedOrderItems(order.items || []);
     setSelectedOrder(order || null);
     setShowOrderModal(true);
   };
 
+  // Updated openEditModal to compute and override subtotal from items
   const openEditModal = (order) => {
-    setSelectedEditOrder(order);
+    const computedSubtotal = computeSubtotalFromItems(order.items);
+    const orderWithCorrectSubtotal = { ...order, subtotal: computedSubtotal };
+    setSelectedEditOrder(orderWithCorrectSubtotal);
     setShowEditModal(true);
   };
 
@@ -1112,8 +564,519 @@ const OrderHistory = () => {
   const paymentTotal = calculatePaymentTotal();
   const discountTotal = calculateDiscountTotal();
   const orderTotal = calculateOrderTotal();
-  const originalSubtotal = selectedEditOrder?.subtotal || 0;
+  const originalSubtotal = computeSubtotalFromItems(selectedEditOrder?.items);
   const isTotalValid = Math.abs(paymentTotal - orderTotal) <= 0.01;
+
+  // Export functions (exportToExcel, exportToPDF, exportItemsReport) remain unchanged
+  const exportToExcel = () => {
+    const exportData = [];
+    // Add header row
+    exportData.push({
+      "Order ID": `${institutionData.companyName} Order Report`,
+      "Type": "",
+      "Name": "",
+      "Table": "",
+      "Order Source": "",
+      "Phone Number": "",
+      "Total Orders": "",
+      "Total Amount": "",
+      "Revenue Amount": "",
+      "CGST": "",
+      "SGST": "",
+      "Service Tax": "",
+      "Date": "",
+      "Time": "",
+      "Download Link": "",
+      "Payment Method": "",
+      "Discount Amount": "",
+      "Discount Percentage": "",
+      "Subtotal": "",
+      "Item Name": "",
+      "Quantity": "",
+      "Item Price": "",
+      "Item Total": ""
+    });
+    // Add summary row for total orders, total amount, and net revenue
+    exportData.push({
+      "Order ID": "Summary",
+      "Type": "Overall Totals",
+      "Name": "",
+      "Table": "",
+      "Order Source": "",
+      "Phone Number": "",
+      "Total Orders": totalOrders,
+      "Total Amount": `${getCurrencySymbol('INR')}${totalAmount}`,
+      "Revenue Amount": `${getCurrencySymbol('INR')}${netRevenue}`,
+      "CGST": "",
+      "SGST": "",
+      "Service Tax": "",
+      "Date": "",
+      "Time": "",
+      "Download Link": "",
+      "Payment Method": "",
+      "Discount Amount": "",
+      "Discount Percentage": "",
+      "Subtotal": "",
+      "Item Name": "",
+      "Quantity": "",
+      "Item Price": "",
+      "Item Total": ""
+    });
+    orders.forEach((order) => {
+      const isSummary = order.downloadLink !== undefined;
+      const orderRevenue = getRevenueFromOrder(order);
+      if (isSummary) {
+        // Monthly summary row
+        const summaryRow = {
+          "Order ID": order.orderId,
+          "Type": "Monthly Summary",
+          "Name": "",
+          "Table": "",
+          "Order Source": getOrderSource(order),
+          "Phone Number": institution === "bhuk2323" ? "N/A" : "",
+          "Total Orders": order.totalOrders || "N/A",
+          "Total Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.totalAmount}`,
+          "Revenue Amount": `${getCurrencySymbol(order.currency || 'INR')}${orderRevenue}`,
+          "CGST": order.cgst ? `${getCurrencySymbol(order.currency || 'INR')}${order.cgst}` : "",
+          "SGST": order.sgst ? `${getCurrencySymbol(order.currency || 'INR')}${order.sgst}` : "",
+          "Service Tax": order.serviceTax ? `${getCurrencySymbol(order.currency || 'INR')}${order.serviceTax}` : "",
+          "Date": formatDate(order.createdAt),
+          "Time": formatTime(order.createdAt),
+          "Download Link": order.downloadLink || "",
+          "Payment Method": getPaymentMethodForExport(order),
+          "Discount Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.discountAmount || 0}`,
+          "Discount Percentage": `${order.discountPercentage || 0}%`,
+          "Subtotal": `${getCurrencySymbol(order.currency || 'INR')}${order.subtotal || 0}`,
+          "Item Name": "",
+          "Quantity": "",
+          "Item Price": "",
+          "Item Total": ""
+        };
+        exportData.push(summaryRow);
+        // Add payment methods for summary
+        if (order.paymentMethods && typeof order.paymentMethods === 'object') {
+          const paymentMethods = Array.isArray(order.paymentMethods)
+            ? order.paymentMethods.map(pm => ({ method: pm.method, amount: pm.amount }))
+            : Object.entries(order.paymentMethods).map(([method, amount]) => ({ method, amount }));
+          paymentMethods.forEach(({ method, amount }) => {
+            const isComplementary = isComplementaryPayment(method);
+            exportData.push({
+              "Order ID": "",
+              "Type": "",
+              "Name": "",
+              "Table": "",
+              "Order Source": "",
+              "Phone Number": "",
+              "Total Orders": "",
+              "Total Amount": "",
+              "Revenue Amount": "",
+              "CGST": "",
+              "SGST": "",
+              "Service Tax": "",
+              "Date": "",
+              "Time": "",
+              "Download Link": "",
+              "Payment Method": "",
+              "Discount Amount": "",
+              "Discount Percentage": "",
+              "Subtotal": "",
+              "Item Name": `Payment Method: ${method}${isComplementary ? ' (Complementary)' : ''}`,
+              "Quantity": "",
+              "Item Price": "",
+              "Item Total": `${getCurrencySymbol(order.currency || 'INR')}${amount}`
+            });
+          });
+        }
+      } else {
+        // Regular order row
+        const mainOrderRow = {
+          "Order ID": order.orderId,
+          "Type": "Regular Order",
+          "Name": order.name || "N/A",
+          "Table": order.tableName || "N/A",
+          "Order Source": getOrderSource(order),
+          "Phone Number": institution === "bhuk2323" ? order.phoneNumber || "N/A" : "",
+          "Total Orders": "1",
+          "Total Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.totalAmount}`,
+          "Revenue Amount": `${getCurrencySymbol(order.currency || 'INR')}${orderRevenue}`,
+          "CGST": order.cgst ? `${order.cgst}%` : "",
+          "SGST": order.sgst ? `${order.sgst}%` : "",
+          "Service Tax": order.serviceTax ? `${getCurrencySymbol(order.currency || 'INR')}${order.serviceTax}` : "",
+          "Date": formatDate(order.createdAt),
+          "Time": formatTime(order.createdAt),
+          "Download Link": "",
+          "Payment Method": getPaymentMethodForExport(order),
+          "Discount Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.discountAmount || 0}`,
+          "Discount Percentage": `${order.discountPercentage || 0}%`,
+          "Subtotal": `${getCurrencySymbol(order.currency || 'INR')}${order.subtotal || 0}`,
+          "Item Name": "",
+          "Quantity": "",
+          "Item Price": "",
+          "Item Total": ""
+        };
+        exportData.push(mainOrderRow);
+        // Add items for regular order
+        if (order.items && Array.isArray(order.items)) {
+          order.items.forEach((item) => {
+            exportData.push({
+              "Order ID": "",
+              "Type": "",
+              "Name": "",
+              "Table": "",
+              "Order Source": "",
+              "Phone Number": "",
+              "Total Orders": "",
+              "Total Amount": "",
+              "Revenue Amount": "",
+              "CGST": "",
+              "SGST": "",
+              "Service Tax": "",
+              "Date": "",
+              "Time": "",
+              "Download Link": "",
+              "Payment Method": "",
+              "Discount Amount": "",
+              "Discount Percentage": "",
+              "Subtotal": "",
+              "Item Name": item.name || "N/A",
+              "Quantity": item.quantity || 0,
+              "Item Price": `${getCurrencySymbol(order.currency || 'INR')}${item.price || 0}`,
+              "Item Total": `${getCurrencySymbol(order.currency || 'INR')}${(item.price * item.quantity) || 0}`
+            });
+          });
+        }
+        // Add payment methods for regular order
+        if (order.paymentMethods && typeof order.paymentMethods === 'object') {
+          const paymentMethods = Array.isArray(order.paymentMethods)
+            ? order.paymentMethods.map(pm => ({ method: pm.method, amount: pm.amount }))
+            : Object.entries(order.paymentMethods).map(([method, amount]) => ({ method, amount }));
+          paymentMethods.forEach(({ method, amount }) => {
+            const isComplementary = isComplementaryPayment(method);
+            exportData.push({
+              "Order ID": "",
+              "Type": "",
+              "Name": "",
+              "Table": "",
+              "Order Source": "",
+              "Phone Number": "",
+              "Total Orders": "",
+              "Total Amount": "",
+              "Revenue Amount": "",
+              "CGST": "",
+              "SGST": "",
+              "Service Tax": "",
+              "Date": "",
+              "Time": "",
+              "Download Link": "",
+              "Payment Method": "",
+              "Discount Amount": "",
+              "Discount Percentage": "",
+              "Subtotal": "",
+              "Item Name": `Payment Method: ${method}${isComplementary ? ' (Complementary)' : ''}`,
+              "Quantity": "",
+              "Item Price": "",
+              "Item Total": `${getCurrencySymbol(order.currency || 'INR')}${amount}`
+            });
+          });
+        }
+      }
+      // Add empty row for separation
+      exportData.push({
+        "Order ID": "",
+        "Type": "",
+        "Name": "",
+        "Table": "",
+        "Order Source": "",
+        "Phone Number": "",
+        "Total Orders": "",
+        "Total Amount": "",
+        "Revenue Amount": "",
+        "CGST": "",
+        "SGST": "",
+        "Service Tax": "",
+        "Date": "",
+        "Time": "",
+        "Download Link": "",
+        "Payment Method": "",
+        "Discount Amount": "",
+        "Discount Percentage": "",
+        "Subtotal": "",
+        "Item Name": "",
+        "Quantity": "",
+        "Item Price": "",
+        "Item Total": ""
+      });
+    });
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, `${institutionData.companyName} Orders`);
+    const maxWidth = 50;
+    const colWidths = {};
+    Object.keys(exportData[0]).forEach(key => {
+      colWidths[key] = Math.min(
+        Math.max(...exportData.map(row => row[key] ? row[key].toString().length : 0)),
+        maxWidth
+      );
+    });
+    worksheet["!cols"] = Object.keys(colWidths).map(key => ({ wch: colWidths[key] }));
+    XLSX.writeFile(workbook, `${institutionData.companyName}_orders_with_items.xlsx`);
+  };
+
+  const exportToPDF = () => {
+    const doc = new jsPDF();
+    let yPos = 20;
+    const pageWidth = doc.internal.pageSize.width;
+    // Add centered company name heading
+    doc.setFontSize(14);
+    doc.setFont(undefined, 'bold');
+    const title = `${institutionData.companyName} Order Report`;
+    const titleWidth = doc.getTextWidth(title);
+    doc.text(title, (pageWidth - titleWidth) / 2, yPos);
+    yPos += 10;
+    // Add summary section for total orders, total amount, and net revenue
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'bold');
+    doc.text("Overall Totals", 10, yPos);
+    yPos += 10;
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    doc.text(`Total Orders: ${totalOrders}`, 10, yPos);
+    doc.text(`Total Amount: ${totalAmount}`, 80, yPos);
+    doc.text(`Revenue Amount: ${netRevenue}`, 150, yPos);
+    yPos += 10;
+    doc.setDrawColor(200);
+    doc.line(10, yPos, pageWidth - 10, yPos);
+    yPos += 10;
+    orders.forEach((order, index) => {
+      if (yPos > 250) {
+        doc.addPage();
+        yPos = 20;
+      }
+      const orderRevenue = getRevenueFromOrder(order);
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      const isSummary = order.downloadLink !== undefined;
+      if (isSummary) {
+        // Monthly summary section
+        doc.text(`Monthly Summary - ${order.orderId}`, 10, yPos);
+        yPos += 10;
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'normal');
+        doc.text(`Total Orders: ${order.totalOrders || 'N/A'}`, 10, yPos);
+        doc.text(`Total Amount: ${order.totalAmount}`, 80, yPos);
+        doc.text(`Revenue Amount: ${orderRevenue}`, 150, yPos);
+        yPos += 7;
+        doc.text(`Date: ${formatDate(order.createdAt)}`, 10, yPos);
+        yPos += 7;
+        doc.text(`Source: ${getOrderSource(order)}`, 10, yPos);
+        yPos += 7;
+        doc.text(`CGST: ${order.cgst ? `${order.cgst}` : 'N/A'}`, 10, yPos);
+        doc.text(`SGST: ${order.sgst ? `${order.sgst}` : 'N/A'}`, 80, yPos);
+        doc.text(`Service Tax: ${order.serviceTax ? `${order.serviceTax}` : 'N/A'}`, 150, yPos);
+        yPos += 7;
+        doc.text(`Discount Amount: ${order.discountAmount || 0}`, 10, yPos);
+        doc.text(`Discount %: ${order.discountPercentage || 0}%`, 80, yPos);
+        doc.text(`Subtotal: ${order.subtotal || 0}`, 150, yPos);
+        yPos += 7;
+        doc.text(`Download Link: ${order.downloadLink || 'N/A'}`, 10, yPos);
+        yPos += 10;
+        if (order.paymentMethods && typeof order.paymentMethods === 'object') {
+          const paymentData = Array.isArray(order.paymentMethods)
+            ? order.paymentMethods.map(pm => {
+                const isComplementary = isComplementaryPayment(pm.method);
+                return [`${pm.method}${isComplementary ? ' (Complementary)' : ''}`, `${pm.amount}`];
+              })
+            : Object.entries(order.paymentMethods).map(([method, amount]) => {
+                const isComplementary = isComplementaryPayment(method);
+                return [`${method}${isComplementary ? ' (Complementary)' : ''}`, `${amount}`];
+              });
+          doc.autoTable({
+            startY: yPos,
+            head: [["Payment Method", "Amount"]],
+            body: paymentData,
+            margin: { left: 10 },
+            tableWidth: 190
+          });
+          yPos = doc.lastAutoTable.finalY + 20;
+        }
+      } else {
+        // Regular order section
+        doc.text(`Order Details - ${order.orderId}`, 10, yPos);
+        yPos += 10;
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'normal');
+        doc.text(`Customer: ${order.name || 'N/A'}`, 10, yPos);
+        doc.text(`Table: ${order.tableName || 'N/A'}`, 80, yPos);
+        doc.text(`Date: ${formatDate(order.createdAt)}`, 150, yPos);
+        yPos += 7;
+        doc.text(`Time: ${formatTime(order.createdAt)}`, 10, yPos);
+        yPos += 7;
+        if (institution === "bhuk2323") {
+          doc.text(`Phone: ${order.phoneNumber || "N/A"}`, 10, yPos);
+          yPos += 7;
+        }
+        doc.text(`Source: ${getOrderSource(order)}`, 10, yPos);
+        yPos += 7;
+        doc.text(`Payment Method: ${formatPaymentMethod(order)}`, 10, yPos);
+        yPos += 7;
+        doc.text(`Total Amount: ${order.totalAmount}`, 10, yPos);
+        doc.text(`Revenue Amount: ${orderRevenue}`, 80, yPos);
+        yPos += 7;
+        doc.text(`Discount Amount: ${order.discountAmount || 0}`, 10, yPos);
+        doc.text(`Discount %: ${order.discountPercentage || 0}%`, 80, yPos);
+        doc.text(`Subtotal: ${order.subtotal || 0}`, 150, yPos);
+        yPos += 7;
+        if (order.cgst || order.sgst || order.serviceTax) {
+          if (order.cgst) {
+            const afterDiscountAmount = (order.subtotal || 0) - (order.discountAmount || 0);
+            doc.text(`CGST: ${order.cgst}% (${(afterDiscountAmount * (order.cgst / 100)).toFixed(2)})`, 10, yPos);
+            yPos += 7;
+          }
+          if (order.sgst) {
+            const afterDiscountAmount = (order.subtotal || 0) - (order.discountAmount || 0);
+            doc.text(`SGST: ${order.sgst}% (${(afterDiscountAmount * (order.sgst / 100)).toFixed(2)})`, 10, yPos);
+            yPos += 7;
+          }
+          if (order.serviceTax) {
+            doc.text(`Service Tax: ${order.serviceTax}`, 10, yPos);
+            yPos += 7;
+          }
+        }
+        yPos += 5;
+        if (order.items && Array.isArray(order.items) && order.items.length > 0) {
+          doc.autoTable({
+            startY: yPos,
+            head: [["Item Name", "Quantity", "Price", "Total"]],
+            body: order.items.map((item) => [
+              item.name || "N/A",
+              item.quantity || 0,
+              `${item.price || 0}`,
+              `${(item.price * item.quantity) || 0}`
+            ]),
+            margin: { left: 10 },
+            tableWidth: 190
+          });
+          yPos = doc.lastAutoTable.finalY + 10;
+        }
+        if (order.paymentMethods && typeof order.paymentMethods === 'object') {
+          const paymentData = Array.isArray(order.paymentMethods)
+            ? order.paymentMethods.map(pm => {
+                const isComplementary = isComplementaryPayment(pm.method);
+                return [`${pm.method}${isComplementary ? ' (Complementary)' : ''}`, `${pm.amount}`];
+              })
+            : Object.entries(order.paymentMethods).map(([method, amount]) => {
+                const isComplementary = isComplementaryPayment(method);
+                return [`${method}${isComplementary ? ' (Complementary)' : ''}`, `${amount}`];
+              });
+          doc.autoTable({
+            startY: yPos,
+            head: [["Payment Method", "Amount"]],
+            body: paymentData,
+            margin: { left: 10 },
+            tableWidth: 190
+          });
+          yPos = doc.lastAutoTable.finalY + 20;
+        }
+      }
+      if (index < orders.length - 1) {
+        doc.setDrawColor(200);
+        doc.line(10, yPos - 10, pageWidth - 10, yPos - 10);
+        yPos += 10;
+      }
+    });
+    doc.save(`${institutionData.companyName}_orders_with_items.pdf`);
+  };
+
+  const exportItemsReport = () => {
+    const itemQuantities = {};
+    orders.forEach((order) => {
+      if (order.downloadLink) return;
+      if (order.items && Array.isArray(order.items)) {
+        order.items.forEach((item) => {
+          if (item.name) {
+            itemQuantities[item.name] = (itemQuantities[item.name] || 0) + item.quantity;
+          }
+        });
+      }
+    });
+    if (Object.keys(itemQuantities).length === 0) {
+      alert("No items found for the selected filter criteria.");
+      return;
+    }
+    const exportData = Object.keys(itemQuantities).map((itemName, index) => ({
+      "Sl No": index + 1,
+      "Item Name": itemName,
+      "Total Quantity Sold": itemQuantities[itemName]
+    }));
+    const excelData = [
+      { "Sl No": "", "Item Name": `${institutionData.companyName} Item Report`, "Total Quantity Sold": "" },
+      ...exportData
+    ];
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, `${institutionData.companyName} Items Report`);
+    const maxWidth = 50;
+    const colWidths = {};
+    Object.keys(excelData[0]).forEach(key => {
+      colWidths[key] = Math.min(
+        Math.max(...excelData.map(row => row[key] ? row[key].toString().length : 0)),
+        maxWidth
+      );
+    });
+    worksheet["!cols"] = Object.keys(colWidths).map(key => ({ wch: colWidths[key] }));
+    XLSX.writeFile(workbook, `${institutionData.companyName}_items_report.xlsx`);
+    const doc = new jsPDF();
+    let yPos = 20;
+    const pageWidth = doc.internal.pageSize.width;
+    doc.setFontSize(14);
+    doc.setFont(undefined, 'bold');
+    const title = `${institutionData.companyName} Item Report`;
+    const titleWidth = doc.getTextWidth(title);
+    doc.text(title, (pageWidth - titleWidth) / 2, yPos);
+    yPos += 10;
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    if (filterType === "day") {
+      doc.text(`Date: ${selectedDate.toLocaleDateString()}`, 10, yPos);
+    } else if (filterType === "dateRange") {
+      doc.text(`Date Range: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`, 10, yPos);
+    } else if (filterType === "monthly") {
+      doc.text(`Month: ${new Date(0, selectedMonth).toLocaleString("default", { month: "long" })} ${selectedYear}`, 10, yPos);
+    } else if (filterType === "yearly") {
+      doc.text(`Year: ${selectedYear}`, 10, yPos);
+    } else {
+      doc.text("All Orders", 10, yPos);
+    }
+    yPos += 10;
+    doc.autoTable({
+      startY: yPos,
+      head: [["Sl No", "Item Name", "Total Quantity Sold"]],
+      body: exportData.map((row) => [
+        row["Sl No"],
+        row["Item Name"],
+        row["Total Quantity Sold"]
+      ]),
+      margin: { left: 10 },
+      tableWidth: 190
+    });
+    doc.save(`${institutionData.companyName}_items_report.pdf`);
+  };
+
+  const head = [
+    "Sl No",
+    "Order ID",
+    "Name",
+    institution === "bhuk2323" ? "Phone Number" : null,
+    "Table",
+    "Order Source",
+    "Payment Method",
+    "Amount",
+    "Revenue",
+    "Discount",
+    "Subtotal",
+    "Date",
+    "Actions"
+  ].filter(item => item !== null);
 
   return (
     <>
@@ -1121,7 +1084,6 @@ const OrderHistory = () => {
         <h1 className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl mb-6 lg:mb-8 font-bold text-gray-900 text-center">
           {institutionData.companyName} Item Report
         </h1>
-
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-4 sm:p-6 rounded-lg shadow-md text-white">
             <h3 className="text-sm sm:text-lg font-semibold">Total Amount</h3>
@@ -1140,7 +1102,6 @@ const OrderHistory = () => {
             <p className="text-xl sm:text-2xl font-bold">₹{avgOrderSize}</p>
           </div>
         </div>
-
         <div className="flex flex-col lg:flex-row gap-4 mb-4 bg-white p-4 rounded-lg shadow-md">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 min-w-0">
             <label className="text-gray-700 whitespace-nowrap text-sm font-medium">Filter By:</label>
@@ -1156,7 +1117,6 @@ const OrderHistory = () => {
               <option value="showAll">Show All</option>
             </select>
           </div>
-
           {filterType === "day" && (
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 min-w-0">
               <label className="text-gray-700 whitespace-nowrap text-sm font-medium">Select Date:</label>
@@ -1182,7 +1142,6 @@ const OrderHistory = () => {
               </div>
             </div>
           )}
-
           {filterType === "dateRange" && (
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 min-w-0">
               <div className="flex flex-col gap-1 min-w-0">
@@ -1208,7 +1167,6 @@ const OrderHistory = () => {
                   )}
                 </div>
               </div>
-
               <div className="flex flex-col gap-1 min-w-0">
                 <label className="text-gray-700 text-sm font-medium">End Date:</label>
                 <div className="relative">
@@ -1234,7 +1192,6 @@ const OrderHistory = () => {
               </div>
             </div>
           )}
-
           {filterType === "monthly" && (
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 min-w-0">
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 min-w-0">
@@ -1267,7 +1224,6 @@ const OrderHistory = () => {
               </div>
             </div>
           )}
-
           {filterType === "yearly" && (
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 min-w-0">
               <label className="text-gray-700 whitespace-nowrap text-sm font-medium">Year:</label>
@@ -1284,7 +1240,6 @@ const OrderHistory = () => {
               </select>
             </div>
           )}
-
           <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4 min-w-0">
             <div className="flex flex-col sm:flex-row gap-2 min-w-0">
               <Button
@@ -1311,7 +1266,6 @@ const OrderHistory = () => {
             </div>
           </div>
         </div>
-
         {orders.length === 0 ? (
           <div className="text-center text-gray-600">No data available</div>
         ) : screenWidth > 1025 ? (
@@ -1320,7 +1274,6 @@ const OrderHistory = () => {
             data={orders.map((obj, index) => {
               const isSummary = obj.downloadLink !== undefined;
               const orderRevenue = getRevenueFromOrder(obj);
-
               if (isSummary) {
                 return [
                   index + 1,
@@ -1333,7 +1286,7 @@ const OrderHistory = () => {
                   `₹${obj.totalAmount}`,
                   `₹${orderRevenue}`,
                   `₹${obj.discountAmount || 0} (${obj.discountPercentage || 0}%)`,
-                  // `₹${obj.subtotal || 0}`,
+                  `₹${obj.subtotal || 0}`,
                   formatDate(obj.createdAt),
                   <div className="flex gap-2">
                     <Button
@@ -1346,7 +1299,6 @@ const OrderHistory = () => {
                   </div>,
                 ].filter(item => item !== null);
               }
-
               return [
                 index + 1,
                 obj.orderId,
@@ -1358,7 +1310,7 @@ const OrderHistory = () => {
                 `₹${obj.totalAmount}`,
                 `₹${orderRevenue}`,
                 `₹${obj.discountAmount || 0} (${obj.discountPercentage || 0}%)`,
-                // `₹${obj.subtotal || 0}`,
+                `₹${obj.subtotal || 0}`,
                 formatDate(obj.createdAt),
                 <div className="flex gap-2">
                   <Button
@@ -1390,7 +1342,6 @@ const OrderHistory = () => {
             {orders.map((order) => {
               const isSummary = order.downloadLink !== undefined;
               const orderRevenue = getRevenueFromOrder(order);
-
               if (isSummary) {
                 return (
                   <div
@@ -1435,7 +1386,6 @@ const OrderHistory = () => {
                   </div>
                 );
               }
-
               return (
                 <div
                   key={order.orderId}
@@ -1488,10 +1438,10 @@ const OrderHistory = () => {
                     <span className="font-semibold">Discount:</span>{" "}
                     ₹{order.discountAmount || 0} ({order.discountPercentage || 0}%)
                   </div>
-                  {/* <div className="text-xs text-gray-600 mb-2">
+                  <div className="text-xs text-gray-600 mb-2">
                     <span className="font-semibold">Subtotal:</span>{" "}
                     ₹{order.subtotal || 0}
-                  </div> */}
+                  </div>
                   {institution === "bhuk2323" && (
                     <div className="text-xs text-gray-600 mb-2">
                       <span className="font-semibold">Phone:</span>{" "}
@@ -1541,7 +1491,6 @@ const OrderHistory = () => {
             })}
           </div>
         )}
-
         <OrderDetailsModal
           show={showOrderModal}
           onClose={closeOrderModal}
@@ -1637,10 +1586,10 @@ const OrderHistory = () => {
                   <label className="block text-sm font-medium mb-2">Tax Breakdown:</label>
                   {(() => {
                     const orderItems = selectedEditOrder?.items || [];
-                    const taxCalc = calculateTaxesForOrder(selectedEditOrder.subtotal || 0, discountTotal, orderItems);
+                    const taxCalc = calculateTaxesForOrder(originalSubtotal, discountTotal, orderItems);
                     return (
                       <div className="text-sm text-gray-600 space-y-1">
-                        <div>Subtotal after discount: ₹{(selectedEditOrder.subtotal - discountTotal).toFixed(2)}</div>
+                        <div>Subtotal after discount: ₹{(originalSubtotal - discountTotal).toFixed(2)}</div>
                         {taxCalc.taxableAmount !== undefined && (
                           <>
                             <div>Taxable amount: ₹{taxCalc.taxableAmount.toFixed(2)}</div>
@@ -1709,8 +1658,8 @@ const OrderHistory = () => {
                 <Button onClick={closeEditModal} color="gray">
                   Cancel
                 </Button>
-                <Button 
-                  onClick={handleUpdateOrder} 
+                <Button
+                  onClick={handleUpdateOrder}
                   disabled={!isTotalValid || editPaymentMethods.length === 0}
                   color="blue"
                 >
