@@ -15,7 +15,6 @@ import Error from "../../../Error";
 import OrderDetailsModal from "./OrderDetailsModal";
 import PrintOrderHistoryBill from "./PrintOrderHistoryBill";
 import { toast } from "react-toastify";
-
 const OrderHistory = () => {
   const { institution } = useContext(Context).institutionData;
   const { institutionData } = useContext(Context);
@@ -49,20 +48,17 @@ const OrderHistory = () => {
   const [editDiscountAmount, setEditDiscountAmount] = useState(0);
   const [editDiscountPercentage, setEditDiscountPercentage] = useState(0);
   const [editDiscountType, setEditDiscountType] = useState('amount'); // 'amount' or 'percentage'
-
   // Helper function to compute subtotal from items (ignores database subtotal)
   const computeSubtotalFromItems = (items) => {
     if (!items || !Array.isArray(items)) return 0;
     return items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   };
-
   // Helper function to check if payment method is complementary
   const isComplementaryPayment = (paymentMethod) => {
     if (!paymentMethod) return false;
     return paymentMethod.toLowerCase().includes('complementary') ||
            paymentMethod.toLowerCase().includes('complimentary');
   };
-
   // Helper function to check if an item category is non-taxable
   const isNonTaxableCategory = (category) => {
     if (!category) return false;
@@ -72,20 +68,19 @@ const OrderHistory = () => {
            categoryLower.includes('no tax beverage') ||
            categoryLower.includes('exempt');
   };
-
   // Helper function to calculate taxes properly based on institution settings and item categories
   const calculateTaxesForOrder = (subtotal, discountAmount = 0, orderItems = []) => {
     const afterDiscountAmount = subtotal - discountAmount;
     const cgstRate = institutionData?.cgst || 0;
     const sgstRate = institutionData?.sgst || 0;
     const serviceTaxRate = institutionData?.serviceTax || 0;
-   
+  
     // If no items provided, calculate tax on full amount (backward compatibility)
     if (!orderItems || orderItems.length === 0) {
       const cgst = afterDiscountAmount * (cgstRate / 100);
       const sgst = afterDiscountAmount * (sgstRate / 100);
       const serviceTax = afterDiscountAmount * (serviceTaxRate / 100);
-     
+    
       return {
         cgst,
         sgst,
@@ -94,12 +89,12 @@ const OrderHistory = () => {
         totalWithTax: Math.round(afterDiscountAmount + cgst + sgst + serviceTax)
       };
     }
-   
+  
     // Calculate total amount of taxable vs non-taxable items
     let taxableAmount = 0;
     let nonTaxableAmount = 0;
     const totalItemAmount = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-   
+  
     orderItems.forEach(item => {
       const itemTotal = item.price * item.quantity;
       if (isNonTaxableCategory(item.category)) {
@@ -108,16 +103,16 @@ const OrderHistory = () => {
         taxableAmount += itemTotal;
       }
     });
-   
+  
     // Apply discount proportionally to taxable items only
     const discountRatio = afterDiscountAmount / totalItemAmount;
     const adjustedTaxableAmount = taxableAmount * discountRatio;
-   
+  
     // Calculate taxes only on taxable amount
     const cgst = adjustedTaxableAmount * (cgstRate / 100);
     const sgst = adjustedTaxableAmount * (sgstRate / 100);
     const serviceTax = adjustedTaxableAmount * (serviceTaxRate / 100);
-   
+  
     return {
       cgst,
       sgst,
@@ -128,7 +123,6 @@ const OrderHistory = () => {
       totalWithTax: Math.round(afterDiscountAmount + cgst + sgst + serviceTax)
     };
   };
-
   // Helper function to get revenue amount excluding complementary payments
   const getRevenueFromOrder = (order) => {
     if (order.downloadLink) {
@@ -171,13 +165,11 @@ const OrderHistory = () => {
       }
     }
   };
-
   // Helper to normalize order source (supports orderSource or source)
   const getOrderSource = (order) => {
     if (!order) return "N/A";
     return order.orderSource || order.source || "N/A";
   };
-
   const getDateLimits = () => {
     const today = new Date();
     const twoMonthsAgo = new Date();
@@ -187,15 +179,13 @@ const OrderHistory = () => {
       maxDate: today
     };
   };
-
   const isDateInAllowedRange = (date) => {
     const { minDate, maxDate } = getDateLimits();
     return date >= minDate && date <= maxDate;
   };
-
   const handleDateSelection = (date, setDateFunction, closePicker) => {
     if (!date) return;
-   
+  
     if (!isDateInAllowedRange(date)) {
       setFilterType("monthly");
       setSelectedMonth(date.getMonth());
@@ -206,7 +196,6 @@ const OrderHistory = () => {
     }
     closePicker(false);
   };
-
   const formatPaymentMethod = (order) => {
     if (order.paymentMethods) {
       if (Array.isArray(order.paymentMethods)) {
@@ -230,7 +219,6 @@ const OrderHistory = () => {
     const isComplementary = isComplementaryPayment(paymentMethod);
     return `${paymentMethod}${isComplementary ? ' (Complementary)' : ''}`;
   };
-
   const getPaymentMethodForExport = (order) => {
     if (order.paymentMethods) {
       if (Array.isArray(order.paymentMethods)) {
@@ -254,7 +242,6 @@ const OrderHistory = () => {
     const isComplementary = isComplementaryPayment(paymentMethod);
     return `${paymentMethod}${isComplementary ? ' (Complementary)' : ''}`;
   };
-
   const formatTime = (timestamp) => {
     const date = new Date(timestamp);
     return date.toLocaleTimeString('en-US', {
@@ -263,15 +250,12 @@ const OrderHistory = () => {
       hour12: true
     });
   };
-
   const handleAddPaymentMethod = () => {
     setEditPaymentMethods(prev => [...prev, { method: "Cash", amount: 0 }]);
   };
-
   const handleRemovePaymentMethod = (index) => {
     setEditPaymentMethods(prev => prev.filter((_, i) => i !== index));
   };
-
   const handlePaymentMethodChange = (index, field, value) => {
     setEditPaymentMethods(prev =>
       prev.map((pm, i) =>
@@ -279,7 +263,6 @@ const OrderHistory = () => {
       )
     );
   };
-
   const getCurrentPaymentMethods = useCallback((order) => {
     if (order.paymentMethods && Array.isArray(order.paymentMethods)) {
       return order.paymentMethods;
@@ -289,11 +272,9 @@ const OrderHistory = () => {
       return [{ method, amount: total }];
     }
   }, []);
-
   const calculatePaymentTotal = () => {
     return editPaymentMethods.reduce((sum, pm) => sum + pm.amount, 0);
   };
-
   // Updated to use computed subtotal from items
   const calculateDiscountTotal = () => {
     const subtotal = computeSubtotalFromItems(selectedEditOrder?.items);
@@ -302,18 +283,16 @@ const OrderHistory = () => {
     }
     return editDiscountAmount;
   };
-
   // Updated to use computed subtotal from items
   const calculateOrderTotal = () => {
     const subtotal = computeSubtotalFromItems(selectedEditOrder?.items);
     const discount = calculateDiscountTotal();
     const orderItems = selectedEditOrder?.items || [];
-   
+  
     // Use the updated tax calculation that considers non-taxable items
     const taxCalc = calculateTaxesForOrder(subtotal, discount, orderItems);
     return taxCalc.totalWithTax;
   };
-
   const handleUpdateOrder = async () => {
     const paymentTotal = calculatePaymentTotal();
     const orderTotal = calculateOrderTotal();
@@ -363,17 +342,14 @@ const OrderHistory = () => {
       toast.error("Error updating order");
     }
   };
-
   if (userData?.userType !== 'admin') {
     return <Error message="Access Denied: Admins Only" />;
   }
-
   useEffect(() => {
     const handleResize = () => setScreenWidth(window.innerWidth);
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
-
   useEffect(() => {
     if (showEditModal && selectedEditOrder) {
       setEditPaymentMethods(getCurrentPaymentMethods(selectedEditOrder));
@@ -394,17 +370,14 @@ const OrderHistory = () => {
       setEditDiscountType('amount');
     }
   }, [showEditModal, selectedEditOrder, getCurrentPaymentMethods]);
-
   useEffect(() => {
     if (institution && userData?.userType && userData?.cognitoId) {
       fetchAllOrders();
     }
   }, [institution, userData]);
-
   useEffect(() => {
     applyFilters();
   }, [allOrders, filterType, selectedDate, startDate, endDate, selectedMonth, selectedYear, showMonthlySummaries]);
-
   const fetchAllOrders = async () => {
     if (!userData || !userData.userType || !userData.cognitoId) {
       console.log("Waiting for userData to load...");
@@ -445,7 +418,6 @@ const OrderHistory = () => {
       setLoader(false);
     }
   };
-
   const applyFilters = useCallback(() => {
     if (allOrders.length === 0) {
       setOrders([]);
@@ -494,36 +466,29 @@ const OrderHistory = () => {
     );
     setOrders(sortedOrders);
   }, [allOrders, filterType, selectedDate, startDate, endDate, selectedMonth, selectedYear, showMonthlySummaries]);
-
   const formatDate = (timestamp) => {
     const date = new Date(timestamp);
     return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
   };
-
   // Calculate revenue excluding complementary payments
   const netRevenue = orders.reduce((sum, order) => sum + getRevenueFromOrder(order), 0);
-  const totalAmount = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
- 
+  const totalAmount = netRevenue; // Make totalAmount equal to netRevenue (excluding complementary)
   const totalOrders = orders.reduce((sum, order) => {
     if (order.totalOrders !== undefined && order.downloadLink !== undefined) {
       return sum + Number(order.totalOrders);
     }
     return sum + 1;
   }, 0);
- 
   const avgOrderSize = totalOrders > 0 ? (netRevenue / totalOrders).toFixed(2) : 0;
-
   const handlePrintBill = (order) => {
     setSelectedPrintOrder(order);
     setShowPrintBill(true);
   };
-
   const openOrderDetails = (order) => {
     setSelectedOrderItems(order.items || []);
     setSelectedOrder(order || null);
     setShowOrderModal(true);
   };
-
   // Updated openEditModal to compute and override subtotal from items
   const openEditModal = (order) => {
     const computedSubtotal = computeSubtotalFromItems(order.items);
@@ -531,13 +496,11 @@ const OrderHistory = () => {
     setSelectedEditOrder(orderWithCorrectSubtotal);
     setShowEditModal(true);
   };
-
   const closeOrderModal = () => {
     setShowOrderModal(false);
     setSelectedOrderItems([]);
     setSelectedOrder(null);
   };
-
   const closeEditModal = () => {
     setShowEditModal(false);
     setSelectedEditOrder(null);
@@ -546,7 +509,6 @@ const OrderHistory = () => {
     setEditDiscountPercentage(0);
     setEditDiscountType('amount');
   };
-
   const Loader = () => (
     <div className="flex flex-col items-center justify-center p-12">
       <div className="relative">
@@ -556,17 +518,14 @@ const OrderHistory = () => {
       <p className="mt-4 text-primaryColor font-medium">Loading orders...</p>
     </div>
   );
-
   if (loader) {
     return <Loader />;
   }
-
   const paymentTotal = calculatePaymentTotal();
   const discountTotal = calculateDiscountTotal();
   const orderTotal = calculateOrderTotal();
   const originalSubtotal = computeSubtotalFromItems(selectedEditOrder?.items);
   const isTotalValid = Math.abs(paymentTotal - orderTotal) <= 0.01;
-
   // Export functions (exportToExcel, exportToPDF, exportItemsReport) remain unchanged
   const exportToExcel = () => {
     const exportData = [];
@@ -635,7 +594,7 @@ const OrderHistory = () => {
           "Order Source": getOrderSource(order),
           "Phone Number": institution === "bhuk2323" ? "N/A" : "",
           "Total Orders": order.totalOrders || "N/A",
-          "Total Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.totalAmount}`,
+          "Total Amount": `${getCurrencySymbol(order.currency || 'INR')}${orderRevenue}`, // Use revenue for consistency
           "Revenue Amount": `${getCurrencySymbol(order.currency || 'INR')}${orderRevenue}`,
           "CGST": order.cgst ? `${getCurrencySymbol(order.currency || 'INR')}${order.cgst}` : "",
           "SGST": order.sgst ? `${getCurrencySymbol(order.currency || 'INR')}${order.sgst}` : "",
@@ -697,7 +656,7 @@ const OrderHistory = () => {
           "Order Source": getOrderSource(order),
           "Phone Number": institution === "bhuk2323" ? order.phoneNumber || "N/A" : "",
           "Total Orders": "1",
-          "Total Amount": `${getCurrencySymbol(order.currency || 'INR')}${order.totalAmount}`,
+          "Total Amount": `${getCurrencySymbol(order.currency || 'INR')}${orderRevenue}`, // Use revenue for consistency
           "Revenue Amount": `${getCurrencySymbol(order.currency || 'INR')}${orderRevenue}`,
           "CGST": order.cgst ? `${order.cgst}%` : "",
           "SGST": order.sgst ? `${order.sgst}%` : "",
@@ -821,7 +780,6 @@ const OrderHistory = () => {
     worksheet["!cols"] = Object.keys(colWidths).map(key => ({ wch: colWidths[key] }));
     XLSX.writeFile(workbook, `${institutionData.companyName}_orders_with_items.xlsx`);
   };
-
   const exportToPDF = () => {
     const doc = new jsPDF();
     let yPos = 20;
@@ -863,7 +821,7 @@ const OrderHistory = () => {
         doc.setFontSize(10);
         doc.setFont(undefined, 'normal');
         doc.text(`Total Orders: ${order.totalOrders || 'N/A'}`, 10, yPos);
-        doc.text(`Total Amount: ${order.totalAmount}`, 80, yPos);
+        doc.text(`Total Amount: ${orderRevenue}`, 80, yPos); // Use revenue for consistency
         doc.text(`Revenue Amount: ${orderRevenue}`, 150, yPos);
         yPos += 7;
         doc.text(`Date: ${formatDate(order.createdAt)}`, 10, yPos);
@@ -919,7 +877,7 @@ const OrderHistory = () => {
         yPos += 7;
         doc.text(`Payment Method: ${formatPaymentMethod(order)}`, 10, yPos);
         yPos += 7;
-        doc.text(`Total Amount: ${order.totalAmount}`, 10, yPos);
+        doc.text(`Total Amount: ${orderRevenue}`, 10, yPos); // Use revenue for consistency
         doc.text(`Revenue Amount: ${orderRevenue}`, 80, yPos);
         yPos += 7;
         doc.text(`Discount Amount: ${order.discountAmount || 0}`, 10, yPos);
@@ -986,7 +944,6 @@ const OrderHistory = () => {
     });
     doc.save(`${institutionData.companyName}_orders_with_items.pdf`);
   };
-
   const exportItemsReport = () => {
     const itemQuantities = {};
     orders.forEach((order) => {
@@ -1061,7 +1018,6 @@ const OrderHistory = () => {
     });
     doc.save(`${institutionData.companyName}_items_report.pdf`);
   };
-
   const head = [
     "Sl No",
     "Order ID",
@@ -1077,7 +1033,6 @@ const OrderHistory = () => {
     "Date",
     "Actions"
   ].filter(item => item !== null);
-
   return (
     <>
       <div className="w-full p-4 sm:p-6 lg:p-8 bg-gray-100">
@@ -1283,7 +1238,7 @@ const OrderHistory = () => {
                   "N/A",
                   getOrderSource(obj),
                   formatPaymentMethod(obj),
-                  `₹${obj.totalAmount}`,
+                  `₹${orderRevenue}`, // Use revenue for Amount column
                   `₹${orderRevenue}`,
                   `₹${obj.discountAmount || 0} (${obj.discountPercentage || 0}%)`,
                   `₹${obj.subtotal || 0}`,
@@ -1307,7 +1262,7 @@ const OrderHistory = () => {
                 obj.tableName,
                 getOrderSource(obj),
                 formatPaymentMethod(obj),
-                `₹${obj.totalAmount}`,
+                `₹${orderRevenue}`, // Use revenue for Amount column
                 `₹${orderRevenue}`,
                 `₹${obj.discountAmount || 0} (${obj.discountPercentage || 0}%)`,
                 `₹${obj.subtotal || 0}`,
@@ -1366,7 +1321,7 @@ const OrderHistory = () => {
                       <span className="font-semibold">Month:</span> {order.orderId}
                     </div>
                     <div className="text-sm text-gray-600 mb-2">
-                      <span className="font-semibold">Total Amount:</span> ₹{order.totalAmount}
+                      <span className="font-semibold">Total Amount:</span> ₹{orderRevenue} {/* Use revenue */}
                     </div>
                     <div className="text-sm text-gray-600 mb-2">
                       <span className="font-semibold">Revenue:</span> ₹{orderRevenue}
@@ -1425,7 +1380,7 @@ const OrderHistory = () => {
                     </div>
                     <div>
                       <span className="text-xs font-semibold">Total Amount:</span>{" "}
-                      ₹{order.totalAmount}
+                      ₹{orderRevenue} {/* Use revenue */}
                     </div>
                   </div>
                   <div className="flex justify-between text-sm text-gray-600 mb-2">
@@ -1673,5 +1628,4 @@ const OrderHistory = () => {
     </>
   );
 };
-
 export default OrderHistory;
