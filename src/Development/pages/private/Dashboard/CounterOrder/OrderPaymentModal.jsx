@@ -13,6 +13,8 @@ const OrderPaymentModal = ({
   fetchPendingOrders,
   customerDetails,
   orderGroups,
+  discountData,
+  setDiscountData,
 }) => {
   const matchedOrder = orderGroups.find((order) => order.orderId === selectedOrderId);
 
@@ -128,6 +130,24 @@ const OrderPaymentModal = ({
   const getCompanyIdByName = (companyName) => {
     const company = companies.find((c) => c.name === companyName);
     return company ? company.company_id || company.companyId || company.id || "" : "";
+  };
+
+  // Get discount information for the specific order
+  const getDiscountInfo = () => {
+    if (!selectedTable) return { method: "none", value: 0, amount: 0 };
+    const tid = String(selectedTable.id);
+    const tableDiscountData = (discountData && discountData[tid]) || null;
+    if (!tableDiscountData) return { method: "none", value: 0, amount: 0 };
+    if (selectedOrderId && typeof tableDiscountData === "object" && tableDiscountData[selectedOrderId]) {
+      return tableDiscountData[selectedOrderId];
+    }
+    if (typeof tableDiscountData === "object" && !tableDiscountData.method) {
+      const firstKey = Object.keys(tableDiscountData)[0];
+      if (firstKey) {
+        return tableDiscountData[firstKey] || { method: "none", value: 0, amount: 0 };
+      }
+    }
+    return tableDiscountData;
   };
 
   // Robust fetchCompanies
@@ -262,41 +282,77 @@ const OrderPaymentModal = ({
     }
   };
 
-  // Calculate Totals
-  const calculateTotals = (items) => {
+  // Calculate Totals with discount support
+  const calculateTotals = (items, discountInfoOverride = null) => {
     if (!items || !Array.isArray(items)) {
       return {
-        subtotal: 0,
+        billSubtotal: 0,
+        taxableSubtotal: 0,
         cgst: 0,
         sgst: 0,
         serviceTax: 0,
+        finalTotal: 0,
+        discountAmount: 0,
+        discountPercentage: 0,
+        discountMethod: "none",
         totalWithTax: 0,
       };
     }
 
-    const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const billSubtotal = items.reduce((sum, item) => {
+      const price = Number(item.price) || 0;
+      const qty = Number(item.quantity) || 0;
+      return sum + price * qty;
+    }, 0);
 
-    const serviceTaxPercentage =
-      institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0;
-    const cgstPercentage = institutionData?.cgst !== undefined ? institutionData.cgst : 2.5;
-    const sgstPercentage = institutionData?.sgst !== undefined ? institutionData.sgst : 2.5;
+    const taxableSubtotal = items.reduce((sum, item) => {
+      const price = Number(item.price) || 0;
+      const qty = Number(item.quantity) || 0;
+      return sum + (item.type !== "bar" ? price * qty : 0);
+    }, 0);
 
-    const taxableSubtotal = items
-      .filter((item) => item.type !== "bar")
-      .reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const cgstRate = institutionData?.cgst !== undefined ? institutionData.cgst : 2.5;
+    const sgstRate = institutionData?.sgst !== undefined ? institutionData.sgst : 2.5;
+    const serviceTaxRate = institutionData?.serviceTax !== undefined ? institutionData.serviceTax : 0;
 
-    const cgst = (taxableSubtotal * cgstPercentage) / 100;
-    const sgst = (taxableSubtotal * sgstPercentage) / 100;
-    const serviceTax = (subtotal * serviceTaxPercentage) / 100;
+    const di = discountInfoOverride || getDiscountInfo() || { method: "none", value: 0, amount: 0 };
 
-    const totalWithTax = Math.round(subtotal + cgst + sgst + serviceTax);
+    let discountAmount = 0;
+    let discountPercentage = 0;
+
+    if (di.method === "percentage" && di.value > 0) {
+      discountPercentage = Math.min(Number(di.value), 100);
+      discountAmount = (billSubtotal * discountPercentage) / 100;
+    } else if (di.method === "amount" && di.value > 0) {
+      discountAmount = Math.min(Number(di.value), billSubtotal);
+    } else if (di.amount) {
+      discountAmount = Number(di.amount) || 0;
+    }
+
+    const discountedSubtotal = Math.max(0, billSubtotal - discountAmount);
+    const discountedTaxableSubtotal = Math.max(0, taxableSubtotal - discountAmount);
+
+    const cgst = (discountedTaxableSubtotal * cgstRate) / 100;
+    const sgst = (discountedTaxableSubtotal * sgstRate) / 100;
+    const serviceTax = (discountedSubtotal * serviceTaxRate) / 100;
+
+    const finalTotal =
+      institutionData?.cgst === 0 || institutionData?.sgst === 0
+        ? Math.round(discountedSubtotal + serviceTax)
+        : Math.round(discountedSubtotal + cgst + sgst + serviceTax);
 
     return {
-      subtotal,
+      billSubtotal,
+      taxableSubtotal,
       cgst,
       sgst,
       serviceTax,
-      totalWithTax,
+      finalTotal,
+      serviceTaxRate,
+      discountAmount,
+      discountPercentage,
+      discountMethod: di.method,
+      totalWithTax: finalTotal, // For backward compatibility
     };
   };
 
@@ -332,8 +388,8 @@ const OrderPaymentModal = ({
     if (!matchedOrder) return;
 
     const totals = calculateTotals(matchedOrder.items);
-    setTotalBillAmount(totals.totalWithTax);
-  }, [matchedOrder, institutionData]);
+    setTotalBillAmount(totals.finalTotal);
+  }, [matchedOrder, institutionData, discountData]);
 
   // Hotel auto-select
   useEffect(() => {
@@ -755,7 +811,26 @@ const OrderPaymentModal = ({
           <p className="text-gray-600 mb-2">
             Order ID: <strong>{selectedOrderId}</strong>
           </p>
-          <p className="text-3xl font-bold text-green-600 mt-2">₹{totalBillAmount}</p>
+          {(() => {
+            const totals = calculateTotals(matchedOrder?.items || []);
+            const hasDiscount = totals.discountAmount > 0;
+            return (
+              <div>
+                {hasDiscount && (
+                  <div className="text-sm text-gray-500 mb-1">
+                    <span className="line-through">₹{totals.billSubtotal}</span>
+                    <span className="text-red-500 ml-2">
+                      -{totals.discountMethod === "percentage" ? `${totals.discountPercentage}%` : `₹${totals.discountAmount}`}
+                    </span>
+                  </div>
+                )}
+                <p className="text-3xl font-bold text-green-600 mt-2">₹{totalBillAmount}</p>
+                {hasDiscount && (
+                  <p className="text-xs text-gray-500 mt-1">After discount</p>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Conditional UI based on payment method */}
