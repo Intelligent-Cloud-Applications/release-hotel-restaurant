@@ -646,7 +646,7 @@ const UnpaidOrderPaymentModal = ({
           <p className="text-gray-600 mb-2">
             Order ID: <strong>{unpaidOrder.orderId}</strong>
           </p>
-          <p className="text-3xl font-bold text-green-600 mt-2">₹{totalBillAmount}</p>
+          <p className="text-3xl font-bold text-green-600 mt-2">₹{unpaidOrder.totalAmount}</p>
         </div>
 
         {isPartialPayment ? (
