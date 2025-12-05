@@ -1280,14 +1280,12 @@ const OrderHistory = () => {
                   >
                     <FaEdit />
                   </Button>
-                  {institution === "bhuk2323" && (
-                    <Button
-                      onClick={() => handlePrintBill(obj)}
-                      className="bg-blue-500"
-                    >
-                      <RiBillLine />
-                    </Button>
-                  )}
+                  <Button
+                    onClick={() => handlePrintBill(obj)}
+                    className="bg-blue-500"
+                  >
+                    <RiBillLine />
+                  </Button>
                 </div>,
               ].filter(item => item !== null);
             })}
@@ -1363,14 +1361,12 @@ const OrderHistory = () => {
                       >
                         <FaEdit />
                       </button>
-                      {institution === "bhuk2323" && (
-                        <button
-                          onClick={() => handlePrintBill(order)}
-                          className="text-blue-500 text-lg"
-                        >
-                          <RiBillLine />
-                        </button>
-                      )}
+                      <button
+                        onClick={() => handlePrintBill(order)}
+                        className="text-blue-500 text-lg"
+                      >
+                        <RiBillLine />
+                      </button>
                     </div>
                   </div>
                   <div className="flex justify-between text-sm text-gray-600 mb-2">
