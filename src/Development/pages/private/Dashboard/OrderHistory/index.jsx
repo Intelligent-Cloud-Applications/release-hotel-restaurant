@@ -74,13 +74,13 @@ const OrderHistory = () => {
     const cgstRate = institutionData?.cgst || 0;
     const sgstRate = institutionData?.sgst || 0;
     const serviceTaxRate = institutionData?.serviceTax || 0;
-  
+ 
     // If no items provided, calculate tax on full amount (backward compatibility)
     if (!orderItems || orderItems.length === 0) {
       const cgst = afterDiscountAmount * (cgstRate / 100);
       const sgst = afterDiscountAmount * (sgstRate / 100);
       const serviceTax = afterDiscountAmount * (serviceTaxRate / 100);
-    
+   
       return {
         cgst,
         sgst,
@@ -89,12 +89,12 @@ const OrderHistory = () => {
         totalWithTax: Math.round(afterDiscountAmount + cgst + sgst + serviceTax)
       };
     }
-  
+ 
     // Calculate total amount of taxable vs non-taxable items
     let taxableAmount = 0;
     let nonTaxableAmount = 0;
     const totalItemAmount = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  
+ 
     orderItems.forEach(item => {
       const itemTotal = item.price * item.quantity;
       if (isNonTaxableCategory(item.category)) {
@@ -103,16 +103,16 @@ const OrderHistory = () => {
         taxableAmount += itemTotal;
       }
     });
-  
+ 
     // Apply discount proportionally to taxable items only
     const discountRatio = afterDiscountAmount / totalItemAmount;
     const adjustedTaxableAmount = taxableAmount * discountRatio;
-  
+ 
     // Calculate taxes only on taxable amount
     const cgst = adjustedTaxableAmount * (cgstRate / 100);
     const sgst = adjustedTaxableAmount * (sgstRate / 100);
     const serviceTax = adjustedTaxableAmount * (serviceTaxRate / 100);
-  
+ 
     return {
       cgst,
       sgst,
@@ -185,7 +185,7 @@ const OrderHistory = () => {
   };
   const handleDateSelection = (date, setDateFunction, closePicker) => {
     if (!date) return;
-  
+ 
     if (!isDateInAllowedRange(date)) {
       setFilterType("monthly");
       setSelectedMonth(date.getMonth());
@@ -288,7 +288,7 @@ const OrderHistory = () => {
     const subtotal = computeSubtotalFromItems(selectedEditOrder?.items);
     const discount = calculateDiscountTotal();
     const orderItems = selectedEditOrder?.items || [];
-  
+ 
     // Use the updated tax calculation that considers non-taxable items
     const taxCalc = calculateTaxesForOrder(subtotal, discount, orderItems);
     return taxCalc.totalWithTax;
@@ -1458,6 +1458,8 @@ const OrderHistory = () => {
               phoneNumber: institution === "bhuk2323" ? selectedPrintOrder.phoneNumber || "N/A" : undefined,
               paymentMethods: selectedPrintOrder.paymentMethods,
               orderSource: getOrderSource(selectedPrintOrder), // include source
+              discountAmount: selectedPrintOrder.discountAmount || 0,
+              discountPercentage: selectedPrintOrder.discountPercentage || 0,
             }}
             institutionData={institutionData}
             screenWidth={screenWidth}

@@ -1,40 +1,39 @@
 import React, { useEffect } from "react";
 import data from '../../../../../Operation/data.json';
 import qrimage from '../../../../utils/image/qrimage.jpeg';
-
 const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose }) => {
   const { printerpaperSize } = data;
-
   // Calculate totals based on provided order items
   const items = order.items || [];
   const billSubtotal = items.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
-
   // Tax rates from institutionData (fallbacks)
   const cgstRate = Number(institutionData?.cgst ?? 2.5);
   const sgstRate = Number(institutionData?.sgst ?? 2.5);
   const serviceTaxRate = Number(institutionData?.serviceTax ?? 0);
-
   // Exclude 'bar' type AND 'No Tax Beverage' category from taxable subtotal
   const taxableSubtotal = items.reduce((sum, item) => {
     const isTaxable = item.type !== 'bar' && item.category !== 'No Tax Beverage';
     return sum + (isTaxable ? (Number(item.price) || 0) * (Number(item.quantity) || 0) : 0);
   }, 0);
-
-  // No discount for history bills
-  const discountMethod = "none";
-  const discountValue = 0;
+  // Discount calculation from order data
+  const discountMethod = order.discountPercentage > 0 ? "percentage" : "amount";
+  const discountValue = order.discountPercentage > 0 ? order.discountPercentage : order.discountAmount;
   let discountAmount = 0;
   let discountPercentShown = 0;
-
-  // Subtotals after discount (no change)
+  if (discountMethod === "percentage" && Number(discountValue) > 0) {
+    discountPercentShown = Math.min(100, Number(discountValue));
+    discountAmount = (billSubtotal * discountPercentShown) / 100;
+  } else if (discountMethod === "amount" && Number(discountValue) > 0) {
+    discountAmount = Math.min(Number(discountValue), billSubtotal);
+  }
+  // Subtotals after discount
   const discountedSubtotal = Math.max(0, billSubtotal - discountAmount);
+  // Updated: Apply discount to taxable subtotal (prorate or cap at taxable amount)
   const discountedTaxableSubtotal = Math.max(0, taxableSubtotal - Math.min(discountAmount, taxableSubtotal));
-
   // Recalculate taxes on discountedTaxableSubtotal
   const calculatedCgst = (discountedTaxableSubtotal * cgstRate) / 100;
   const calculatedSgst = (discountedTaxableSubtotal * sgstRate) / 100;
   const calculatedServiceTax = (discountedSubtotal * serviceTaxRate) / 100;
-
   // Final total: if cgst or sgst are zero, use alternate rounding rule
   let calculatedTotal;
   if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) {
@@ -42,14 +41,12 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
   } else {
     calculatedTotal = Math.round(discountedSubtotal + calculatedCgst + calculatedSgst + calculatedServiceTax);
   }
-
   const printBill = () => {
     // Clean up any existing print area or styles
     const existingPrintArea = document.getElementById("printArea");
     if (existingPrintArea) document.body.removeChild(existingPrintArea);
     const existingStyle = document.querySelector("#printAreaStyle");
     if (existingStyle) document.head.removeChild(existingStyle);
-
     const formatDateTime = () => {
       const date = new Date(order.createdAt);
       return date.toLocaleString("en-IN", {
@@ -61,32 +58,30 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
         hour12: true,
       }).replace(",", "");
     };
-
     if (!order || !order.tableName || !order.orderId) {
       console.error("Invalid order information.");
       onClose();
       return;
     }
-
     // Calculate total quantity from items
     const totalQty = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
-
     const qrImageSrc = qrimage || '';
-    
+   
     // Function to proceed with printing
     const proceedWithPrint = () => {
       let printArea;
       let style;
-
       if (printerpaperSize === "80") {
         // Check if duplicate copy is needed
         const needsDuplicate = institutionData?.institution === "DISH5877";
-        
+       
         // Always show subtotal
         const subtotalRow = `<div class="summary-row">
             <span>Subtotal:</span>
             <span>₹${billSubtotal.toFixed(2)}</span>
           </div>`;
+        // Discount row
+        const discountRow = discountAmount > 0 ? `<div class="summary-row"><span>Discount ${discountMethod === 'percentage' ? `(${discountPercentShown}%)` : '(Fixed)'}:</span><span>-₹${discountAmount.toFixed(2)}</span></div>` : '';
         // Always show CGST row
         const cgstRow = `<div class="summary-row">
             <span>CGST (${cgstRate}%):</span>
@@ -122,7 +117,7 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
             </div>
           `
           : '';
-        
+       
         // Bill content template
         const billContent = `
           <div class="bill-container">
@@ -136,11 +131,9 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
               ${ institutionData?.gstin ? `<div class="gstin">GSTIN: ${institutionData.gstin}</div>` : ""}
               <div class="order-id">Order ID: ${order.orderId}</div>
             </div>
-
             <div class="bill-details">
               <div class="table-info">Table: ${order.tableName}</div>
             </div>
-
             <table class="items-table">
               <thead>
                 <tr>
@@ -154,13 +147,13 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
                 ${itemsHTML}
               </tbody>
             </table>
-
             <div class="bill-summary">
               <div class="summary-row">
                 <span>Total Qty:</span>
                 <span>${totalQty}</span>
               </div>
               ${subtotalRow}
+              ${discountRow}
               ${cgstRow}
               ${sgstRow}
               ${serviceRow}
@@ -169,7 +162,6 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
                 <span><b>₹${calculatedTotal.toFixed(2)}</b></span>
               </div>
             </div>
-
             <div class="bill-footer">
               <p>Thank you, visit again!</p>
               <p>Empower your business with tekkzy.com</p>
@@ -177,11 +169,11 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
             </div>
           </div>
         `;
-        
+       
         // Create print area
         printArea = document.createElement("div");
         printArea.id = "printArea";
-        
+       
         if (needsDuplicate) {
           // Two copies with cut line in between
           printArea.innerHTML = `
@@ -195,9 +187,8 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
           // Single copy
           printArea.innerHTML = billContent;
         }
-        
+       
         document.body.appendChild(printArea);
-
         // Add print styles
         style = document.createElement("style");
         style.id = "printAreaStyle";
@@ -226,7 +217,6 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
               page-break-inside: avoid;
             }
           }
-
           .bill-container {
             font-family: 'Arial', 'Helvetica', sans-serif;
             font-weight: 500;
@@ -308,26 +298,26 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
             font-size: 10pt;
             font-weight: 500;
           }
-          .item-name { 
-            width: 42%; 
+          .item-name {
+            width: 42%;
             word-wrap: break-word;
             font-weight: 600;
             font-size: 12pt;
           }
-          .item-qty { 
-            width: 18%; 
-            text-align: center; 
+          .item-qty {
+            width: 18%;
+            text-align: center;
             font-weight: bold;
             font-size: 12pt;
           }
-          .item-rate { 
-            width: 20%; 
-            text-align: right; 
+          .item-rate {
+            width: 20%;
+            text-align: right;
             font-weight: 500;
           }
-          .item-total { 
-            width: 20%; 
-            text-align: right; 
+          .item-total {
+            width: 20%;
+            text-align: right;
             font-weight: bold;
           }
           .bill-summary {
@@ -382,6 +372,8 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
             <span>Subtotal:</span>
             <span>₹${billSubtotal.toFixed(2)}</span>
           </div>`;
+        // Discount row
+        const discountRow = discountAmount > 0 ? `<div class="summary-row"><span>Discount ${discountMethod === 'percentage' ? `(${discountPercentShown}%)` : '(Fixed)'}:</span><span>-₹${discountAmount.toFixed(2)}</span></div>` : '';
         // Always show CGST row
         const cgstRow = `<div class="summary-row">
             <span>CGST (${cgstRate}%):</span>
@@ -417,7 +409,6 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
             </div>
           `
           : '';
-
         // Create print area
         printArea = document.createElement("div");
         printArea.id = "printArea";
@@ -433,11 +424,9 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
               ${institutionData?.gstin ? `<div class="gstin">GSTIN: ${institutionData.gstin}</div>` : ""}
               <div class="order-id">Order ID: ${order.orderId}</div>
             </div>
-
             <div class="bill-details">
               <div class="table-info">Table: ${order.tableName}</div>
             </div>
-
             <table class="items-table">
               <thead>
                 <tr>
@@ -451,13 +440,13 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
                 ${itemsHTML}
               </tbody>
             </table>
-
             <div class="bill-summary">
               <div class="summary-row">
                 <span>Total Qty:</span>
                 <span>${totalQty}</span>
               </div>
               ${subtotalRow}
+              ${discountRow}
               ${cgstRow}
               ${sgstRow}
               ${serviceRow}
@@ -466,7 +455,6 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
                 <span><b>₹${calculatedTotal.toFixed(2)}</b></span>
               </div>
             </div>
-
             <div class="bill-footer">
               <p>Thank you, visit again!</p>
               <p>Empower your business with tekkzy.com</p>
@@ -475,7 +463,6 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
           </div>
         `;
         document.body.appendChild(printArea);
-
         // Add print styles
         style = document.createElement("style");
         style.id = "printAreaStyle";
@@ -504,7 +491,6 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
               page-break-inside: avoid;
             }
           }
-
           .bill-container {
             font-family: 'Arial', 'Helvetica', sans-serif;
             font-weight: 500;
@@ -576,26 +562,26 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
             font-size: 14pt;
             font-weight: 500;
           }
-          .item-name { 
-            width: 42%; 
+          .item-name {
+            width: 42%;
             word-wrap: break-word;
             font-weight: 600;
             font-size: 14pt;
           }
-          .item-qty { 
-            width: 18%; 
-            text-align: center; 
+          .item-qty {
+            width: 18%;
+            text-align: center;
             font-weight: bold;
             font-size: 14pt;
           }
-          .item-rate { 
-            width: 20%; 
-            text-align: right; 
+          .item-rate {
+            width: 20%;
+            text-align: right;
             font-weight: 500;
           }
-          .item-total { 
-            width: 20%; 
-            text-align: right; 
+          .item-total {
+            width: 20%;
+            text-align: right;
             font-weight: bold;
           }
           .bill-summary {
@@ -648,6 +634,7 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
         // 58mm fallback
         // Always show subtotal
         const subtotalRow = `<tr><td><b>Subtotal:</b></td><td>₹${billSubtotal.toFixed(2)}</td></tr>`;
+        const discountRow = discountAmount > 0 ? `<tr><td>Discount ${discountMethod === 'percentage' ? `(${discountPercentShown}%)` : '(Fixed)'}:</td><td>-₹${discountAmount.toFixed(2)}</td></tr>` : '';
         const cgstRow = `<tr><td>CGST (${cgstRate}%):</td><td>₹${calculatedCgst.toFixed(2)}</td></tr>`;
         const sgstRow = `<tr><td>SGST (${sgstRate}%):</td><td>₹${calculatedSgst.toFixed(2)}</td></tr>`;
         const serviceRow = serviceTaxRate > 0 ? `<tr><td>Service Tax (${serviceTaxRate}%):</td><td>₹${calculatedServiceTax.toFixed(2)}</td></tr>` : '';
@@ -663,7 +650,6 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
             `
           )
           .join("");
-
         // Create print area
         printArea = document.createElement("div");
         printArea.id = "printArea";
@@ -690,6 +676,7 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
             <table class="totals">
               <tr><td><b>Total Qty:</b></td><td>${totalQty}</td></tr>
               ${subtotalRow}
+              ${discountRow}
               ${cgstRow}
               ${sgstRow}
               ${serviceRow}
@@ -700,7 +687,6 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
           </div>
         `;
         document.body.appendChild(printArea);
-
         // Add print styles
         style = document.createElement("style");
         style.id = "printAreaStyle";
@@ -729,7 +715,8 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
               body { margin: 0; padding: 0; }
               body * { visibility: hidden; }
               #printArea, #printArea * { visibility: visible; }
-              #printArea { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 58mm; padding: 2mm; page-break-inside: avoid; }
+              #printArea { position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+              width: 58mm; padding: 2mm; page-break-inside: avoid; }
             }
             .bill { font-family: monospace; font-size: 14px; line-height: 1.1; padding: 2px; text-align: left; max-width: 58mm; word-wrap: break-word; margin: 0 auto; }
             .header { font-size: 14px; font-weight: bold; text-align: center; }
