@@ -308,7 +308,9 @@ const OrderPaymentModal = ({
     const taxableSubtotal = items.reduce((sum, item) => {
       const price = Number(item.price) || 0;
       const qty = Number(item.quantity) || 0;
-      return sum + (item.type !== "bar" ? price * qty : 0);
+      // Exclude 'bar' and 'No Tax Beverage' category from GST
+      if (item.type === "bar" || item.category === "No Tax Beverage") return sum;
+      return sum + price * qty;
     }, 0);
 
     const cgstRate = institutionData?.cgst !== undefined ? institutionData.cgst : 2.5;
