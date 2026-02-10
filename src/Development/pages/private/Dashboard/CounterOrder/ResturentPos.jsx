@@ -43,7 +43,7 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
   const [pendingKOTData, setPendingKOTData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const takeawayCount = institutionData?.institution === 'chineseq18' ? 4 : institutionData?.institution === 'Hang7438' ? 10 : 2;
+  const takeawayCount = institutionData?.institution === 'chineseq18' ? 4 : institutionData?.institution === 'Hang7438' ? 10 : 5;
 const [tables, setTables] = useState([
   // Restaurant tables
   ...(institutionData?.Table || []).map(t => ({
@@ -82,22 +82,22 @@ const [tables, setTables] = useState([
   ),
 
   // Management rooms
-  {
-    id: "Management444",
-    name: "MNG 444",
-    status: "available",
-    orders: [],
-    currentBill: 0,
-    orderType: "management",
-  },
-  {
-    id: "Management555",
-    name: "MNG 555",
-    status: "available",
-    orders: [],
-    currentBill: 0,
-    orderType: "management",
-  },
+  // {
+  //   id: "Management444",
+  //   name: "MNG 444",
+  //   status: "available",
+  //   orders: [],
+  //   currentBill: 0,
+  //   orderType: "management",
+  // },
+  // {
+  //   id: "Management555",
+  //   name: "MNG 555",
+  //   status: "available",
+  //   orders: [],
+  //   currentBill: 0,
+  //   orderType: "management",
+  // },
 ]);
 
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);

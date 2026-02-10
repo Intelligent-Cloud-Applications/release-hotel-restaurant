@@ -1,13 +1,13 @@
 {
-    "institutionId": "HOTEL001",
+    "institutionId": "CLOU1746",
 
-    "index":"1",
+    "index":"0",
 
-    "s3BucketName": "templatecm.awsaiapp.com",
+    "s3BucketName": "cloud9.tekkzy.com",
 
-    "cloudFrontId": "",
+    "cloudFrontId": "E179BN7Z6J8IMF",
 
-    "domain": "https://templatecm.awsaiapp.com",
+    "domain": "https://cloud9.tekkzy.com",
 
     "printerType":"local",
 

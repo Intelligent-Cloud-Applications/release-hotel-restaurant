@@ -196,7 +196,7 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
 
   return (
     <div className="flex bg-white border-b">
-      {renderVerticalTabs()}
+      {/* {renderVerticalTabs()} */}
       <div className="flex-1 p-3 overflow-auto max-h-48">
         <div
           className={`grid gap-2 ${
