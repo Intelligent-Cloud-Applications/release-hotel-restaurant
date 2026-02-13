@@ -975,9 +975,19 @@ if (
         totalServiceTax: "0.00"
       };
 
-      const updatedMergedItems = currentTable.mergedItems.map((i) =>
-        i.itemId === itemId ? { ...i, quantity: newQuantity } : i
-      );
+      // Find the bill item quantity if it exists
+      const billItem = currentTable.billItems.find((i) => i.itemId === itemId);
+      const billQuantity = billItem ? billItem.quantity : 0;
+
+      // Update merged items: if item exists in bill, add KOT quantity to bill quantity
+      const updatedMergedItems = currentTable.mergedItems.map((i) => {
+        if (i.itemId === itemId) {
+          // If item exists in bill, the merged quantity should be billQuantity + newQuantity (KOT quantity)
+          const mergedQuantity = billQuantity > 0 ? billQuantity + newQuantity : newQuantity;
+          return { ...i, quantity: mergedQuantity };
+        }
+        return i;
+      });
 
       const updatedKotItems = updatedMergedItems.filter((item) =>
         currentTable.billItems.every((billItem) => billItem.itemId !== item.itemId)

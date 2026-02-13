@@ -1741,18 +1741,36 @@ const formatBill = (orderItems, customerId) => {
 
   const ItemControls = ({ item, orderId }) => {
     const [localInstruction, setLocalInstruction] = useState(item.instruction || '');
+    const [localQuantity, setLocalQuantity] = useState(item.quantity);
     const showInstruction = instructionStates[item.itemId] || false;
-    
-    // Update local state when item instruction changes from outside
+
+    // Sync local state with item changes
     useEffect(() => {
       setLocalInstruction(item.instruction || '');
-    }, [item.instruction]);
+      setLocalQuantity(item.quantity);
+    }, [item.instruction, item.quantity]);
 
     const handleSaveInstruction = () => {
-      // Only save if instruction has changed
       if (localInstruction !== item.instruction) {
         handleUpdateItemInstruction(selectedTable?.id, item.itemId, localInstruction);
       }
+    };
+
+    const handleSaveQuantity = () => {
+      if (localQuantity !== item.quantity && localQuantity > 0) {
+        handleUpdateItemQuantity(selectedTable?.id, item.itemId, localQuantity);
+      }
+    };
+
+    const handleMinus = () => {
+      const newQty = Math.max(0, item.quantity - 1);
+      setLocalQuantity(newQty);
+      handleUpdateItemQuantity(selectedTable?.id, item.itemId, newQty);
+    };
+    const handlePlus = () => {
+      const newQty = item.quantity + 1;
+      setLocalQuantity(newQty);
+      handleUpdateItemQuantity(selectedTable?.id, item.itemId, newQty);
     };
 
     return (
@@ -1800,18 +1818,32 @@ const formatBill = (orderItems, customerId) => {
             <div className="flex items-center justify-between mt-1">
               <div className="flex items-center">
                 <button
-                  onClick={() =>
-                    handleUpdateItemQuantity(selectedTable?.id, item.itemId, item.quantity - 1)
-                  }
+                  onClick={handleMinus}
                   className="w-6 h-6 flex items-center justify-center border rounded"
                 >
                   -
                 </button>
-                <span className="mx-2 text-sm">{item.quantity}</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={localQuantity}
+                  onChange={(e) => {
+                    const newQuantity = parseInt(e.target.value);
+                    if (!isNaN(newQuantity) && newQuantity > 0) {
+                      setLocalQuantity(newQuantity);
+                    }
+                  }}
+                  onBlur={handleSaveQuantity}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSaveQuantity();
+                    }
+                  }}
+                  className="mx-2 w-12 text-sm text-center border rounded px-1 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
                 <button
-                  onClick={() =>
-                    handleUpdateItemQuantity(selectedTable?.id, item.itemId, item.quantity + 1)
-                  }
+                  onClick={handlePlus}
                   className="w-6 h-6 flex items-center justify-center border rounded"
                 >
                   +
@@ -1994,7 +2026,7 @@ const formatBill = (orderItems, customerId) => {
               ))}
             </select>
           </div>
-                    <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-3">
             <button
               onClick={() => setMovingItem(null)}
               className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
@@ -2020,7 +2052,6 @@ const formatBill = (orderItems, customerId) => {
   return (
     <>
       <div className="flex-1 flex flex-col">{renderContent()}</div>
-    
       {showOrderPaymentModal && (
         <OrderPaymentModal
           selectedTable={selectedTable}

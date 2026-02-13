@@ -76,7 +76,7 @@ const OrderPaymentModal = ({
   ]);
   const [customManagementInput, setCustomManagementInput] = useState("");
 
-  const paymentMethods = ["QR", "Cash", "Card", "BTC", "Complementary", "Void"];
+  const paymentMethods = ["QR", "Cash", "Card", "Complementary", "Zomato", "Swiggy"];
   const [isPartialPayment, setIsPartialPayment] = useState(institutionData.paymentMethod === "partial");
 
   // Send SMS function
@@ -881,7 +881,7 @@ const OrderPaymentModal = ({
               </div>
 
               {/* BTC Payment */}
-              <div className="flex flex-col">
+              {/* <div className="flex flex-col">
                 <label className="text-gray-700 text-sm mb-1">BTC</label>
                 <input
                   type="number"
@@ -890,7 +890,7 @@ const OrderPaymentModal = ({
                   className="w-full p-2 border rounded-md text-center"
                   placeholder="BTC"
                 />
-              </div>
+              </div> */}
 
               {/* Complementary Payment */}
               <div className="flex flex-col">
@@ -905,7 +905,7 @@ const OrderPaymentModal = ({
               </div>
 
               {/* Void Payment */}
-              <div className="flex flex-col">
+              {/* <div className="flex flex-col">
                 <label className="text-gray-700 text-sm mb-1">Void</label>
                 <input
                   type="number"
@@ -914,7 +914,7 @@ const OrderPaymentModal = ({
                   className="w-full p-2 border rounded-md text-center"
                   placeholder="Void"
                 />
-              </div>
+              </div> */}
 
               {institutionData.integration === "HOTEL" && (
                 <div className="flex flex-col">

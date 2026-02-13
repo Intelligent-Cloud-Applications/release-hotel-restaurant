@@ -73,7 +73,7 @@ const PaymentModal = ({
   const [customManagementInput, setCustomManagementInput] = useState("");
   const [narration, setNarration] = useState("");
 
-  const paymentMethods = ["QR", "Cash", "Card", "BTC", "Complementary", "Void"];
+  const paymentMethods = ["QR", "Cash", "Card", "Complementary", "Zomato", "Swiggy"];
   const [isPartialPayment, setIsPartialPayment] = useState(institutionData.paymentMethod === "partial");
   const smsEnabled = institutionData.sms ?? false;
 
@@ -862,7 +862,7 @@ const PaymentModal = ({
                   placeholder="QR"
                 />
               </div>
-              <div className="flex flex-col">
+              {/* <div className="flex flex-col">
                 <label className="text-gray-700 text-sm mb-1">BTC</label>
                 <input
                   type="number"
@@ -871,7 +871,7 @@ const PaymentModal = ({
                   className="w-full p-2 border rounded-md text-center"
                   placeholder="BTC"
                 />
-              </div>
+              </div> */}
               <div className="flex flex-col">
                 <label className="text-gray-700 text-sm mb-1">Complementary</label>
                 <input
@@ -882,7 +882,7 @@ const PaymentModal = ({
                   placeholder="Complementary"
                 />
               </div>
-              <div className="flex flex-col">
+              {/* <div className="flex flex-col">
                 <label className="text-gray-700 text-sm mb-1">Void</label>
                 <input
                   type="number"
@@ -891,7 +891,7 @@ const PaymentModal = ({
                   className="w-full p-2 border rounded-md text-center"
                   placeholder="Void"
                 />
-              </div>
+              </div> */}
               {institutionData.integration === "HOTEL" && (
                 <div className="flex flex-col">
                   <label className="text-gray-700 text-sm mb-1">Room</label>
