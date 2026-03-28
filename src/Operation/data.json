@@ -1,13 +1,13 @@
 {
-    "institutionId": "CLOU1746",
+    "institutionId": "manas25",
 
     "index":"0",
 
-    "s3BucketName": "cloud9.tekkzy.com",
+    "s3BucketName": "manasrestaurant.tekkzy.com",
 
-    "cloudFrontId": "E179BN7Z6J8IMF",
+    "cloudFrontId": "E3CMHOOYVS23Z",
 
-    "domain": "https://cloud9.tekkzy.com",
+    "domain": "https://manasrestaurant.tekkzy.com",
 
     "printerType":"local",
 
