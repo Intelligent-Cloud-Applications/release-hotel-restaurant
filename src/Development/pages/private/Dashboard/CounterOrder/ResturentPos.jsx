@@ -43,7 +43,7 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
   const [pendingKOTData, setPendingKOTData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const takeawayCount = institutionData?.institution === 'chineseq18' ? 4 : institutionData?.institution === 'Hang7438' ? 10 : 5;
+  const takeawayCount = institutionData?.institution === 'chineseq18' ? 4 : institutionData?.institution === 'manas25' ? 15 : 5;
 const [tables, setTables] = useState([
   // Restaurant tables
   ...(institutionData?.Table || []).map(t => ({
