@@ -62,7 +62,7 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
       status: "available",
       orders: [],
       currentBill: 0,
-      orderType: "pidha",
+      orderType: "dineIn",
     })),
 
     // Takeaway counters
