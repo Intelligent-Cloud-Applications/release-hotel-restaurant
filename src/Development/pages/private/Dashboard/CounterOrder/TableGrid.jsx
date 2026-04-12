@@ -18,6 +18,7 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
         (table) =>
           String(table.name).toLowerCase().startsWith("table") ||
           String(table.id).toLowerCase().startsWith("takeaway") ||
+          String(table.id).toLowerCase().startsWith("pidha") ||
           String(table.orderType).toLowerCase() === "management"
       );
     }
@@ -26,7 +27,8 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
       return tables.filter(
         (table) =>
           String(table.name).toLowerCase().startsWith("table") ||
-          String(table.id).toLowerCase().startsWith("takeaway")
+          String(table.id).toLowerCase().startsWith("takeaway")||
+          String(table.id).toLowerCase().startsWith("pidha")
       );
     } else if (activeTab === "Hotel") {
       return tables.filter((table) => String(table.id).toLowerCase().startsWith("hotel"));
@@ -50,6 +52,8 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
 
     const getTableName = (table) => {
       if (String(table.id).toLowerCase().startsWith("takeaway")) return table.name;
+      if (String(table.id).toLowerCase().startsWith("pidha")) return table.name;
+
       if (String(table.id).toLowerCase().startsWith("hotel")) {
         const hotelId = String(table.id).replace(/^hotel/i, "");
         return `Hotel ${hotelId}`;

@@ -44,61 +44,72 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
   const [isLoading, setIsLoading] = useState(false);
 
   const takeawayCount = institutionData?.institution === 'chineseq18' ? 4 : institutionData?.institution === 'manas25' ? 15 : 5;
-const [tables, setTables] = useState([
-  // Restaurant tables
-  ...(institutionData?.Table || []).map(t => ({
-    id: t.tableNo,
-    name: `Table ${t.tableNo}`,
-    status: "available",
-    orders: [],
-    currentBill: 0,
-    orderType: "dineIn",
-  })),
+  const pidhaCount = institutionData?.institution === 'manas25' ? 2 :0;
+  const [tables, setTables] = useState([
+    // Restaurant tables
+    ...(institutionData?.Table || []).map(t => ({
+      id: t.tableNo,
+      name: `Table ${t.tableNo}`,
+      status: "available",
+      orders: [],
+      currentBill: 0,
+      orderType: "dineIn",
+    })),
+    // Pidha counters
+    ...Array(pidhaCount).fill(null).map((_, i) => ({
+      id: `pidha${i + 1}`,
+      name: `Pidha ${i + 1}`,
+      status: "available",
+      orders: [],
+      currentBill: 0,
+      orderType: "pidha",
+    })),
 
-  // Takeaway counters
-  ...Array(takeawayCount).fill(null).map((_, i) => ({
-    id: `takeaway${i + 1}`,
-    name: `Takeaway ${i + 1}`,
-    status: "available",
-    orders: [],
-    currentBill: 0,
-    orderType: "takeaway",
-  })),
+    // Takeaway counters
+    ...Array(takeawayCount).fill(null).map((_, i) => ({
+      id: `takeaway${i + 1}`,
+      name: `Takeaway ${i + 1}`,
+      status: "available",
+      orders: [],
+      currentBill: 0,
+      orderType: "takeaway",
+    })),
 
-  // Hotel rooms (only if bar integration is enabled)
-  ...(institutionData?.integration === "HOTEL" && hotelBookings
-    ? hotelBookings.map(booking => {
-        const sanitizedRoomNumber = booking.roomNumber.replace(/[^a-zA-Z0-9]/g, '');
-        return {
-          id: `Hotel${sanitizedRoomNumber}`,
-          name: `Hotel ${booking.roomNumber}`,
-        status: "available",
-        orders: [],
-        currentBill: 0,
-        orderType: "hotel",
-        };
-      })
-    : []
-  ),
 
-  // Management rooms
-  // {
-  //   id: "Management444",
-  //   name: "MNG 444",
-  //   status: "available",
-  //   orders: [],
-  //   currentBill: 0,
-  //   orderType: "management",
-  // },
-  // {
-  //   id: "Management555",
-  //   name: "MNG 555",
-  //   status: "available",
-  //   orders: [],
-  //   currentBill: 0,
-  //   orderType: "management",
-  // },
-]);
+    // Hotel rooms (only if bar integration is enabled)
+    ...(institutionData?.integration === "HOTEL" && hotelBookings
+      ? hotelBookings.map(booking => {
+          const sanitizedRoomNumber = booking.roomNumber.replace(/[^a-zA-Z0-9]/g, '');
+          return {
+            id: `Hotel${sanitizedRoomNumber}`,
+            name: `Hotel ${booking.roomNumber}`,
+            status: "available",
+            orders: [],
+            currentBill: 0,
+            orderType: "hotel",
+          };
+        })
+      : []
+    ),
+
+    // Management rooms
+    // {
+    //   id: "Management444",
+    //   name: "MNG 444",
+    //   status: "available",
+    //   orders: [],
+    //   currentBill: 0,
+    //   orderType: "management",
+    // },
+    // {
+    //   id: "Management555",
+    //   name: "MNG 555",
+    //   status: "available",
+    //   orders: [],
+    //   currentBill: 0,
+    //   orderType: "management",
+    // },
+  ]);
 
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);
   const [selectedTable, setSelectedTable] = useState(null);
