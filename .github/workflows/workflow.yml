@@ -1,13 +1,632 @@
-name: Dynamic Institution Deploy to S3
+name: Dynamic Institution Deploy to S3 with AI Security
 
 on:
+  pull_request:
+    branches:
+      - '*'
+    types: [opened, synchronize, reopened]
   push:
     branches:
       - '*'
 
+permissions:
+  contents: read
+  pull-requests: write
+  statuses: write
+  checks: write
+
 jobs:
-  deploy:
+  # ── Job 1: AI Summary + Test Cases + Security ─────────────────────────────
+  ai-summary:
+    name: AI Push Summary & Test Cases
     runs-on: ubuntu-latest
+    outputs:
+      security_score: ${{ steps.security.outputs.score }}
+      security_passed: ${{ steps.security.outputs.passed }}
+
+    steps:
+      - name: Check if PR exists
+        id: pr_check
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const branch = context.ref.split('/').pop();
+            const isPR = context.eventName === 'pull_request';
+
+            let prFound = isPR;
+            if (!isPR) {
+              const { data: pulls } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                head: `${context.repo.owner}:${branch}`,
+                state: 'open',
+              });
+              prFound = pulls.length > 0;
+            }
+
+            console.log(`Event: ${context.eventName}`);
+            console.log(`Branch: ${branch}`);
+            console.log(`PR found: ${prFound}`);
+            core.setOutput('pr_found', prFound.toString());
+
+            if (!prFound) {
+              console.log('No open PR found for this branch — skipping AI analysis.');
+            }
+
+      - name: Checkout repository
+        if: steps.pr_check.outputs.pr_found == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gather push context
+        if: steps.pr_check.outputs.pr_found == 'true'
+        id: context
+        run: |
+          AUTHOR="${{ github.actor }}"
+          BRANCH="${{ github.ref_name }}"
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+          TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M UTC')
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+            COMMIT_MESSAGES=$(git log ${BASE}..${HEAD} --pretty=format:"%s|||%an|||%ai" --no-merges -n 20 2>/dev/null || git log -1 --pretty=format:"%s|||%an|||%ai")
+            CHANGED_FILES=$(git diff --name-status ${BASE} ${HEAD} 2>/dev/null || git diff-tree --no-commit-id -r --name-status ${HEAD})
+            DIFF=$(git diff ${BASE} ${HEAD} 2>/dev/null || git show --stat ${HEAD})
+          else
+            COMMIT_MESSAGES=$(git log \
+              ${{ github.event.before }}..${{ github.sha }} \
+              --pretty=format:"%s|||%an|||%ai" \
+              --no-merges -n 20 2>/dev/null || \
+              git log -1 --pretty=format:"%s|||%an|||%ai")
+            CHANGED_FILES=$(git diff \
+              --name-status \
+              ${{ github.event.before }} ${{ github.sha }} 2>/dev/null || \
+              git diff-tree --no-commit-id -r --name-status ${{ github.sha }})
+            DIFF=$(git diff \
+              ${{ github.event.before }} ${{ github.sha }} 2>/dev/null || \
+              git show --stat ${{ github.sha }})
+          fi
+
+          DIFF="${DIFF:0:4000}"
+
+          echo "$COMMIT_MESSAGES" > /tmp/commit_messages.txt
+          echo "$CHANGED_FILES"   > /tmp/changed_files.txt
+          echo "$DIFF"            > /tmp/diff.txt
+
+          echo "author=$AUTHOR"       >> $GITHUB_OUTPUT
+          echo "branch=$BRANCH"       >> $GITHUB_OUTPUT
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "event=${{ github.event_name }}" >> $GITHUB_OUTPUT
+
+      # ── Step: Ask Groq for test cases ──────────────────────────────────────
+      - name: Ask Groq AI to generate summary and test cases
+        if: steps.pr_check.outputs.pr_found == 'true'
+        env:
+          GROQ_API_KEY: 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
+        run: |
+          COMMITS=$(cat /tmp/commit_messages.txt)
+          FILES=$(cat /tmp/changed_files.txt)
+          DIFF=$(cat /tmp/diff.txt)
+
+          PROMPT="You are a senior QA engineer reviewing a Git push on a React + AWS S3 project.
+
+          Push Info:
+          - Author: ${{ steps.context.outputs.author }}
+          - Branch: ${{ steps.context.outputs.branch }}
+          - Commit: ${{ steps.context.outputs.short_sha }}
+
+          Commit Messages:
+          ${COMMITS}
+
+          Changed Files (A=Added M=Modified D=Deleted):
+          ${FILES}
+
+          Full Diff:
+          ${DIFF}
+
+          ---
+
+          Instructions:
+          1. Read every line of the diff carefully.
+          2. Identify every function, component, hook, prop, state change, API call, route, and conditional in the diff.
+          3. For EACH thing you find, generate test cases across all four categories.
+          4. Generate the MAXIMUM possible number of test cases. Aim for at least 5 per category.
+          5. Each test case must reference actual code changed - no generic placeholders.
+          6. Be specific: include exact component names, function names, prop values from the diff.
+
+          Respond ONLY with a valid JSON object. No markdown, no explanation, no code fences. Use this exact structure:
+          {\"summary\":\"2-3 sentence plain English description of what changed\",\"risk_level\":\"Low|Medium|High\",\"risk_reason\":\"One sentence explaining the risk level\",\"test_cases\":{\"ui\":[{\"id\":1,\"what\":\"what to test\",\"action\":\"exact step or input\",\"expected\":\"expected result\"}],\"logic\":[{\"id\":1,\"what\":\"what to test\",\"action\":\"exact step or input\",\"expected\":\"expected result\"}],\"routing\":[{\"id\":1,\"what\":\"what to test\",\"action\":\"exact step or input\",\"expected\":\"expected result\"}],\"edge_cases\":[{\"id\":1,\"what\":\"what to test\",\"action\":\"exact step or input\",\"expected\":\"expected result\"}]},\"manual_checks\":[{\"id\":1,\"check\":\"exact step to verify in the browser\",\"priority\":\"High|Medium|Low\"}]}"
+
+          PAYLOAD=$(jq -n \
+            --arg prompt "$PROMPT" \
+            '{
+              model: "llama-3.3-70b-versatile",
+              max_tokens: 4096,
+              temperature: 0.2,
+              messages: [{ role: "user", content: $prompt }]
+            }')
+
+          if [ -z "$GROQ_API_KEY" ]; then
+            echo "ERROR: GROQ_API_KEY secret is not set!"
+            exit 1
+          fi
+
+          echo "Calling Groq API for test cases..."
+          echo "Diff size: ${#DIFF} chars, Prompt size: ${#PROMPT} chars"
+
+          RESPONSE=$(curl -s -w "\n__HTTP_STATUS__%{http_code}" \
+            https://api.groq.com/openai/v1/chat/completions \
+            -H "Authorization: Bearer $GROQ_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -1 | sed 's/__HTTP_STATUS__//')
+          BODY=$(echo "$RESPONSE" | sed '$d' | sed 's/__HTTP_STATUS__.*//')
+          echo "HTTP Status: $HTTP_STATUS"
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "Groq API error:"
+            echo "$BODY" | jq . || echo "$BODY"
+            echo '{"summary":"AI unavailable.","risk_level":"Unknown","risk_reason":"API failed.","test_cases":{"ui":[],"logic":[],"routing":[],"edge_cases":[]},"manual_checks":[]}' > /tmp/ai_report.json
+          else
+            RAW=$(echo "$BODY" | jq -r '.choices[0].message.content // "{}"')
+            echo "$RAW" | sed 's/```json//g' | sed 's/```//g' | tr -d '\r' > /tmp/ai_raw.json
+            sed -i 's/^[^{]*//' /tmp/ai_raw.json
+            if jq . /tmp/ai_raw.json > /dev/null 2>&1; then
+              cp /tmp/ai_raw.json /tmp/ai_report.json
+              echo "AI report saved successfully."
+              echo "Test case counts:"
+              echo "  UI:          $(jq '.test_cases.ui | length' /tmp/ai_report.json)"
+              echo "  Logic:       $(jq '.test_cases.logic | length' /tmp/ai_report.json)"
+              echo "  Routing:     $(jq '.test_cases.routing | length' /tmp/ai_report.json)"
+              echo "  Edge cases:  $(jq '.test_cases.edge_cases | length' /tmp/ai_report.json)"
+              echo "  Manual:      $(jq '.manual_checks | length' /tmp/ai_report.json)"
+            else
+              echo "Groq returned non-JSON. Raw output:"
+              cat /tmp/ai_raw.json
+              echo '{"summary":"Malformed response.","risk_level":"Unknown","risk_reason":"JSON parse failed.","test_cases":{"ui":[],"logic":[],"routing":[],"edge_cases":[]},"manual_checks":[]}' > /tmp/ai_report.json
+            fi
+          fi
+
+      # ── Step: AI Security Checks ───────────────────────────────────────────
+      - name: Run AI security checks
+        if: steps.pr_check.outputs.pr_found == 'true'
+        id: security
+        env:
+          GROQ_API_KEY: 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
+        run: |
+          COMMITS=$(cat /tmp/commit_messages.txt)
+          FILES=$(cat /tmp/changed_files.txt)
+          DIFF=$(cat /tmp/diff.txt)
+
+          SECURITY_PROMPT="You are a senior security engineer reviewing a Git diff for a React + AWS S3 web application.
+
+          Changed Files:
+          ${FILES}
+
+          Full Diff:
+          ${DIFF}
+
+          ---
+
+          Run exactly these 5 security checks on the diff. For each check, decide PASS or FAIL based only on what is in the diff.
+
+          Check 1 - Secrets & credentials: Does the diff introduce any hardcoded API keys, tokens, passwords, or secrets? (PASS = none found, FAIL = found)
+          Check 2 - Dependency safety: Does the diff add or change any npm/yarn packages? If yes, are they from unknown or suspicious sources? (PASS = no new deps OR known safe deps, FAIL = suspicious/unknown packages added)
+          Check 3 - XSS & injection risk: Does the diff introduce dangerouslySetInnerHTML, eval(), innerHTML, or unsanitized user input rendered to DOM? (PASS = none found, FAIL = found)
+          Check 4 - File impact & breakage risk: Does this diff modify shared utilities, global config, layout components, or routing that could break other pages or features? (PASS = changes are isolated, FAIL = high blast radius affecting shared code)
+          Check 5 - Sensitive data exposure: Does the diff log, expose, or transmit sensitive user data (emails, passwords, personal info) to console, external URLs, or unprotected endpoints? (PASS = none found, FAIL = found)
+
+          Respond ONLY with a valid JSON object. No markdown, no explanation, no code fences:
+          {\"checks\":[{\"id\":1,\"name\":\"Secrets & credentials\",\"status\":\"PASS|FAIL\",\"reason\":\"one sentence explanation\"},{\"id\":2,\"name\":\"Dependency safety\",\"status\":\"PASS|FAIL\",\"reason\":\"one sentence explanation\"},{\"id\":3,\"name\":\"XSS & injection risk\",\"status\":\"PASS|FAIL\",\"reason\":\"one sentence explanation\"},{\"id\":4,\"name\":\"File impact & breakage risk\",\"status\":\"PASS|FAIL\",\"reason\":\"one sentence explanation\"},{\"id\":5,\"name\":\"Sensitive data exposure\",\"status\":\"PASS|FAIL\",\"reason\":\"one sentence explanation\"}],\"overall\":\"APPROVED|BLOCKED\",\"summary\":\"One sentence overall security verdict\"}"
+
+          PAYLOAD=$(jq -n \
+            --arg prompt "$SECURITY_PROMPT" \
+            '{
+              model: "llama-3.3-70b-versatile",
+              max_tokens: 2048,
+              temperature: 0.1,
+              messages: [{ role: "user", content: $prompt }]
+            }')
+
+          echo "Waiting 45s for Groq TPM window to reset..."
+          sleep 45
+          echo "Calling Groq API for security checks..."
+
+          RESPONSE=$(curl -s -w "\n__HTTP_STATUS__%{http_code}" \
+            https://api.groq.com/openai/v1/chat/completions \
+            -H "Authorization: Bearer $GROQ_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -1 | sed 's/__HTTP_STATUS__//')
+          BODY=$(echo "$RESPONSE" | sed '$d' | sed 's/__HTTP_STATUS__.*//')
+          echo "HTTP Status: $HTTP_STATUS"
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "Security API call failed, defaulting to BLOCKED"
+            echo '{"checks":[{"id":1,"name":"Secrets & credentials","status":"FAIL","reason":"Security check unavailable"},{"id":2,"name":"Dependency safety","status":"FAIL","reason":"Security check unavailable"},{"id":3,"name":"XSS & injection risk","status":"FAIL","reason":"Security check unavailable"},{"id":4,"name":"File impact & breakage risk","status":"FAIL","reason":"Security check unavailable"},{"id":5,"name":"Sensitive data exposure","status":"FAIL","reason":"Security check unavailable"}],"overall":"BLOCKED","summary":"Security checks could not be completed - API unavailable"}' > /tmp/security_report.json
+          else
+            RAW=$(echo "$BODY" | jq -r '.choices[0].message.content // "{}"')
+            CLEAN=$(echo "$RAW" | sed 's/```json//g' | sed 's/```//g' | tr -d '\r')
+            CLEAN=$(echo "$CLEAN" | grep -o '{.*}' | tail -1)
+            [ -z "$CLEAN" ] && CLEAN="{}"
+            if echo "$CLEAN" | jq . > /dev/null 2>&1; then
+              echo "$CLEAN" > /tmp/security_report.json
+              echo "Security report saved."
+            else
+              echo "Security check returned non-JSON:"
+              echo "$CLEAN"
+              echo '{"checks":[{"id":1,"name":"Secrets & credentials","status":"FAIL","reason":"Parse error"},{"id":2,"name":"Dependency safety","status":"FAIL","reason":"Parse error"},{"id":3,"name":"XSS & injection risk","status":"FAIL","reason":"Parse error"},{"id":4,"name":"File impact & breakage risk","status":"FAIL","reason":"Parse error"},{"id":5,"name":"Sensitive data exposure","status":"FAIL","reason":"Parse error"}],"overall":"BLOCKED","summary":"Security response could not be parsed"}' > /tmp/security_report.json
+            fi
+          fi
+
+          PASS_COUNT=$(jq '[.checks[] | select(.status=="PASS")] | length' /tmp/security_report.json)
+
+          if [ "$PASS_COUNT" -ge 3 ]; then
+            OVERALL="APPROVED"
+          else
+            OVERALL="BLOCKED"
+          fi
+
+          echo "Security checks passed: $PASS_COUNT / 5"
+          echo "Overall verdict: $OVERALL"
+
+          echo "score=$PASS_COUNT"  >> $GITHUB_OUTPUT
+          echo "passed=$OVERALL"    >> $GITHUB_OUTPUT
+
+      # ── Step: Post to Job Summary ──────────────────────────────────────────
+      - name: Post to Job Summary
+        if: steps.pr_check.outputs.pr_found == 'true'
+        run: |
+          REPORT=$(cat /tmp/ai_report.json)
+          SEC=$(cat /tmp/security_report.json)
+
+          SUMMARY=$(echo "$REPORT"     | jq -r '.summary // "N/A"')
+          RISK=$(echo "$REPORT"        | jq -r '.risk_level // "Unknown"')
+          RISK_REASON=$(echo "$REPORT" | jq -r '.risk_reason // ""')
+
+          UI_COUNT=$(echo "$REPORT"      | jq '.test_cases.ui // [] | length')
+          LOGIC_COUNT=$(echo "$REPORT"   | jq '.test_cases.logic // [] | length')
+          ROUTING_COUNT=$(echo "$REPORT" | jq '.test_cases.routing // [] | length')
+          EDGE_COUNT=$(echo "$REPORT"    | jq '.test_cases.edge_cases // [] | length')
+          MANUAL_COUNT=$(echo "$REPORT"  | jq '.manual_checks // [] | length')
+          TOTAL=$((UI_COUNT + LOGIC_COUNT + ROUTING_COUNT + EDGE_COUNT))
+
+          PASS_COUNT=$(echo "$SEC" | jq '[.checks[] | select(.status=="PASS")] | length')
+          OVERALL=$(echo "$SEC"    | jq -r '.overall')
+          SEC_SUMMARY=$(echo "$SEC" | jq -r '.summary')
+
+          case "$RISK" in
+            "Low")    RISK_BADGE="🟢 Low" ;;
+            "Medium") RISK_BADGE="🟡 Medium" ;;
+            "High")   RISK_BADGE="🔴 High" ;;
+            *)        RISK_BADGE="⚪ Unknown" ;;
+          esac
+
+          if [ "$OVERALL" = "APPROVED" ]; then
+            SEC_BADGE="✅ APPROVED ($PASS_COUNT/5 passed)"
+          else
+            SEC_BADGE="🚫 BLOCKED ($PASS_COUNT/5 passed — need 3+)"
+          fi
+
+          build_rows() {
+            local KEY="$1"
+            local ROWS
+            ROWS=$(echo "$REPORT" | jq -r --arg key "$KEY" '
+              .test_cases[$key] // [] | .[] |
+              "| \(.id // "–") | \(.what) | \(.action) | \(.expected) |"
+            ')
+            if [ -z "$ROWS" ]; then
+              echo "| — | No test cases generated | — | — |"
+            else
+              echo "$ROWS"
+            fi
+          }
+
+          MANUAL_ROWS=$(echo "$REPORT" | jq -r '
+            .manual_checks // [] | .[] |
+            "| \(.id // "–") | \(.check) | **\(.priority)** |"
+          ')
+          [ -z "$MANUAL_ROWS" ] && MANUAL_ROWS="| — | No manual checks generated | — |"
+
+          SEC_ROWS=$(echo "$SEC" | jq -r '
+            .checks[] |
+            "| \(.id) | \(.name) | \(if .status == "PASS" then "✅ PASS" else "❌ FAIL" end) | \(.reason) |"
+          ')
+
+          STEP_BRANCH="${{ steps.context.outputs.branch }}"
+          STEP_SHA="${{ steps.context.outputs.short_sha }}"
+          STEP_AUTHOR="${{ steps.context.outputs.author }}"
+          STEP_TS="${{ steps.context.outputs.timestamp }}"
+
+          {
+            echo "## 🤖 AI Push Analysis & Test Cases"
+            echo ""
+            echo "> **Branch:** \`${STEP_BRANCH}\` &nbsp;·&nbsp; **Commit:** \`${STEP_SHA}\` &nbsp;·&nbsp; **Author:** ${STEP_AUTHOR} &nbsp;·&nbsp; ${STEP_TS}"
+            echo ""
+            echo "### 📋 What changed"
+            echo "${SUMMARY}"
+            echo ""
+            echo "### ⚠️ Risk: ${RISK_BADGE}"
+            echo "${RISK_REASON}"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## 🔐 Security gate: ${SEC_BADGE}"
+            echo ""
+            echo "> ${SEC_SUMMARY}"
+            echo ""
+            echo "| # | Check | Result | Reason |"
+            echo "|---|-------|--------|--------|"
+            echo "${SEC_ROWS}"
+            echo ""
+            if [ "$OVERALL" = "BLOCKED" ]; then
+              echo "> 🚫 **Deployment is blocked.** Less than 3 security checks passed. Fix the failing checks before merging."
+            else
+              echo "> ✅ **Deployment is approved.** 3 or more security checks passed."
+            fi
+            echo ""
+            echo "---"
+            echo ""
+            echo "### 📊 Test case summary"
+            echo "| UI | Logic | Routing | Edge Cases | Manual | **Total** |"
+            echo "|:--:|:-----:|:-------:|:----------:|:------:|:---------:|"
+            echo "| ${UI_COUNT} | ${LOGIC_COUNT} | ${ROUTING_COUNT} | ${EDGE_COUNT} | ${MANUAL_COUNT} | **${TOTAL}** |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "### 🖥️ UI tests (${UI_COUNT})"
+            echo "| # | What | Action | Expected |"
+            echo "|---|------|--------|----------|"
+            build_rows "ui"
+            echo ""
+            echo "---"
+            echo ""
+            echo "### ⚙️ Logic tests (${LOGIC_COUNT})"
+            echo "| # | What | Action | Expected |"
+            echo "|---|------|--------|----------|"
+            build_rows "logic"
+            echo ""
+            echo "---"
+            echo ""
+            echo "### 🔀 Routing tests (${ROUTING_COUNT})"
+            echo "| # | What | Action | Expected |"
+            echo "|---|------|--------|----------|"
+            build_rows "routing"
+            echo ""
+            echo "---"
+            echo ""
+            echo "### ⚡ Edge cases (${EDGE_COUNT})"
+            echo "| # | What | Action | Expected |"
+            echo "|---|------|--------|----------|"
+            build_rows "edge_cases"
+            echo ""
+            echo "---"
+            echo ""
+            echo "### 👁️ Manual browser checks (${MANUAL_COUNT})"
+            echo "| # | What to check | Priority |"
+            echo "|---|---------------|----------|"
+            echo "${MANUAL_ROWS}"
+            echo ""
+            echo "---"
+            echo "*🤖 Generated by Groq AI · LLaMA 3.3 70B*"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Step: Post PR comment (push + PR events) ───────────────────────────
+      - name: Post comment to PR or commit
+        if: steps.pr_check.outputs.pr_found == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            let report = {}, sec = {};
+            try { report = JSON.parse(fs.readFileSync('/tmp/ai_report.json', 'utf8')); } catch(e) {}
+            try { sec    = JSON.parse(fs.readFileSync('/tmp/security_report.json', 'utf8')); } catch(e) {}
+
+            const tc     = report.test_cases || {};
+            const branch = context.ref.split('/').pop();
+            const sha    = context.sha.slice(0, 7);
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const isPR   = context.eventName === 'pull_request';
+
+            const riskEmoji  = { Low: '🟢 Low', Medium: '🟡 Medium', High: '🔴 High' };
+            const riskLabel  = riskEmoji[report.risk_level] || '⚪ Unknown';
+            const passCount  = (sec.checks || []).filter(c => c.status === 'PASS').length;
+            const isApproved = sec.overall === 'APPROVED';
+            const secBadge   = isApproved
+              ? `✅ APPROVED (${passCount}/5 passed)`
+              : `🚫 BLOCKED (${passCount}/5 passed — need 3+)`;
+
+            const ui      = tc.ui         || [];
+            const logic   = tc.logic      || [];
+            const routing = tc.routing    || [];
+            const edge    = tc.edge_cases || [];
+            const manual  = report.manual_checks || [];
+            const total   = ui.length + logic.length + routing.length + edge.length;
+
+            const th4 = `| # | What | Action | Expected |\n|---|------|--------|----------|`;
+            const th3 = `| # | What to check | Priority |\n|---|---------------|----------|`;
+
+            const renderTests = (tests) =>
+              tests.length
+                ? tests.map(t => `| ${t.id||'–'} | ${t.what} | ${t.action} | ${t.expected} |`).join('\n')
+                : '| — | No test cases generated | — | — |';
+
+            const renderManual = (checks) =>
+              checks.length
+                ? checks.map(c => `| ${c.id||'–'} | ${c.check} | **${c.priority}** |`).join('\n')
+                : '| — | No manual checks | — |';
+
+            const secRows = (sec.checks || [])
+              .map(c => `| ${c.id} | ${c.name} | ${c.status === 'PASS' ? '✅ PASS' : '❌ FAIL'} | ${c.reason} |`)
+              .join('\n');
+
+            let changedFilesSection = '';
+            if (isPR) {
+              try {
+                const { data: files } = await github.rest.pulls.listFiles({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: context.payload.pull_request.number,
+                });
+                const statusLabel = { added: '🟢 Added', removed: '🔴 Removed', modified: '🟡 Modified', renamed: '🔵 Renamed' };
+                const fileRows = files.map(f =>
+                  `| \`${f.filename}\` | ${statusLabel[f.status] || f.status} | +${f.additions} / -${f.deletions} |`
+                ).join('\n');
+                changedFilesSection = [
+                  '',
+                  '---',
+                  '',
+                  `### 📁 Files changed in this PR (${files.length})`,
+                  '| File | Status | Lines |',
+                  '|------|--------|-------|',
+                  fileRows,
+                ].join('\n');
+              } catch(e) {
+                changedFilesSection = '\n\n> Could not fetch file list.';
+              }
+            }
+
+            const body = [
+              '## 🤖 AI Push Report',
+              '',
+              `> **Branch:** \`${branch}\` · **Commit:** \`${sha}\` · **Author:** ${context.actor}`,
+              '',
+              '### 📋 What changed',
+              report.summary || 'N/A',
+              '',
+              `### ⚠️ Risk: ${riskLabel}`,
+              report.risk_reason || '',
+              changedFilesSection,
+              '',
+              '---',
+              '',
+              `## 🔐 Security gate: ${secBadge}`,
+              '',
+              `> ${sec.summary || ''}`,
+              '',
+              '| # | Check | Result | Reason |',
+              '|---|-------|--------|--------|',
+              secRows,
+              '',
+              isApproved
+                ? '> ✅ **Deployment approved.** 3 or more security checks passed.'
+                : '> 🚫 **Deployment blocked.** Fix the failing security checks before merging.',
+              '',
+              '---',
+              '',
+              '### 📊 Test case summary',
+              '| UI | Logic | Routing | Edge Cases | Manual | **Total** |',
+              '|:--:|:-----:|:-------:|:----------:|:------:|:---------:|',
+              `| ${ui.length} | ${logic.length} | ${routing.length} | ${edge.length} | ${manual.length} | **${total}** |`,
+              '',
+              '---',
+              '',
+              `### 🖥️ UI tests (${ui.length})`,
+              th4, renderTests(ui), '',
+              '---',
+              '',
+              `### ⚙️ Logic tests (${logic.length})`,
+              th4, renderTests(logic), '',
+              '---',
+              '',
+              `### 🔀 Routing tests (${routing.length})`,
+              th4, renderTests(routing), '',
+              '---',
+              '',
+              `### ⚡ Edge cases (${edge.length})`,
+              th4, renderTests(edge), '',
+              '---',
+              '',
+              `### 👁️ Manual browser checks (${manual.length})`,
+              th3, renderManual(manual), '',
+              '---',
+              `*🤖 Groq AI (LLaMA 3.3 70B) · [View full report](${runUrl})*`
+            ].join('\n');
+
+            let prNumber = null;
+            if (isPR) {
+              prNumber = context.payload.pull_request.number;
+            } else {
+              const { data: pulls } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                head: `${context.repo.owner}:${branch}`,
+                state: 'open',
+              });
+              if (pulls.length) prNumber = pulls[0].number;
+            }
+
+            if (prNumber) {
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+              });
+              const old = comments.find(c => c.user.type === 'Bot' && c.body.includes('AI Push Report'));
+              if (old) await github.rest.issues.deleteComment({
+                owner: context.repo.owner, repo: context.repo.repo, comment_id: old.id,
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: prNumber, body,
+              });
+              console.log(`Posted to PR #${prNumber}`);
+            } else {
+              await github.rest.repos.createCommitComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                commit_sha: context.sha,
+                body,
+              });
+              console.log('No open PR — posted as commit comment');
+            }
+
+  # ── Job 2: Security Gate ──────────────────────────────────────────────────
+  security-gate:
+    name: Security Gate
+    runs-on: ubuntu-latest
+    needs: ai-summary
+    steps:
+      - name: Check security verdict
+        run: |
+          SCORE="${{ needs.ai-summary.outputs.security_score }}"
+          PASSED="${{ needs.ai-summary.outputs.security_passed }}"
+
+          if [ -z "$SCORE" ] && [ -z "$PASSED" ]; then
+            echo "⏭️ No PR found — security gate skipped. Proceeding to deploy."
+            exit 0
+          fi
+
+          echo "Security score: $SCORE / 5"
+          echo "Verdict: $PASSED"
+
+          if [ "$PASSED" != "APPROVED" ]; then
+            echo ""
+            echo "🚫 DEPLOYMENT BLOCKED"
+            echo "Only $SCORE out of 5 security checks passed."
+            echo "Minimum required: 3"
+            echo ""
+            echo "Fix the failing security checks and push again."
+            exit 1
+          else
+            echo "✅ Security gate passed ($SCORE/5). Proceeding to deploy."
+          fi
+
+  # ── Job 3: Deploy to S3 ───────────────────────────────────────────────────
+  deploy:
+    name: Deploy to S3
+    runs-on: ubuntu-latest
+    needs: [ai-summary, security-gate]
+    if: github.event_name == 'push'
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2
