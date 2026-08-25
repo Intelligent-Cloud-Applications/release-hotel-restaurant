@@ -3,11 +3,11 @@
 
     "index":"1",
 
-    "s3BucketName": "templatecm.awsaiapp.com",
+    "s3BucketName": "test1.awsaiapp.com",
 
-    "cloudFrontId": "",
+    "cloudFrontId": "EP5H1CMTJK7EO",
 
-    "domain": "https://templatecm.awsaiapp.com",
+    "domain": "https://test1.awsaiapp.com",
 
     "printerType":"local",
 
