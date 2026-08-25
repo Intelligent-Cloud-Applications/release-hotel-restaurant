@@ -703,7 +703,7 @@ const formatBill = (orderItems, customerId) => {
         setShowPrintBill(true);
       }
     }
-    setShowStaffSelectionModal(true);
+    // setShowStaffSelectionModal(true);
   };
   const handleAssignStaffToBill = async () => {
     if (!selectedStaff) {
