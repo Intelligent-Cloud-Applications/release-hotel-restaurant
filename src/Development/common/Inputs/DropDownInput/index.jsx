@@ -187,6 +187,33 @@ const SearchableInput = ({
   );
 };
 
+const formatStockDisplay = (stock) => {
+  if (!stock) return "";
+  const rawQty = String(stock.quantity || "").trim();
+  const parts = rawQty.split(" ");
+  const num = parseFloat(parts[0]);
+  const unit = (parts[1] || stock.unit || "").toLowerCase();
+
+  if (isNaN(num)) return `${stock.stockName || stock.name || ""} (${rawQty})`;
+
+  let displayQty = rawQty;
+  if (unit === "g" || (rawQty.endsWith("g") && !rawQty.endsWith("kg"))) {
+    if (num >= 1000 && num % 1000 === 0) displayQty = `${num / 1000} kg`;
+    else if (num >= 1000) displayQty = `${Math.floor(num / 1000)} kg ${num % 1000} g`;
+    else displayQty = `${num} g`;
+  } else if (unit === "ml" || rawQty.includes("ml")) {
+    if (num >= 1000 && num % 1000 === 0) displayQty = `${num / 1000} l`;
+    else if (num >= 1000) displayQty = `${Math.floor(num / 1000)} l ${num % 1000} ml`;
+    else displayQty = `${num} ml`;
+  } else if (unit === "kg") {
+    displayQty = `${num} kg`;
+  } else if (unit === "l") {
+    displayQty = `${num} l`;
+  }
+
+  return `${stock.stockName || stock.name || ""} (${displayQty})`;
+};
+
 // Stock-specific input component
 const StockInput = ({ stocks = [], value, onChange, filterType, ...props }) => {
   const filteredStocks = stocks.filter(
@@ -198,7 +225,7 @@ const StockInput = ({ stocks = [], value, onChange, filterType, ...props }) => {
       options={filteredStocks}
       value={value}
       onChange={onChange}
-      getOptionLabel={(stock) => `${stock.stockName} (${stock.quantity})`}
+      getOptionLabel={formatStockDisplay}
       getOptionValue={(stock) => stock.stockId}
       placeholder="Type to search stocks..."
       noOptionsText="No stocks found"

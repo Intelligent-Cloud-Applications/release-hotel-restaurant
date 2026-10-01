@@ -24,13 +24,17 @@ const Loader = () => (
   </div>
 );
 
+const isOutOfStockBoolean = (val) => {
+  return val === true || val === "true" || val === 1 || val === "1";
+};
+
 const Item = () => {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [currentItem, setCurrentItem] = useState(null);
-  const { institutionData } = useContext(Context);
+  const { institutionData, setItems: setContextItems } = useContext(Context);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -96,12 +100,15 @@ const Item = () => {
           .filter((item) => item.itemId && item.itemId !== "undefined")
           .map((item) => ({
             ...item,
-            outOfStock: item.outOfStock ?? false,
+            outOfStock: isOutOfStockBoolean(item.outOfStock),
           }));
 
         console.log("Updated items:", updatedItems);
 
         setItems(updatedItems);
+        if (setContextItems) {
+          setContextItems(updatedItems);
+        }
         const uniqueCategories = [
           ...new Set(updatedItems.map((item) => item.category).filter(Boolean)),
         ];
@@ -134,15 +141,25 @@ const Item = () => {
 
     setIsProcessing((prev) => ({ ...prev, toggleItemId: itemId }));
 
+    const isCurrentlyOOS = isOutOfStockBoolean(currentItem.outOfStock);
     const updatedItem = {
       ...currentItem,
-      outOfStock:
-        currentItem.outOfStock !== undefined ? !currentItem.outOfStock : true,
+      outOfStock: !isCurrentlyOOS,
     };
 
-    setItems((prevItems) =>
-      prevItems.map((item) => (item.itemId === itemId ? updatedItem : item))
-    );
+    setItems((prevItems) => {
+      const nextItems = prevItems.map((item) =>
+        item.itemId === itemId ? updatedItem : item
+      );
+      if (setContextItems) setContextItems(nextItems);
+      return nextItems;
+    });
+
+    try {
+      localStorage.removeItem("cafeItems");
+    } catch (e) {
+      console.error("Failed to remove cafeItems from localStorage:", e);
+    }
 
     try {
       await API.put(
@@ -156,9 +173,13 @@ const Item = () => {
     } catch (error) {
       console.error("Failed to update stock status:", error);
 
-      setItems((prevItems) =>
-        prevItems.map((item) => (item.itemId === itemId ? currentItem : item))
-      );
+      setItems((prevItems) => {
+        const revertedItems = prevItems.map((item) =>
+          item.itemId === itemId ? currentItem : item
+        );
+        if (setContextItems) setContextItems(revertedItems);
+        return revertedItems;
+      });
 
       toast.error("Failed to update stock status. Please try again.");
     } finally {
@@ -247,6 +268,10 @@ const Item = () => {
             : item
         );
         setItems(updatedItems);
+        if (setContextItems) setContextItems(updatedItems);
+        try {
+          localStorage.removeItem("cafeItems");
+        } catch (e) {}
 
         const response = await API.put(
           "main",
@@ -280,10 +305,14 @@ const Item = () => {
           .filter((item) => item.itemId && item.itemId !== "undefined")
           .map((item) => ({
             ...item,
-            outOfStock: item.outOfStock ?? false,
+            outOfStock: isOutOfStockBoolean(item.outOfStock),
           }));
 
         setItems(updatedItems);
+        if (setContextItems) setContextItems(updatedItems);
+        try {
+          localStorage.removeItem("cafeItems");
+        } catch (e) {}
 
         if (!categories.includes(submissionData.category)) {
           setCategories((prev) => [...prev, submissionData.category]);
@@ -311,10 +340,11 @@ const Item = () => {
           .filter((item) => item.itemId && item.itemId !== "undefined")
           .map((item) => ({
             ...item,
-            outOfStock: item.outOfStock ?? false,
+            outOfStock: isOutOfStockBoolean(item.outOfStock),
           }));
 
         setItems(updatedItems);
+        if (setContextItems) setContextItems(updatedItems);
       } catch (refreshError) {
         console.error("Error refreshing items list:", refreshError);
       }
@@ -344,7 +374,15 @@ const Item = () => {
 
     const itemToDelete = items.find((item) => item.itemId === itemId);
 
-    setItems((prevItems) => prevItems.filter((item) => item.itemId !== itemId));
+    setItems((prevItems) => {
+      const nextItems = prevItems.filter((item) => item.itemId !== itemId);
+      if (setContextItems) setContextItems(nextItems);
+      return nextItems;
+    });
+
+    try {
+      localStorage.removeItem("cafeItems");
+    } catch (e) {}
 
     try {
       if (itemToDelete && itemToDelete.imageUrl) {
@@ -377,15 +415,20 @@ const Item = () => {
           .filter((item) => item.itemId && item.itemId !== "undefined")
           .map((item) => ({
             ...item,
-            outOfStock: item.outOfStock ?? false,
+            outOfStock: isOutOfStockBoolean(item.outOfStock),
           }));
 
         setItems(updatedItems);
+        if (setContextItems) setContextItems(updatedItems);
       } catch (refreshError) {
         console.error("Error refreshing items list:", refreshError);
 
         if (itemToDelete) {
-          setItems((prevItems) => [...prevItems, itemToDelete]);
+          setItems((prevItems) => {
+            const reverted = [...prevItems, itemToDelete];
+            if (setContextItems) setContextItems(reverted);
+            return reverted;
+          });
         }
       }
     } finally {
@@ -477,7 +520,7 @@ const Item = () => {
                       <input
                         type="checkbox"
                         className="sr-only peer"
-                        checked={!item.outOfStock}
+                        checked={!isOutOfStockBoolean(item.outOfStock)}
                         onChange={() => {
                           if (
                             item.itemId &&
@@ -498,14 +541,14 @@ const Item = () => {
                     </label>
                     <span
                       className={`text-sm font-semibold ${
-                        item.outOfStock ? "text-red-500" : "text-green-500"
+                        isOutOfStockBoolean(item.outOfStock) ? "text-red-500" : "text-green-500"
                       }`}>
                       {isProcessing.toggleItemId === item.itemId ? (
                         <span className="flex items-center">
                           <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin mr-1"></div>
                           Updating...
                         </span>
-                      ) : item.outOfStock ? (
+                      ) : isOutOfStockBoolean(item.outOfStock) ? (
                         "Out of Stock"
                       ) : (
                         "In Stock"
@@ -627,14 +670,14 @@ const Item = () => {
                   <div className="flex justify-between items-center">
                     <span
                       className={`text-sm font-semibold ${
-                        item.outOfStock ? "text-red-500" : "text-green-500"
+                        isOutOfStockBoolean(item.outOfStock) ? "text-red-500" : "text-green-500"
                       }`}>
                       {isProcessing.toggleItemId === item.itemId ? (
                         <span className="flex items-center">
                           <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin mr-1"></div>
                           Updating...
                         </span>
-                      ) : item.outOfStock ? (
+                      ) : isOutOfStockBoolean(item.outOfStock) ? (
                         "Out of Stock"
                       ) : (
                         "In Stock"
@@ -644,7 +687,7 @@ const Item = () => {
                       <input
                         type="checkbox"
                         className="sr-only peer"
-                        checked={!item.outOfStock}
+                        checked={!isOutOfStockBoolean(item.outOfStock)}
                         onChange={() =>
                           item.itemId &&
                           isProcessing.toggleItemId === null &&
