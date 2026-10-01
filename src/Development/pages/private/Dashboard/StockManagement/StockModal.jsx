@@ -33,7 +33,7 @@ const StockModal = ({
 useEffect(() => {
 
     if (!editMode) {
-      if (form.type === "cafe" && !["kg", "g", "piece"].includes(form.unit)) {
+      if (form.type === "cafe" && !["kg", "g", "l", "ml", "piece"].includes(form.unit)) {
         setForm((prev) => ({ ...prev, unit: "kg" }));
       } else if (form.type === "bar" && !["l", "ml"].includes(form.unit)) {
         setForm((prev) => ({ ...prev, unit: "l" }));
@@ -88,24 +88,30 @@ useEffect(() => {
       kg: 1000,
       piece: 1,
     };
-    return (value * conversionRates[fromUnit]) / conversionRates[toUnit];
+    return (value * (conversionRates[fromUnit] || 1)) / (conversionRates[toUnit] || 1);
   };
 
-  // Get the base unit for the type
-  const getBaseUnit = (type) => (type === "cafe" ? "g" : "ml");
+  // Get the base unit for the type and unit
+  const getBaseUnit = (type, unit) => {
+    if (unit === "piece") return "piece";
+    if (unit === "l" || unit === "ml") return "ml";
+    if (unit === "kg" || unit === "g") return "g";
+    return type === "cafe" ? "g" : "ml";
+  };
 
   const getQuantityNumber = (quantity) => {
+    if (quantity === undefined || quantity === null || quantity === "") return "";
     if (typeof quantity === "string") {
       const parts = quantity.split(" ");
-      return Number(parts[0]) || 0;
+      return isNaN(Number(parts[0])) ? "" : Number(parts[0]);
     }
-    return Number(quantity) || 0;
+    return isNaN(Number(quantity)) ? "" : Number(quantity);
   };
 
   const getQuantityUnit = (quantity, defaultUnit = "kg") => {
     if (typeof quantity === "string") {
       const parts = quantity.split(" ");
-      return parts[1] || defaultUnit;
+      if (parts[1]) return parts[1];
     }
     return defaultUnit;
   };
@@ -135,19 +141,19 @@ useEffect(() => {
   const onSubmit = (e) => {
     e.preventDefault();
     const updatedForm = { ...form };
-    const baseUnit = getBaseUnit(form.type);
+    const inputQuantity = Number(getQuantityNumber(form.quantity)) || 0;
+    const inputUnit = form.unit || (form.type === "cafe" ? "kg" : "l");
+    const baseUnit = getBaseUnit(form.type, inputUnit);
 
     // Convert to base unit before sending to backend
     let finalQuantity;
-    const inputQuantity = getQuantityNumber(form.quantity);
-    const inputUnit = getQuantityUnit(form.quantity, form.unit);
     if (inputUnit !== baseUnit && inputUnit !== "piece") {
       finalQuantity = unitConversion(inputQuantity, inputUnit, baseUnit);
     } else {
       finalQuantity = inputQuantity;
     }
-    updatedForm.quantity = `${finalQuantity} ${inputUnit === "piece" ? "piece" : baseUnit}`;
-    updatedForm.unit = inputUnit === "piece" ? "piece" : baseUnit;
+    updatedForm.quantity = `${finalQuantity} ${baseUnit}`;
+    updatedForm.unit = baseUnit;
     if (form.type === "bar") {
       // Always store bottle volume in ml
       let bottleNum = Number(form.oneBottleVolumeNum) || 0;
@@ -229,7 +235,8 @@ useEffect(() => {
                   <input
                     type="number"
                     name="quantity"
-                    value={getQuantityNumber(form.quantity) || ""}
+                    step="any"
+                    value={form.quantity !== undefined && form.quantity !== null && form.quantity !== "" ? form.quantity : ""}
                     onChange={handleFormChange}
                     className="border border-gray-300 px-3 py-2 rounded-md w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
                     min={0}
@@ -242,21 +249,21 @@ useEffect(() => {
                   </label>
                   <select
                     name="unit"
-                    value={getQuantityUnit(form.quantity, form.unit) || form.unit}
+                    value={form.unit || (form.type === "cafe" ? "kg" : "l")}
                     onChange={handleFormChange}
                     className="border border-gray-300 px-3 py-2 rounded-md w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm">
                     {form.type === "cafe" ? (
                       <>
-                        <option value="g">g</option>
                         <option value="kg">kg</option>
-                        <option value="ml">ml</option>
+                        <option value="g">g</option>
                         <option value="l">l</option>
+                        <option value="ml">ml</option>
                         <option value="piece">piece</option>
                       </>
                     ) : (
                       <>
-                        <option value="ml">ml</option>
                         <option value="l">l</option>
+                        <option value="ml">ml</option>
                       </>
                     )}
                   </select>

@@ -70,12 +70,27 @@ const ItemModal = ({
           { stockName: "", stockId: "", quantity: "0 ml", unit: "ml" },
         ];
       } else {
-        materials = materials.map((mat) => ({
-          stockName: mat.stockName || "",
-          stockId: mat.stockId || "",
-          quantity: mat.quantity || "0 ml",
-          unit: mat.unit || "ml",
-        }));
+        materials = materials.map((mat) => {
+          let [qNum, qUnit] = (mat.quantity || "0 g").split(" ");
+          let num = parseFloat(qNum) || 0;
+          let unit = (qUnit || mat.unit || "g").toLowerCase();
+
+          // De-convert 1000g -> 1kg, 1000ml -> 1l so products aren't confusing with large gram/ml numbers
+          if (unit === "g" && num >= 1000 && num % 1000 === 0) {
+            num = num / 1000;
+            unit = "kg";
+          } else if (unit === "ml" && num >= 1000 && num % 1000 === 0) {
+            num = num / 1000;
+            unit = "l";
+          }
+
+          return {
+            stockName: mat.stockName || "",
+            stockId: mat.stockId || "",
+            quantity: `${num} ${unit}`,
+            unit: unit,
+          };
+        });
       }
       setItemData({
         institution,
@@ -84,7 +99,10 @@ const ItemModal = ({
         veg: currentItem.veg,
         category: currentItem.category || "",
         currency: currentItem.currency || "INR",
-        outOfStock: currentItem.outOfStock || false,
+        outOfStock:
+          currentItem.outOfStock === true ||
+          currentItem.outOfStock === "true" ||
+          currentItem.outOfStock === 1,
         description: currentItem.description || "",
         imageUrl: currentItem.imageUrl || null,
         type: currentItem.type || "cafe",
@@ -484,11 +502,31 @@ const ItemModal = ({
           }
         }
       } else {
-        const baseUnit = itemData.type === "cafe" ? "g" : "ml";
         const convertedMaterials = (itemData.materials || []).map((mat) => {
           const [qtyStr, unit] = (mat.quantity || "").split(" ");
-          const qtyNum = Number(qtyStr) || 0;
-          const convertedQty = convertToBaseUnit(qtyNum, unit, itemData.type);
+          const qtyNum = parseFloat(qtyStr) || 0;
+          const u = (unit || mat.unit || "g").toLowerCase();
+
+          let convertedQty = qtyNum;
+          let baseUnit = "g";
+
+          if (u === "kg") {
+            convertedQty = qtyNum * 1000;
+            baseUnit = "g";
+          } else if (u === "g") {
+            convertedQty = qtyNum;
+            baseUnit = "g";
+          } else if (u === "l") {
+            convertedQty = qtyNum * 1000;
+            baseUnit = "ml";
+          } else if (u === "ml") {
+            convertedQty = qtyNum;
+            baseUnit = "ml";
+          } else if (u === "piece") {
+            convertedQty = qtyNum;
+            baseUnit = "piece";
+          }
+
           return {
             stockName: mat.stockName,
             stockId: mat.stockId,
@@ -761,11 +799,26 @@ const ItemModal = ({
                     const selectedStock = stocks.find(
                       (stock) => stock.stockId === selectedStockId
                     );
+                    let detectedUnit = "kg";
+                    if (selectedStock) {
+                      const sUnit = String(selectedStock.unit || "").toLowerCase();
+                      const sQty = String(selectedStock.quantity || "").toLowerCase();
+                      if (sUnit === "l" || sQty.includes("l") || sUnit === "ml" || sQty.includes("ml")) {
+                        detectedUnit = "l";
+                      } else if (sUnit === "piece" || sQty.includes("piece")) {
+                        detectedUnit = "piece";
+                      } else {
+                        detectedUnit = "kg";
+                      }
+                    }
                     const updatedMaterials = [...itemData.materials];
+                    const currentQty = updatedMaterials[index]?.quantity?.split(" ")[0] || "0";
                     updatedMaterials[index] = {
                       ...updatedMaterials[index],
                       stockName: selectedStock ? selectedStock.stockName : "",
                       stockId: selectedStockId,
+                      quantity: `${currentQty} ${detectedUnit}`,
+                      unit: detectedUnit,
                     };
                     setItemData((prevData) => ({
                       ...prevData,

@@ -103,7 +103,7 @@ export const exportCafeDailyReport = (isoDate, stocks,institutionData) => {
             <th rowspan="2" style="width: 25%; text-align: left; padding: 4px 8px; text-transform: uppercase;">Item</th>
             <th colspan="3" style="text-align: center; padding: 4px 8px; text-transform: uppercase;">Opening</th>
             <th colspan="3" style="text-align: center; padding: 4px 8px; text-transform: uppercase;">Received</th>
-            <th colspan="3" style="text-align: center; padding: 4px 8px; text-transform: uppercase;">Consumption</th>
+            <th colspan="3" style="text-align: center; padding: 4px 8px; text-transform: uppercase;">Consumption / Waste</th>
             <th colspan="3" style="text-align: center; padding: 4px 8px; text-transform: uppercase;">Closing</th>
           </tr>
           <tr style="font-weight: bold; font-size: 11px; background: #f5f5f5; border-bottom: 1px dashed #000;">

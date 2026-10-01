@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { getCurrencySymbol } from "../../../common/Inputs";
 import { FiChevronDown, FiChevronUp } from "react-icons/fi";
+import { isItemOutOfStock } from "./Product";
 
 const ProductCard = ({
   isSearchClicked,
@@ -67,7 +68,9 @@ const ProductCard = ({
                 >
                   {expandedCategory[index] && (
                     <div className="grid gap-4">
-                      {items.map((item) => (
+                      {items
+                        .filter((item) => !isItemOutOfStock(item))
+                        .map((item) => (
                         <div
                           key={item.itemId || Math.random()}
                           className={`relative flex items-center rounded-lg p-4 shadow-md hover:shadow-lg transition-all duration-300 bg-secondaryColor`}

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useContext } from "react";
 import { API } from "aws-amplify";
 import { Context } from "../../../../Context";
+import operationData from "../../../../../Operation/data.json";
+import { fetchOrders as fetchFoodDeliveryOrders } from "../../../../utils/foodDeliveryApi";
 import { Button } from "flowbite-react";
 import { DayPicker } from "react-day-picker";
 import * as XLSX from "xlsx";
@@ -38,43 +40,135 @@ const Loader = () => (
   </div>
 );
 
-// utility to format combined quantity strings for cafe display
-const formatKgMlString = (qty, unit) => {
-  // qty assumed to be numeric in base units (g or ml) or for kg/l units passed as numbers in kg/l
-  if (unit === "piece" || unit === "pieces" || unit === "pc") {
-    return `${safeNum(qty)} pcs`;
+const normalizeListResponse = (response) => {
+  if (Array.isArray(response)) return response;
+  const candidate = response?.data || response?.items || response?.result || response?.body;
+  return Array.isArray(candidate) ? candidate : [];
+};
+
+const tagOrderSource = (orders, sourceGroup) =>
+  normalizeListResponse(orders).map((order) => ({
+    ...order,
+    orderSourceGroup: sourceGroup,
+  }));
+
+const getOrderSourceGroup = (order) => (order?.orderSourceGroup || order?.sourceGroup || "main").toLowerCase();
+
+const isFoodDeliveryOrder = (order) => getOrderSourceGroup(order) === "fooddelivery";
+
+const getPaymentStatusValue = (order) => String(order?.paymentStatus ?? order?.payment_status ?? "").toLowerCase();
+const getOrderStatusValue = (order) => String(order?.orderStatus ?? order?.status ?? "").toLowerCase();
+const COMPLETED_STATUSES = new Set(["completed", "delivered", "payment_done", "confirmed", "paid"]);
+
+const isPaidOrCompletedOrder = (order) => {
+  const paymentStatus = getPaymentStatusValue(order);
+  const orderStatus = getOrderStatusValue(order);
+  return (
+    order?.paymentStatus === true ||
+    paymentStatus === "paid" ||
+    paymentStatus === "true" ||
+    COMPLETED_STATUSES.has(orderStatus)
+  );
+};
+
+const getReportOrderSourceLabel = (order) => {
+  if (order?.orderSource) return order.orderSource;
+  if (order?.source) return order.source;
+  if (getOrderSourceGroup(order) === "fooddelivery") return "Food Delivery";
+  return "Main";
+};
+
+const getOrderItems = (order) => (Array.isArray(order?.items) && order.items.length > 0 ? order.items : Array.isArray(order?.cart) ? order.cart : []);
+
+const getCustomerDisplayName = (order) => order?.customerName || order?.name || order?.customer || order?.fullName || "Guest";
+
+const getOrderDateValue = (order) => new Date(order?.createdAt || order?.date || order?.orderDate || order?.updatedAt || Date.now());
+
+const getPaymentMethodLabel = (order) => {
+  if (order?.paymentMethods && Array.isArray(order.paymentMethods) && order.paymentMethods.length > 0) {
+    return order.paymentMethods
+      .map((pm) => pm?.method || pm?.name || pm?.type || "Cash")
+      .filter(Boolean)
+      .join(", ");
   }
-  if (unit === "kg") {
-    // qty in kg (may be fractional)
-    const wholeKg = Math.floor(qty);
-    const grams = Math.round((qty - wholeKg) * 1000);
-    if (wholeKg > 0 && grams > 0) return `${wholeKg}kg ${grams}g`;
-    if (wholeKg > 0) return `${wholeKg}kg`;
-    return `${grams}g`;
+
+  if (order?.paymentMethods && typeof order.paymentMethods === "object" && !Array.isArray(order.paymentMethods)) {
+    return Object.keys(order.paymentMethods).join(", ") || "Cash";
   }
-  if (unit === "g") {
-    const kg = Math.floor(qty / 1000);
-    const g = qty % 1000;
-    if (kg > 0 && g > 0) return `${kg}kg ${g}g`;
-    if (kg > 0) return `${kg}kg`;
-    return `${g}g`;
+
+  return order?.paymentMethod || order?.payment_method || order?.paymentMethodType || order?.paymentType || order?.paymentMode || "Cash";
+};
+
+// format local date as YYYY-MM-DD without UTC timezone offset distortions
+export const formatLocalDate = (date) => {
+  if (!date) return "";
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return "";
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+// parse stock value to base numeric unit (grams, ml, or piece count)
+export const parseStockValueToBase = (val, stockUnit = "g") => {
+  if (val == null || val === "") return 0;
+  const u = String(stockUnit || "").toLowerCase();
+  if (u.includes("piece") || u.includes("pc")) {
+    return safeNum(val);
   }
-  if (unit === "l") {
-    const wholeL = Math.floor(qty);
-    const ml = Math.round((qty - wholeL) * 1000);
-    if (wholeL > 0 && ml > 0) return `${wholeL}L ${ml}ml`;
-    if (wholeL > 0) return `${wholeL}L`;
-    return `${ml}ml`;
+
+  if (typeof val === "number") {
+    if ((u === "kg" || u === "l") && val < 1000) {
+      return Math.round(val * 1000);
+    }
+    return Math.round(val);
   }
-  if (unit === "ml") {
-    const l = Math.floor(qty / 1000);
-    const ml = qty % 1000;
-    if (l > 0 && ml > 0) return `${l}L ${ml}ml`;
-    if (l > 0) return `${l}L`;
-    return `${ml}ml`;
+
+  const s = String(val).trim().toLowerCase();
+  const nMatch = s.match(/-?[\d,.]+/);
+  if (!nMatch) return 0;
+  const num = Number(nMatch[0].replace(/,/g, "")) || 0;
+
+  if (s.includes("kg") || (u === "kg" && !s.includes("g"))) {
+    return Math.round(num * 1000);
   }
-  // fallback — show raw
-  return String(qty);
+  if ((s.includes("l") && !s.includes("ml")) || (u === "l" && !s.includes("ml"))) {
+    return Math.round(num * 1000);
+  }
+  return Math.round(num);
+};
+
+// splits base quantity into kg/l, g/ml, and piece components
+export const convertQuantities = (qty, unit = "g") => {
+  let kgL = 0, gMl = 0, piece = 0;
+  const u = String(unit || "").toLowerCase();
+  const isPiece = u.includes("piece") || u.includes("pc");
+
+  if (isPiece) {
+    piece = Math.max(0, safeNum(qty));
+  } else {
+    const total = Math.max(0, safeNum(qty));
+    kgL = Math.floor(total / 1000);
+    gMl = Math.round(total % 1000);
+  }
+  return { kgL, gMl, piece };
+};
+
+// utility to format combined quantity strings showing both kg and gm explicitly
+export const formatKgMlString = (qData, unit = "g") => {
+  const u = String(unit || "").toLowerCase();
+  if (u.includes("piece") || u.includes("pc")) {
+    return `${qData?.piece || 0} pcs`;
+  }
+  const isVolume = u.includes("l") || u.includes("ml");
+  const mainUnit = isVolume ? "L" : "kg";
+  const subUnit = isVolume ? "ml" : "g";
+
+  const { kgL = 0, gMl = 0 } = qData || {};
+  if (kgL > 0 && gMl > 0) return `${kgL} ${mainUnit} ${gMl} ${subUnit}`;
+  if (kgL > 0) return `${kgL} ${mainUnit} 0 ${subUnit}`;
+  return `${gMl} ${subUnit}`;
 };
 
 const formatNumber = (num) => {
@@ -85,31 +179,23 @@ const formatNumber = (num) => {
     : rounded.toFixed(2).replace(/\.?0+$/, "");
 };
 
-const buildCafeDailyReport = (isoDate, stocks) => {
+const buildCafeDailyReport = (isoDate, stocks, typeFilter = "cafe") => {
   const key = dateToKey(isoDate);
   const items = [];
 
   stocks
-    .filter((s) => s.type === "cafe")
+    .filter((s) => {
+      const sType = String(s.type || "").toLowerCase();
+      if (typeFilter === "bar") return sType === "bar";
+      return !sType || sType === "cafe" || sType !== "bar";
+    })
     .forEach((stock) => {
       const update = (stock.stockupdate || {})[key] || {};
-      const hasUpdate = Object.keys(update).length > 0;
-      const openingRaw = hasUpdate
-        ? update.openingStock ?? update.opening ?? update.open ?? 0
-        : stock.quantity ?? 0;
-      const receivedRaw = update.received ?? 0;
       const unit = stock.unit || "g";
+      const hasExplicitOpening = (update.openingStock ?? update.opening ?? update.open) != null;
+      const receivedRaw = update.received ?? 0;
+      let receivedQty = parseStockValueToBase(receivedRaw, unit);
 
-      // convert raw to base numeric ml/g as per parseVolumeToMl (returns numeric ml for ml units; for pieces parseVolumeToMl should return number as is)
-      let openingQty = parseVolumeToMl(openingRaw);
-      let receivedQty = parseVolumeToMl(receivedRaw);
-
-      if (unit === "piece") {
-        openingQty = safeNum(openingRaw);
-        receivedQty = safeNum(receivedRaw);
-      }
-
-      // compute consumption by iterating update keys (excluding known keys)
       let consumptionQty = 0;
       Object.keys(update).forEach((k) => {
         if (
@@ -122,90 +208,41 @@ const buildCafeDailyReport = (isoDate, stocks) => {
         }
       });
 
-      const totalQty = openingQty + receivedQty;
-      const closingQty = Math.max(0, totalQty - consumptionQty);
+      let openingQty = 0;
+      let closingQty = 0;
 
-      // For display, convert numeric base quantities into human-friendly strings
-      // If unit in kg/l context: parseVolumeToMl likely returned ml for ml units; we need to convert properly.
-      // We'll normalize:
-      const isWeight = ["kg", "g"].includes(unit);
-      const isVolume = ["l", "ml"].includes(unit);
+      if (hasExplicitOpening) {
+        const openingVal = update.openingStock ?? update.opening ?? update.open;
+        openingQty = parseStockValueToBase(openingVal, unit);
+        const totalQty = openingQty + receivedQty;
+        closingQty = Math.max(0, totalQty - consumptionQty);
+      } else {
+        // If openingStock has not been recorded by End Day yet, stock.quantity in DB represents the current live stock balance
+        const liveCurrentQty = parseStockValueToBase(stock.quantity ?? 0, unit);
+        closingQty = Math.max(0, liveCurrentQty);
+        openingQty = Math.max(0, closingQty - receivedQty + consumptionQty);
+      }
 
-      const displayOpening = (() => {
-        if (unit === "piece") return formatKgMlString(openingQty, "piece");
-        if (isWeight) {
-          // openingQty might be provided as grams if parseVolumeToMl returns ml for volumes;
-          // assume original openingRaw was in either 'kg' or 'g' strings and parseVolumeToMl returned numeric in ml for volumes.
-          // If stock.unit === 'kg' the parseVolumeToMl might be used inconsistently by codebase. We'll attempt to interpret:
-          // If parseVolumeToMl produced a number and unit is weight, we try to interpret openingRaw directly if numeric and accompanied by unit string in stock.oneBottleVolume maybe.
-          // To keep it consistent: if unit === 'kg' and openingRaw seems numeric in kg, use openingRaw, else if openingQty seems large (>1000) treat as grams.
-          const numeric = Number(openingRaw);
-          if (
-            !Number.isNaN(numeric) &&
-            String(openingRaw).toString().includes("kg")
-          ) {
-            return formatKgMlString(numeric, "kg");
-          }
-          // fallback: treat openingQty as grams if large
-          if (openingQty > 1000) return formatKgMlString(openingQty, "g");
-          return formatKgMlString(openingQty, "g");
-        }
-        if (isVolume) {
-          // parseVolumeToMl returns ml number for ml/l
-          // If unit === 'l', openingRaw might already be in liters — but parseVolumeToMl returns ml
-          // Convert ml to liters for display
-          const ml = openingQty;
-          return formatKgMlString(ml, "ml");
-        }
-        // fallback
-        return String(openingQty);
-      })();
-
-      const displayReceived = (() => {
-        if (unit === "piece") return formatKgMlString(receivedQty, "piece");
-        if (["kg", "g"].includes(unit)) {
-          if (receivedQty > 1000) return formatKgMlString(receivedQty, "g");
-          return formatKgMlString(receivedQty, "g");
-        }
-        if (["l", "ml"].includes(unit)) {
-          return formatKgMlString(receivedQty, "ml");
-        }
-        return String(receivedQty);
-      })();
-
-      const displayConsumption = (() => {
-        if (unit === "piece") return formatKgMlString(consumptionQty, "piece");
-        if (["kg", "g"].includes(unit)) {
-          return formatKgMlString(consumptionQty, "g");
-        }
-        if (["l", "ml"].includes(unit)) {
-          return formatKgMlString(consumptionQty, "ml");
-        }
-        return String(consumptionQty);
-      })();
-
-      const displayClosing = (() => {
-        if (unit === "piece") return formatKgMlString(closingQty, "piece");
-        if (["kg", "g"].includes(unit)) {
-          return formatKgMlString(closingQty, "g");
-        }
-        if (["l", "ml"].includes(unit)) {
-          return formatKgMlString(closingQty, "ml");
-        }
-        return String(closingQty);
-      })();
+      const opening = convertQuantities(openingQty, unit);
+      const received = convertQuantities(receivedQty, unit);
+      const consumption = convertQuantities(consumptionQty, unit);
+      const closing = convertQuantities(closingQty, unit);
 
       items.push({
         stockId: stock.stockId,
         stockName: stock.stockName || stock.name || "-",
-        openingRaw,
+        openingRaw: openingQty,
         receivedRaw,
         consumptionRaw: consumptionQty,
         closingRaw: closingQty,
-        openingDisplay: displayOpening,
-        receivedDisplay: displayReceived,
-        consumptionDisplay: displayConsumption,
-        closingDisplay: displayClosing,
+        opening,
+        received,
+        consumption,
+        closing,
+        openingDisplay: formatKgMlString(opening, unit),
+        receivedDisplay: formatKgMlString(received, unit),
+        consumptionDisplay: formatKgMlString(consumption, unit),
+        closingDisplay: formatKgMlString(closing, unit),
         unit,
       });
     });
@@ -272,7 +309,7 @@ const addProfessionalFooter = (doc, pageNum, totalPages, additionalText = "") =>
 // Requires: jsPDF, jsPDF-AutoTable
 // Requires: jsPDF, jsPDF-AutoTable
 const exportCafeDailyReport = (builtData, institutionData = {}, isoDate, options = {}) => {
-  const { includeLogo = false, logoDataUrl = null, filenamePrefix = "" } = options;
+  const { includeLogo = false, logoDataUrl = null, filenamePrefix = "", reportTitle = "DAILY STOCK REPORT", reportSlug = "stock" } = options;
 
   if (!isoDate) {
     alert("Choose a date first");
@@ -306,7 +343,7 @@ const exportCafeDailyReport = (builtData, institutionData = {}, isoDate, options
 
   const companyName = (institutionData?.companyName || "COMPANY NAME").toString();
   const titleText = `${companyName.toUpperCase()}`;
-  const subtitleText = "CAFE DAILY STOCK REPORT";
+  const subtitleText = reportTitle.toUpperCase();
   const dateText = `Report Date: ${isoDate.split("-").reverse().join("/")}`;
   const generatedText = `Generated: ${currentTime}`;
 
@@ -319,21 +356,15 @@ const exportCafeDailyReport = (builtData, institutionData = {}, isoDate, options
         doc.addImage(logoDataUrl, "PNG", margin.left, headerY - 2, logoSize, logoSize, undefined, "FAST");
       } catch {}
     }
-
-    doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
     const leftX = includeLogo && logoDataUrl ? margin.left + (logoSize + 6) : margin.left;
     doc.text(titleText, leftX, headerY + 4);
 
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    const subX = pageWidth - margin.right;
-    doc.text(subtitleText, subX, headerY + 4, { align: "right" });
-
-    doc.setFontSize(9);
     doc.setTextColor(80);
     doc.text(dateText, leftX, headerY + 10);
-    doc.text(generatedText, subX, headerY + 10, { align: "right" });
+    doc.text(generatedText, pageWidth - margin.right, headerY + 10, { align: "right" });
 
     doc.setDrawColor(220);
     doc.setLineWidth(0.4);
@@ -372,14 +403,14 @@ const exportCafeDailyReport = (builtData, institutionData = {}, isoDate, options
 
   yPos += 8;
   const totalItems = items.length;
-  const totalReceived = items.reduce((s, it) => s + Number(it.received || 0), 0);
-  const totalConsumed = items.reduce((s, it) => s + Number(it.consumption || 0), 0);
-  const totalClosing = items.reduce((s, it) => s + Number(it.closing || 0), 0);
+  const totalReceived = items.reduce((s, it) => s + Number(it.receivedRaw ?? it.received ?? 0), 0);
+  const totalConsumed = items.reduce((s, it) => s + Number(it.consumptionRaw ?? it.consumption ?? 0), 0);
+  const totalClosing = items.reduce((s, it) => s + Number(it.closingRaw ?? it.closing ?? 0), 0);
 
   const summaryRows = [
     ["Total Items Tracked", String(totalItems)],
     ["Total Received (sum)", String(totalReceived)],
-    ["Total Consumed (sum)", String(totalConsumed)],
+    ["Total Consumption / Waste (sum)", String(totalConsumed)],
     ["Total Closing (sum)", String(totalClosing)],
     ["Report Period", isoDate.split("-").reverse().join("/")],
   ];
@@ -400,17 +431,42 @@ const exportCafeDailyReport = (builtData, institutionData = {}, isoDate, options
   yPos = rowY + 6;
 
   // Table Data
-  const tableBody = items.map((it, idx) => [
-    idx + 1,
-    it.stockName || "-",
-    it.openingDisplay ?? "-",
-    it.receivedDisplay ?? "-",
-    it.consumptionDisplay ?? "-",
-    it.closingDisplay ?? "-",
-    it.unit || "-",
-  ]);
+  const tableHead = [
+    [
+      { content: "S.No", rowSpan: 2, styles: { valign: "middle", halign: "center" } },
+      { content: "Item Name", rowSpan: 2, styles: { valign: "middle", halign: "left" } },
+      { content: "Opening", colSpan: 3, styles: { halign: "center" } },
+      { content: "Received", colSpan: 3, styles: { halign: "center" } },
+      { content: "Consumption / Waste", colSpan: 3, styles: { halign: "center" } },
+      { content: "Closing", colSpan: 3, styles: { halign: "center" } },
+    ],
+    [
+      "kg/l", "g/ml", "pcs",
+      "kg/l", "g/ml", "pcs",
+      "kg/l", "g/ml", "pcs",
+      "kg/l", "g/ml", "pcs",
+    ]
+  ];
 
-  const tableHead = [["S.No", "Item Name", "Opening", "Received", "Consumed", "Closing", "Unit"]];
+  const tableBody = items.map((it, idx) => {
+    const isPiece = it.unit?.toLowerCase().includes("piece") || it.unit?.toLowerCase().includes("pc");
+    return [
+      idx + 1,
+      it.stockName || "-",
+      isPiece ? "-" : (it.opening?.kgL ?? 0),
+      isPiece ? "-" : (it.opening?.gMl ?? 0),
+      isPiece ? (it.opening?.piece ?? 0) : "-",
+      isPiece ? "-" : (it.received?.kgL ?? 0),
+      isPiece ? "-" : (it.received?.gMl ?? 0),
+      isPiece ? (it.received?.piece ?? 0) : "-",
+      isPiece ? "-" : (it.consumption?.kgL ?? 0),
+      isPiece ? "-" : (it.consumption?.gMl ?? 0),
+      isPiece ? (it.consumption?.piece ?? 0) : "-",
+      isPiece ? "-" : (it.closing?.kgL ?? 0),
+      isPiece ? "-" : (it.closing?.gMl ?? 0),
+      isPiece ? (it.closing?.piece ?? 0) : "-",
+    ];
+  });
 
   // Stock Table
   doc.autoTable({
@@ -459,7 +515,7 @@ const exportCafeDailyReport = (builtData, institutionData = {}, isoDate, options
   }
 
   const safeName = companyName.replace(/\s+/g, "_").toLowerCase();
-  const filename = `${filenamePrefix || safeName}_cafe_report_${isoDate}.pdf`;
+  const filename = `${filenamePrefix || safeName}_${reportSlug}_report_${isoDate}.pdf`;
   doc.save(filename);
 };
 
@@ -576,8 +632,7 @@ const exportOrderPDF = (builtData, institutionData, start, end, subtype=null) =>
   const summaryBody = [
     ["Total Orders Processed", String(orders.length), "Total Revenue Generated", `${totalBilledAmount.toFixed(2)}`],
     ["Bar Sales Revenue", `${totalBarAmount.toFixed(2)}`, "Cafe Sales Revenue", `${totalCafeAmount.toFixed(2)}`],
-    ["CGST Collected", `${totalCgst.toFixed(2)}`, "SGST Collected", `${totalSgst.toFixed(2)}`],
-    ["Service Tax", `${totalServiceTax.toFixed(2)}`, "Analysis Period", `${Math.floor((end-start)/(1000*60*60*24))+1} days`],
+    ["Analysis Period", `${Math.floor((end-start)/(1000*60*60*24))+1} days`, "", ""],
   ];
 
   doc.autoTable({
@@ -590,34 +645,13 @@ const exportOrderPDF = (builtData, institutionData, start, end, subtype=null) =>
     halign: "center",
   });
 
-  // Payment Breakdown
-  yPos = doc.lastAutoTable.finalY + 10;
-  doc.setFont("helvetica","bold").setFontSize(10).text("PAYMENT METHOD BREAKDOWN",20,yPos);
-  yPos += 5; doc.line(20,yPos,100,yPos); yPos += 5;
-
-  const paymentBody = Object.entries(paymentBreakdown).map(([m,a])=>[m,`${a.toFixed(2)}`,((a/totalBilledAmount)*100).toFixed(1)+"%"]);
-
-  doc.autoTable({
-    startY: yPos,
-    head: [["Payment Method","Amount","Percentage"]],
-    body: paymentBody,
-    theme: "striped",
-    headStyles: { fillColor:[52,73,94], textColor:[255,255,255], fontStyle:"bold", halign:"center" },
-    styles: { fontSize:8, cellPadding:2 },
-    margin: { left:20, right:20 },
-    tableWidth: "auto",
-    halign: "center",
-  });
-
   // Detailed Orders
   yPos = doc.lastAutoTable.finalY + 15;
   doc.setFont("helvetica","bold").setFontSize(10).text("DETAILED ORDER INFORMATION",20,yPos);
   yPos += 5; doc.line(20,yPos,115,yPos); yPos += 8;
 
   const isBhuk = institutionData?.institution === "bhuk2323";
-let tableColumns = ["Order ID","Customer","Table",...(isBhuk?["Phone"]:[]),"Date","Time",
-    subtype === "pending" || subtype === "cancelled" ? "Status" : "Payment",
-    "Items","Amount"];
+  let tableColumns = ["Order ID","Customer","Table",...(isBhuk?["Phone"]:[]),"Date","Time","Items","Amount"];
 
   const tableData = orders.map(order=>{
     const itemsText = Array.isArray(order.items)?order.items.map(i=>`${i.name}(${i.quantity})`).join(", "):"No items";
@@ -625,7 +659,6 @@ let tableColumns = ["Order ID","Customer","Table",...(isBhuk?["Phone"]:[]),"Date
       order.orderId||"N/A", order.name||"N/A", order.tableName||"N/A", ...(isBhuk?[order.phoneNumber||"N/A"]:[]),
       new Date(order.createdAt).toLocaleDateString("en-IN"),
       new Date(order.createdAt).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit",hour12:false}),
-      getPaymentDisplay(order),
       itemsText.length>60?itemsText.slice(0,57)+"...":itemsText,
       `${safeNum(order.totalAmount).toFixed(2)}`
     ];
@@ -689,10 +722,6 @@ const exportSettlementPDF = (builtData, institutionData, start, end) => {
     ["Total Revenue",`${totalBilledAmount.toFixed(2)}`],
     ["Bar Sales",`${totalBarAmount.toFixed(2)}`],
     ["Cafe Sales",`${totalCafeAmount.toFixed(2)}`],
-    ["CGST Collected",`${totalCgst.toFixed(2)}`],
-    ["SGST Collected",`${totalSgst.toFixed(2)}`],
-    ["Service Tax",`${totalServiceTax.toFixed(2)}`],
-    ["Net Taxable Amount",`${(totalBilledAmount-totalCgst-totalSgst-totalServiceTax).toFixed(2)}`],
   ];
 
   doc.autoTable({
@@ -739,14 +768,13 @@ const exportSettlementPDF = (builtData, institutionData, start, end) => {
   const orderSummaryData = orders.slice(0,15).map(o=>[
     o.orderId||"N/A", o.name||"N/A",
     new Date(o.createdAt).toLocaleDateString("en-IN"),
-    getPaymentDisplay(o).substring(0,15),
     `${safeNum(o.totalAmount).toFixed(2)}`
   ]);
-  if (orders.length>15) orderSummaryData.push(["... ",`${orders.length-15} more orders`,"...","...",""+orders.slice(15).reduce((s,o)=>s+safeNum(o.totalAmount),0).toFixed(2)]);
+  if (orders.length>15) orderSummaryData.push(["... ", `${orders.length - 15} more orders`, "...", "" + orders.slice(15).reduce((s, o) => s + safeNum(o.totalAmount), 0).toFixed(2)]);
 
   doc.autoTable({
     startY: yPos,
-    head: [["Order ID","Customer","Date","Payment","Amount"]],
+    head: [["Order ID","Customer","Date","Amount"]],
     body: orderSummaryData,
     theme: "striped",
     headStyles: { fillColor:[52,73,94], textColor:[255,255,255], fontStyle:"bold", halign:"center" },
@@ -774,31 +802,47 @@ const exportSettlementPDF = (builtData, institutionData, start, end) => {
   doc.save(`${safeName}_Settlement_Report_${start.toISOString().slice(0,10)}_to_${end.toISOString().slice(0,10)}.pdf`);
 };
 
-// Simplified cafe Excel export (combined strings)
-const exportCafeExcel = (builtData, institutionData, isoDate) => {
+// Detailed cafe Excel export with kg/l, g/ml and piece breakdown
+const exportCafeExcel = (builtData, institutionData, isoDate, options = {}) => {
+  const { sheetName = "Stock Report", reportSlug = "stock" } = options;
   const { items } = builtData;
-  const exportData = items.map((it) => ({
-    "Item Name": it.stockName,
-    Opening: it.openingDisplay,
-    Received: it.receivedDisplay,
-    Consumption: it.consumptionDisplay,
-    Closing: it.closingDisplay,
-    Unit: it.unit,
-  }));
+  const exportData = items.map((it) => {
+    const isPiece = it.unit?.toLowerCase().includes("piece") || it.unit?.toLowerCase().includes("pc");
+    return {
+      "Item Name": it.stockName,
+      "Base Unit": it.unit,
+      "Opening (kg/l)": isPiece ? "-" : (it.opening?.kgL ?? 0),
+      "Opening (g/ml)": isPiece ? "-" : (it.opening?.gMl ?? 0),
+      "Opening (pcs)": isPiece ? (it.opening?.piece ?? 0) : "-",
+      "Received (kg/l)": isPiece ? "-" : (it.received?.kgL ?? 0),
+      "Received (g/ml)": isPiece ? "-" : (it.received?.gMl ?? 0),
+      "Received (pcs)": isPiece ? (it.received?.piece ?? 0) : "-",
+      "Consumption / Waste (kg/l)": isPiece ? "-" : (it.consumption?.kgL ?? 0),
+      "Consumption / Waste (g/ml)": isPiece ? "-" : (it.consumption?.gMl ?? 0),
+      "Consumption / Waste (pcs)": isPiece ? (it.consumption?.piece ?? 0) : "-",
+      "Closing (kg/l)": isPiece ? "-" : (it.closing?.kgL ?? 0),
+      "Closing (g/ml)": isPiece ? "-" : (it.closing?.gMl ?? 0),
+      "Closing (pcs)": isPiece ? (it.closing?.piece ?? 0) : "-",
+      "Opening Summary": it.openingDisplay,
+      "Received Summary": it.receivedDisplay,
+      "Consumption Summary": it.consumptionDisplay,
+      "Closing Summary": it.closingDisplay,
+    };
+  });
 
   const ws = XLSX.utils.json_to_sheet(exportData);
   applyExcelStyles(ws, exportData);
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Cafe Report");
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
   XLSX.writeFile(
     wb,
-    `${institutionData.companyName || "Company"}_cafe_report_${isoDate}.xlsx`
+    `${institutionData.companyName || "Company"}_${reportSlug}_report_${isoDate}.xlsx`
   );
 };
 
 const getPaymentMethod = (order) => {
-  return order.paymentMethod || order.paymentMethods?.[0]?.method || "Unknown";
+  return getPaymentMethodLabel(order) || "Unknown";
 };
 
 const getPaymentDisplay = (order) => {
@@ -824,7 +868,7 @@ const getPaymentDisplay = (order) => {
   }
 
   // Fallback for single payment method (paid orders only)
-  return order.paymentMethod || "Cash";
+  return getPaymentMethodLabel(order);
 };
 const buildOrderReport = (start, end, filteredOrders) => {
   const startTime = new Date(start).setHours(0, 0, 0, 0);
@@ -832,7 +876,7 @@ const buildOrderReport = (start, end, filteredOrders) => {
   
   const orders = filteredOrders
     .filter((order) => {
-      const orderDate = new Date(order.createdAt);
+      const orderDate = getOrderDateValue(order);
       return orderDate >= startTime && orderDate <= endTime;
     })
     .sort((a, b) => getPaymentMethod(a).localeCompare(getPaymentMethod(b)));
@@ -843,7 +887,7 @@ const buildOrderReport = (start, end, filteredOrders) => {
   const itemQuantities = {};
 
   // Separate calculation for paid vs unpaid orders
-  const paidOrders = orders.filter(order => order.paymentStatus === true);
+  const paidOrders = orders.filter((order) => isPaidOrCompletedOrder(order));
   const unpaidOrders = orders.filter(order => order.paymentStatus !== true);
 
   // Calculate totals from ALL orders (billed amounts include pending/cancelled)
@@ -853,7 +897,7 @@ const buildOrderReport = (start, end, filteredOrders) => {
     totalSgst += safeNum(order.sgst);
     totalServiceTax += safeNum(order.serviceTax);
 
-    (order.items || []).forEach((it) => {
+    getOrderItems(order).forEach((it) => {
       const itQty = safeNum(it.quantity);
       const itAmount = safeNum(it.price) * itQty;
       const itType = String(it.type || "").toLowerCase();
@@ -875,12 +919,12 @@ const buildOrderReport = (start, end, filteredOrders) => {
 
   // Calculate payment breakdown ONLY from PAID orders
   paidOrders.forEach((order) => {
-    const payKey = order.paymentMethod || order.paymentMode || "Cash";
+    const payKey = getPaymentMethodLabel(order);
     paymentBreakdown[payKey] = (paymentBreakdown[payKey] || 0) + safeNum(order.totalAmount);
   });
 
   // For pending/cancelled reports, you might want to track unpaid amounts separately
-  if (filteredOrders.length > 0 && (filteredOrders[0].paymentStatus !== true)) {
+  if (filteredOrders.length > 0 && !isPaidOrCompletedOrder(filteredOrders[0])) {
     // For pending/cancelled reports, add a special category for unpaid amounts
     const totalUnpaid = unpaidOrders.reduce((sum, order) => sum + safeNum(order.totalAmount), 0);
     if (totalUnpaid > 0) {
@@ -901,6 +945,11 @@ const buildOrderReport = (start, end, filteredOrders) => {
     paymentBreakdown,
     itemQuantities,
   };
+};
+
+const buildFoodDeliveryReport = (start, end, allOrders) => {
+  const foodDeliveryOrders = allOrders.filter((order) => isFoodDeliveryOrder(order));
+  return buildOrderReport(start, end, foodDeliveryOrders);
 };
 const buildItemReport = (start, end, allOrders, itemTypeFilter = null, menuItems) => {
     const { itemQuantities } = buildOrderReport(start, end, allOrders);
@@ -959,19 +1008,15 @@ const exportOrderExcel = (builtData, institutionData, start, end) => {
   const { orders } = builtData;
   const exportData = orders.map((order) => ({
     "Order ID": order.orderId || "N/A",
-    Customer: order.name || "N/A",
+    Customer: getCustomerDisplayName(order),
     Table: order.tableName || "N/A",
-    Date: new Date(order.createdAt).toLocaleDateString(),
-    Time: new Date(order.createdAt).toLocaleTimeString("en-IN", {
+    Date: getOrderDateValue(order).toLocaleDateString(),
+    Time: getOrderDateValue(order).toLocaleTimeString("en-IN", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
     }),
-    Payment: getPaymentDisplay(order),
     Total: safeNum(order.totalAmount),
-    CGST: safeNum(order.cgst),
-    SGST: safeNum(order.sgst),
-    "Service Tax": safeNum(order.serviceTax),
     Items: order.items
       ? order.items.map((it) => `${it.name || "N/A"}(x${it.quantity || 0})`).join("; ")
       : "",
@@ -1182,6 +1227,7 @@ const exportItemReferenceExcel = (menuItems, institutionData) => {
 
 const Report = () => {
   const { institutionData } = useContext(Context) || {};
+  const hasFoodDeliveryInstitution = Boolean(operationData?.foodDeliveryInstitution?.trim());
   const institution =
     institutionData?.institution ||
     institutionData?.id ||
@@ -1193,8 +1239,14 @@ const Report = () => {
   const [menuItems, setMenuItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedReport, setSelectedReport] = useState("");
-  const [startDate, setStartDate] = useState(new Date());
-  const [endDate, setEndDate] = useState(new Date());
+  const [startDate, setStartDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+  });
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [reportData, setReportData] = useState(null);
@@ -1207,11 +1259,13 @@ const Report = () => {
     if (!reportData) return 0;
     switch (reportData.type) {
       case "cafe":
+      case "bar_stock":
         return reportData.data.items?.length || 0;
       case "item":
         return reportData.data.items?.length || 0;
       case "order":
       case "settlement":
+      case "food_delivery_order":
         return reportData.data.orders?.length || 0;
       case "itemId":
         return reportData.data.length || 0;
@@ -1223,11 +1277,13 @@ const Report = () => {
   // REPORT OPTIONS
   const reportOptions = [
     { value: "", label: "Select Report" },
-    { value: "cafe", label: "Stock Report" },
+    { value: "cafe", label: institutionData?.bar_integration === "Yes" ? "Cafe Stock Report" : "Stock Report" },
+    ...(institutionData?.bar_integration === "Yes" ? [{ value: "bar_stock", label: "Bar Stock Report" }] : []),
     { value: "item", label: "Item Report" },
     { value: "beverage_item", label: "Beverage Item Report" },
     { value: "kitchen_item", label: "Kitchen Item Report" },
     { value: "order", label: "Order Report" },
+    ...(hasFoodDeliveryInstitution ? [{ value: "food_delivery_order", label: "Food Delivery Report" }] : []),
     { value: "settlement", label: "Settlement Report" },
     { value: "pending_orders", label: "Pending Orders Report" },
     { value: "cancelled_orders", label: "Cancelled Orders Report" },
@@ -1247,17 +1303,21 @@ const Report = () => {
 
         const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
 
-        const [stockResponse, orderResponse, menuResponse] = await Promise.all([
+        const foodDeliveryInstitution = operationData?.foodDeliveryInstitution || "";
+
+        const [stockResponse, orderResponse, menuResponse, foodDeliveryResponse] = await Promise.all([
           API.get("main", `/admin/stock-list-items/${institution}`),
           API.get("main", `/admin/list-orders/${institution}?type=${type}`, {}),
           API.get("main", `/any/list-items/${institution}`),
+          foodDeliveryInstitution ? fetchFoodDeliveryOrders(foodDeliveryInstitution) : Promise.resolve([]),
         ]);
 
         setStocks(stockResponse || []);
-        const paidOrders = (orderResponse || []).filter(
-          (order) => order.paymentStatus === true
-        );
-        setAllOrders(orderResponse || []); // Keep all orders for pending/cancelled
+        const combinedOrders = [
+          ...tagOrderSource(orderResponse, "main"),
+          ...tagOrderSource(foodDeliveryResponse, "fooddelivery"),
+        ];
+        setAllOrders(combinedOrders); // Keep all orders for pending/cancelled
         setMenuItems(menuResponse || []);
       } catch (error) {
         console.error("Error fetching data:", error);
@@ -1268,6 +1328,13 @@ const Report = () => {
 
     fetchData();
   }, [institution]);
+
+  useEffect(() => {
+    if (!hasFoodDeliveryInstitution && selectedReport === "food_delivery_order") {
+      setSelectedReport("");
+      setReportData(null);
+    }
+  }, [hasFoodDeliveryInstitution, selectedReport]);
 
 useEffect(() => {
   const methods = new Set();
@@ -1283,6 +1350,7 @@ useEffect(() => {
       }
       // Collect orderSource values from all orders
       if (order.orderSource) sources.add(order.orderSource);
+      if (order.orderSourceGroup === "fooddelivery") sources.add("Food Delivery");
     });
 
   setPaymentOptions(["All", ...Array.from(methods).sort()]);
@@ -1292,7 +1360,7 @@ useEffect(() => {
   useEffect(() => {
     if (!selectedReport || loading) return;
 
-    let effectiveEnd = ["cafe"].includes(selectedReport) ? new Date(startDate) : endDate;
+    let effectiveEnd = ["cafe", "bar_stock", "food_delivery_order"].includes(selectedReport) ? new Date(startDate) : endDate;
 
     const hasPayment = (order, method) => {
       if (method === "All") return true;
@@ -1305,6 +1373,7 @@ useEffect(() => {
 
     const hasOrderSource = (order, source) => {
       if (source === "All") return true;
+      if (source === "Food Delivery") return getOrderSourceGroup(order) === "fooddelivery";
       return order.orderSource === source;
     };
 
@@ -1315,6 +1384,13 @@ if (["order", "settlement"].includes(selectedReport)) {
       hasPayment(o, paymentFilter) &&
       hasOrderSource(o, orderSourceFilter) &&
       (selectedReport === "settlement" ? o.paymentStatus === true : true)
+  );
+} else if (selectedReport === "food_delivery_order") {
+  filteredOrders = allOrders.filter(
+    (o) =>
+      isFoodDeliveryOrder(o) &&
+      hasPayment(o, paymentFilter) &&
+      hasOrderSource(o, orderSourceFilter)
   );
 } else if (selectedReport === "pending_orders") {
   filteredOrders = allOrders.filter(
@@ -1330,10 +1406,11 @@ if (["order", "settlement"].includes(selectedReport)) {
       const data = buildItemReferenceData(menuItems);
       setReportData({ type: "itemId", data });
     } else {
-      const isoStart = startDate.toISOString().slice(0, 10);
-      if (selectedReport === "cafe") {
-        const data = buildCafeDailyReport(isoStart, stocks);
-        setReportData({ type: "cafe", data });
+      const isoStart = formatLocalDate(startDate);
+      if (selectedReport === "cafe" || selectedReport === "bar_stock") {
+        const typeFilter = selectedReport === "bar_stock" ? "bar" : "cafe";
+        const data = buildCafeDailyReport(isoStart, stocks, typeFilter);
+        setReportData({ type: "cafe", subtype: typeFilter, data });
       } else if (selectedReport === "item") {
   const data = buildItemReport(startDate, effectiveEnd, filteredOrders, null, menuItems);
   setReportData({ type: "item", data });
@@ -1343,6 +1420,9 @@ if (["order", "settlement"].includes(selectedReport)) {
 } else if (selectedReport === "kitchen_item") {
     const data = buildItemReport(startDate, effectiveEnd, filteredOrders, "Kitchen", menuItems);
     setReportData({ type: "item", subtype: "kitchen", data });
+} else if (selectedReport === "food_delivery_order") {
+  const data = buildFoodDeliveryReport(startDate, effectiveEnd, filteredOrders);
+  setReportData({ type: "food_delivery_order", data });
 } else if (["order", "settlement", "pending_orders", "cancelled_orders"].includes(selectedReport)) {
         const data = buildOrderReport(startDate, effectiveEnd, filteredOrders);
         setReportData({
@@ -1356,16 +1436,19 @@ if (["order", "settlement"].includes(selectedReport)) {
 
   const getDateLimits = () => {
     const today = new Date();
+    today.setHours(23, 59, 59, 999);
     const twoMonthsAgo = new Date();
     twoMonthsAgo.setMonth(today.getMonth() - 2);
+    twoMonthsAgo.setHours(0, 0, 0, 0);
     return { minDate: twoMonthsAgo, maxDate: today };
   };
 
   const handleDateSelection = (date, setDateFunction, closePicker) => {
     if (!date) return;
+    const normalized = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
     const { minDate, maxDate } = getDateLimits();
-    if (date >= minDate && date <= maxDate) {
-      setDateFunction(date);
+    if (normalized >= minDate && normalized <= maxDate) {
+      setDateFunction(normalized);
     } else {
       alert("Selected date is out of allowed range (last 2 months).");
     }
@@ -1386,25 +1469,76 @@ if (["order", "settlement"].includes(selectedReport)) {
             <table className="min-w-full bg-white border border-gray-300">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="px-3 py-2 border text-left text-xs">Item</th>
-                  <th className="px-3 py-2 border text-center text-xs">Opening</th>
-                  <th className="px-3 py-2 border text-center text-xs">Received</th>
-                  <th className="px-3 py-2 border text-center text-xs">Consumption</th>
-                  <th className="px-3 py-2 border text-center text-xs">Closing</th>
-                  <th className="px-3 py-2 border text-center text-xs">Unit</th>
+                  <th rowSpan={2} className="px-3 py-2 border text-left text-xs font-semibold text-gray-700 bg-gray-100 min-w-[160px]">
+                    Item Name
+                  </th>
+                  <th colSpan={3} className="px-3 py-1.5 border text-center text-xs font-semibold text-blue-900 bg-blue-50/70">
+                    Opening
+                  </th>
+                  <th colSpan={3} className="px-3 py-1.5 border text-center text-xs font-semibold text-emerald-900 bg-emerald-50/70">
+                    Received
+                  </th>
+                  <th colSpan={3} className="px-3 py-1.5 border text-center text-xs font-semibold text-amber-900 bg-amber-50">
+                    Consumption / Waste
+                  </th>
+                  <th colSpan={3} className="px-3 py-1.5 border text-center text-xs font-semibold text-purple-900 bg-purple-50/70">
+                    Closing
+                  </th>
+                </tr>
+                <tr className="bg-gray-50 text-[11px] font-medium text-gray-600">
+                  {/* Opening */}
+                  <th className="px-2 py-1 border text-right">kg/l</th>
+                  <th className="px-2 py-1 border text-right font-semibold text-blue-700 bg-blue-50/40">g/ml</th>
+                  <th className="px-2 py-1 border text-right">pcs</th>
+
+                  {/* Received */}
+                  <th className="px-2 py-1 border text-right">kg/l</th>
+                  <th className="px-2 py-1 border text-right font-semibold text-emerald-700 bg-emerald-50/40">g/ml</th>
+                  <th className="px-2 py-1 border text-right">pcs</th>
+
+                  {/* Consumption / Waste */}
+                  <th className="px-2 py-1 border text-right text-amber-700">kg/l</th>
+                  <th className="px-2 py-1 border text-right font-semibold text-amber-800 bg-amber-100/50">g/ml</th>
+                  <th className="px-2 py-1 border text-right text-amber-700">pcs</th>
+
+                  {/* Closing */}
+                  <th className="px-2 py-1 border text-right font-semibold text-gray-800">kg/l</th>
+                  <th className="px-2 py-1 border text-right font-semibold text-purple-700 bg-purple-50/40">g/ml</th>
+                  <th className="px-2 py-1 border text-right font-semibold text-gray-800">pcs</th>
                 </tr>
               </thead>
               <tbody>
-                {cafeItems.map((it, index) => (
-                  <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
-                    <td className="px-3 py-2 border text-left">{it.stockName.substring(0, 30)}</td>
-                    <td className="px-3 py-2 border text-center">{it.openingDisplay}</td>
-                    <td className="px-3 py-2 border text-center">{it.receivedDisplay}</td>
-                    <td className="px-3 py-2 border text-center">{it.consumptionDisplay}</td>
-                    <td className="px-3 py-2 border text-center">{it.closingDisplay}</td>
-                    <td className="px-3 py-2 border text-center">{it.unit}</td>
-                  </tr>
-                ))}
+                {cafeItems.map((it, index) => {
+                  const isPiece = it.unit?.toLowerCase().includes("piece") || it.unit?.toLowerCase().includes("pc");
+                  return (
+                    <tr key={index} className={index % 2 === 0 ? "bg-white hover:bg-gray-50" : "bg-gray-50/60 hover:bg-gray-100/80"}>
+                      <td className="px-3 py-2 border text-left font-medium text-gray-800">
+                        {it.stockName}
+                        <span className="ml-1 text-[11px] text-gray-400 font-normal">({it.unit})</span>
+                      </td>
+
+                      {/* Opening */}
+                      <td className="px-2 py-1.5 border text-right text-gray-700">{isPiece ? "-" : it.opening.kgL}</td>
+                      <td className="px-2 py-1.5 border text-right font-medium text-blue-700 bg-blue-50/20">{isPiece ? "-" : it.opening.gMl}</td>
+                      <td className="px-2 py-1.5 border text-right text-gray-700">{isPiece ? it.opening.piece : "-"}</td>
+
+                      {/* Received */}
+                      <td className="px-2 py-1.5 border text-right text-gray-700">{isPiece ? "-" : it.received.kgL}</td>
+                      <td className="px-2 py-1.5 border text-right font-medium text-emerald-700 bg-emerald-50/20">{isPiece ? "-" : it.received.gMl}</td>
+                      <td className="px-2 py-1.5 border text-right text-gray-700">{isPiece ? it.received.piece : "-"}</td>
+
+                      {/* Consumption / Waste */}
+                      <td className="px-2 py-1.5 border text-right text-amber-700">{isPiece ? "-" : it.consumption.kgL}</td>
+                      <td className="px-2 py-1.5 border text-right font-medium text-amber-800 bg-amber-50/40">{isPiece ? "-" : it.consumption.gMl}</td>
+                      <td className="px-2 py-1.5 border text-right text-amber-700">{isPiece ? it.consumption.piece : "-"}</td>
+
+                      {/* Closing */}
+                      <td className="px-2 py-1.5 border text-right font-semibold text-gray-900">{isPiece ? "-" : it.closing.kgL}</td>
+                      <td className="px-2 py-1.5 border text-right font-semibold text-purple-700 bg-purple-50/20">{isPiece ? "-" : it.closing.gMl}</td>
+                      <td className="px-2 py-1.5 border text-right font-semibold text-gray-900">{isPiece ? it.closing.piece : "-"}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1478,100 +1612,135 @@ if (["order", "settlement"].includes(selectedReport)) {
                   <td className="px-3 py-2 border text-left">Cafe Sales</td>
                   <td className="px-3 py-2 border text-right">{totalCafeAmount.toFixed(2)}</td>
                 </tr>
-                <tr className="bg-gray-50">
-                  <td className="px-3 py-2 border text-left">CGST</td>
-                  <td className="px-3 py-2 border text-right">{totalCgst.toFixed(2)}</td>
-                </tr>
-                <tr>
-                  <td className="px-3 py-2 border text-left">SGST</td>
-                  <td className="px-3 py-2 border text-right">{totalSgst.toFixed(2)}</td>
-                </tr>
-                <tr className="bg-gray-50">
-                  <td className="px-3 py-2 border text-left">Service Tax</td>
-                  <td className="px-3 py-2 border text-right">{totalServiceTax.toFixed(2)}</td>
-                </tr>
+                {/* Taxes removed from summary per request */}
               </tbody>
             </table>
 
-            {/* Payment Breakdown */}
-            <h3 className="text-sm font-semibold mb-2">Payment Breakdown</h3>
-            <table className="min-w-full bg-white border border-gray-300 mb-4">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="px-3 py-2 border text-left text-xs">Payment Method</th>
-                  <th className="px-3 py-2 border text-right text-xs">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(paymentBreakdown).map(([method, amount], index) => (
-                  <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
-                    <td className="px-3 py-2 border text-left">{method}</td>
-                    <td className="px-3 py-2 border text-right">{amount.toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {/* Payment breakdown removed from preview */}
 
             {/* Orders */}
             <h2 className="text-base font-bold mb-2">Orders</h2>
             <table className="min-w-full bg-white border border-gray-300 text-sm">
               <thead className="bg-gray-100">
     <tr>
-        <th className="px-3 py-2 border text-left text-xs">Order ID</th>
-        <th className="px-3 py-2 border text-left text-xs">Customer</th>
-        <th className="px-3 py-2 border text-left text-xs">Table</th>
-        {institutionData?.institution === "bhuk2323" && (
-            <th className="px-3 py-2 border text-left text-xs">Phone</th>
-        )}
-        <th className="px-3 py-2 border text-center text-xs">Date</th>
-        <th className="px-3 py-2 border text-center text-xs">Time</th>
-        <th className="px-3 py-2 border text-left text-xs">
-            {isCancelled || reportData.subtype === "pending" ? "Status" : "Payment Method"}
-        </th>
-        <th className="px-3 py-2 border text-right text-xs">Total</th>
-        <th className="px-3 py-2 border text-right text-xs">CGST</th>
-        <th className="px-3 py-2 border text-right text-xs">SGST</th>
-        <th className="px-3 py-2 border text-right text-xs">Service Tax</th>
-        <th className="px-3 py-2 border text-left text-xs">Items</th>
-        {isCancelled && <th className="px-3 py-2 border text-left text-xs">Cancel Reason</th>}
-    </tr>
+    <th className="px-3 py-2 border text-left text-xs">Order ID</th>
+    <th className="px-3 py-2 border text-left text-xs">Customer</th>
+    <th className="px-3 py-2 border text-left text-xs">Table</th>
+    {institutionData?.institution === "bhuk2323" && (
+      <th className="px-3 py-2 border text-left text-xs">Phone</th>
+    )}
+    <th className="px-3 py-2 border text-center text-xs">Date</th>
+    <th className="px-3 py-2 border text-center text-xs">Time</th>
+    <th className="px-3 py-2 border text-right text-xs">Total</th>
+    <th className="px-3 py-2 border text-left text-xs">Items</th>
+    {isCancelled && <th className="px-3 py-2 border text-left text-xs">Cancel Reason</th>}
+  </tr>
 </thead>
               <tbody>
                 {orders.map((order, index) => {
                   const paymentMethod = getPaymentDisplay(order);
-                  const itemsSummary = order.items
-                    ? order.items
-                        .map((item) => `${item.name || "N/A"} (Qty: ${item.quantity || 0})`)
+                  const itemsSummary = getOrderItems(order).length > 0
+                    ? getOrderItems(order)
+                        .map((item) => `${item.name || item.itemName || "N/A"} (Qty: ${item.quantity || 0})`)
                         .join(", ")
                     : "N/A";
 
                   return (
                     <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
                       <td className="px-3 py-2 border text-left">{order.orderId}</td>
-                      <td className="px-3 py-2 border text-left">{order.name || "N/A"}</td>
+                      <td className="px-3 py-2 border text-left">{getCustomerDisplayName(order)}</td>
                       <td className="px-3 py-2 border text-left">{order.tableName || "N/A"}</td>
                       {institutionData?.institution === "bhuk2323" && (
                         <td className="px-3 py-2 border text-left">{order.phoneNumber || "N/A"}</td>
                       )}
-                      <td className="px-3 py-2 border text-center">{new Date(order.createdAt).toLocaleDateString()}</td>
+                      <td className="px-3 py-2 border text-center">{getOrderDateValue(order).toLocaleDateString()}</td>
                       <td className="px-3 py-2 border text-center">
-                        {new Date(order.createdAt).toLocaleTimeString("en-US", {
+                        {getOrderDateValue(order).toLocaleTimeString("en-US", {
                           hour: "numeric",
                           minute: "2-digit",
                           hour12: true,
                         })}
                       </td>
-                      <td className="px-3 py-2 border text-left">{paymentMethod}</td>
                       <td className="px-3 py-2 border text-right">{safeNum(order.totalAmount).toFixed(2)}</td>
-                      <td className="px-3 py-2 border text-right">
-                        {order.cgst ? `${(order.totalAmount * (order.cgst / 100)).toFixed(2)}` : "N/A"}
-                      </td>
-                      <td className="px-3 py-2 border text-right">
-                        {order.sgst ? `${(order.totalAmount * (order.sgst / 100)).toFixed(2)}` : "N/A"}
-                      </td>
-                      <td className="px-3 py-2 border text-right">{order.serviceTax || "N/A"}</td>
                       <td className="px-3 py-2 border text-left">{itemsSummary}</td>
                       {isCancelled && <td className="px-3 py-2 border text-left">{order.reason || "N/A"}</td>}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+
+      case "food_delivery_order": {
+        const {
+          orders,
+          totalBilledAmount,
+          totalCgst,
+          totalSgst,
+          totalServiceTax,
+          paymentBreakdown,
+        } = reportData.data;
+
+        return (
+          <div className="overflow-x-auto text-sm">
+            <h2 className="text-base font-bold mb-2">Food Delivery Order Summary</h2>
+            <table className="min-w-full bg-white border border-gray-300 mb-4 text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="px-3 py-2 border text-left text-xs">Metric</th>
+                  <th className="px-3 py-2 border text-right text-xs">Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="bg-gray-50">
+                  <td className="px-3 py-2 border text-left">Total Orders</td>
+                  <td className="px-3 py-2 border text-right">{orders.length}</td>
+                </tr>
+                <tr>
+                  <td className="px-3 py-2 border text-left">Total Amount</td>
+                  <td className="px-3 py-2 border text-right">{totalBilledAmount.toFixed(2)}</td>
+                </tr>
+                {/* Taxes removed from summary per request */}
+              </tbody>
+            </table>
+
+            {/* Payment breakdown removed from preview */}
+
+            <h2 className="text-base font-bold mb-2">Orders</h2>
+            <table className="min-w-full bg-white border border-gray-300 text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="px-3 py-2 border text-left text-xs">Order ID</th>
+                  <th className="px-3 py-2 border text-left text-xs">Customer</th>
+                  <th className="px-3 py-2 border text-center text-xs">Date</th>
+                  <th className="px-3 py-2 border text-center text-xs">Time</th>
+                  <th className="px-3 py-2 border text-right text-xs">Total</th>
+                  <th className="px-3 py-2 border text-left text-xs">Items</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((order, index) => {
+                  const paymentMethod = getPaymentDisplay(order);
+                  const itemsSummary = getOrderItems(order).length > 0
+                    ? getOrderItems(order).map((item) => `${item.name || item.itemName || "N/A"} (Qty: ${item.quantity || 0})`).join(", ")
+                    : "N/A";
+
+                  return (
+                    <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
+                      <td className="px-3 py-2 border text-left">{order.orderId}</td>
+                      <td className="px-3 py-2 border text-left">{getCustomerDisplayName(order)}</td>
+                      <td className="px-3 py-2 border text-center">{getOrderDateValue(order).toLocaleDateString()}</td>
+                      <td className="px-3 py-2 border text-center">
+                        {getOrderDateValue(order).toLocaleTimeString("en-US", {
+                          hour: "numeric",
+                          minute: "2-digit",
+                          hour12: true,
+                        })}
+                      </td>
+                      <td className="px-3 py-2 border text-right">{safeNum(order.totalAmount).toFixed(2)}</td>
+                      <td className="px-3 py-2 border text-left">{itemsSummary}</td>
                     </tr>
                   );
                 })}
@@ -1632,24 +1801,7 @@ if (["order", "settlement"].includes(selectedReport)) {
               </tbody>
             </table>
 
-            {/* Payment Breakdown */}
-            <h3 className="text-sm font-semibold mb-2">Payment Breakdown</h3>
-            <table className="min-w-full bg-white border border-gray-300 mb-4">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="px-3 py-2 border text-left text-xs">Payment Method</th>
-                  <th className="px-3 py-2 border text-right text-xs">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(paymentBreakdown).map(([method, amount], index) => (
-                  <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
-                    <td className="px-3 py-2 border text-left">{method}</td>
-                    <td className="px-3 py-2 border text-right">{amount.toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {/* Payment breakdown removed from preview */}
 
             {/* Orders */}
             <h2 className="text-base font-bold mb-2">Orders</h2>
@@ -1664,17 +1816,12 @@ if (["order", "settlement"].includes(selectedReport)) {
                   )}
                   <th className="px-3 py-2 border text-center text-xs">Date</th>
                   <th className="px-3 py-2 border text-center text-xs">Time</th>
-                  <th className="px-3 py-2 border text-left text-xs">Payment Method</th>
                   <th className="px-3 py-2 border text-right text-xs">Total</th>
-                  <th className="px-3 py-2 border text-right text-xs">CGST</th>
-                  <th className="px-3 py-2 border text-right text-xs">SGST</th>
-                  <th className="px-3 py-2 border text-right text-xs">Service Tax</th>
                   <th className="px-3 py-2 border text-left text-xs">Items</th>
                 </tr>
               </thead>
               <tbody>
                 {orders.map((order, index) => {
-                  const paymentMethod = getPaymentDisplay(order);
                   const itemsSummary = order.items
                     ? order.items
                         .map((item) => `${item.name || "N/A"} (Qty: ${item.quantity || 0})`)
@@ -1697,15 +1844,7 @@ if (["order", "settlement"].includes(selectedReport)) {
                           hour12: true,
                         })}
                       </td>
-                      <td className="px-3 py-2 border text-left">{paymentMethod}</td>
                       <td className="px-3 py-2 border text-right">{safeNum(order.totalAmount).toFixed(2)}</td>
-                      <td className="px-3 py-2 border text-right">
-                        {order.cgst ? `${(order.totalAmount * (order.cgst / 100)).toFixed(2)}` : "N/A"}
-                      </td>
-                      <td className="px-3 py-2 border text-right">
-                        {order.sgst ? `${(order.totalAmount * (order.sgst / 100)).toFixed(2)}` : "N/A"}
-                      </td>
-                      <td className="px-3 py-2 border text-right">{order.serviceTax || "N/A"}</td>
                       <td className="px-3 py-2 border text-left">{itemsSummary}</td>
                     </tr>
                   );
@@ -1754,23 +1893,29 @@ if (["order", "settlement"].includes(selectedReport)) {
   const renderExportButtons = () => {
     if (!selectedReport) return null;
 
-    const isoDate = startDate.toISOString().slice(0, 10);
+    const isoDate = formatLocalDate(startDate);
     const buttons = [];
 
     switch (selectedReport) {
       case "cafe":
+      case "bar_stock": {
+        const isBar = selectedReport === "bar_stock";
+        const title = isBar
+          ? "Bar Stock Report"
+          : (institutionData?.bar_integration === "Yes" ? "Cafe Stock Report" : "Stock Report");
+        const slug = isBar ? "bar_stock" : "stock";
         buttons.push(
           <button
-            key="cafe-excel"
-            onClick={() => exportCafeExcel(reportData.data, institutionData, isoDate)}
+            key="stock-excel"
+            onClick={() => exportCafeExcel(reportData.data, institutionData, isoDate, { sheetName: title, reportSlug: slug })}
             className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700"
           >
             <FileSpreadsheet className="w-3 h-3" />
             Excel
           </button>,
           <button
-            key="cafe-pdf"
-            onClick={() => exportCafeDailyReport(reportData.data, institutionData, isoDate)}
+            key="stock-pdf"
+            onClick={() => exportCafeDailyReport(reportData.data, institutionData, isoDate, { reportTitle: title, reportSlug: slug })}
             className="flex items-center gap-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
           >
             <FileText className="w-3 h-3" />
@@ -1778,6 +1923,7 @@ if (["order", "settlement"].includes(selectedReport)) {
           </button>
         );
         break;
+      }
 
       case "item":
       case "beverage_item":
@@ -1803,6 +1949,7 @@ if (["order", "settlement"].includes(selectedReport)) {
         break;
 
       case "order":
+      case "food_delivery_order":
       case "pending_orders":
       case "cancelled_orders":
         buttons.push(
@@ -1921,7 +2068,9 @@ if (["order", "settlement"].includes(selectedReport)) {
               {/* Start Date */}
               {selectedReport && selectedReport !== "itemId" && (
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Start Date</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    {["cafe", "bar_stock"].includes(selectedReport) ? "Report Date" : "Start Date"}
+                  </label>
                   <div className="relative">
                     <button
                       onClick={() => setShowStartDatePicker(!showStartDatePicker)}
