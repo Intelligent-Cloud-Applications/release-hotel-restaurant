@@ -11,12 +11,88 @@ import { toast } from "react-toastify";
 import { FiChevronDown, FiShoppingCart, FiFilter, FiShoppingBag } from "react-icons/fi";
 import { BiSolidFoodMenu } from "react-icons/bi";
 
-const Product = ({ items }) => {
-  const { PrimaryColor, productTagline, institution } = useContext(Context).institutionData;
+export const isItemOutOfStock = (item, stocks = []) => {
+  if (!item) return false;
+
+  // 1. Direct item flags (handles boolean, string, numbers)
+  const oos = item.outOfStock;
+  if (oos === true || oos === "true" || oos === 1 || oos === "1") return true;
+  if (
+    item.isOutOfStock === true ||
+    item.isOutOfStock === "true" ||
+    item.isOutOfStock === 1
+  )
+    return true;
+  if (
+    item.available === false ||
+    item.available === "false" ||
+    item.available === 0 ||
+    item.available === "0"
+  )
+    return true;
+
+  // 2. Check connected stocks if stocks are available
+  if (stocks && Array.isArray(stocks) && stocks.length > 0) {
+    if (Array.isArray(item.materials) && item.materials.length > 0) {
+      const anyMaterialEmpty = item.materials.some((mat) => {
+        if (!mat || (!mat.stockId && !mat.stockName)) return false;
+        const matchingStock = stocks.find(
+          (s) =>
+            (mat.stockId && s.stockId === mat.stockId) ||
+            (mat.stockName &&
+              s.stockName &&
+              s.stockName.trim().toLowerCase() ===
+                mat.stockName.trim().toLowerCase())
+        );
+        if (matchingStock) {
+          const qtyStr = String(matchingStock.quantity || "").trim();
+          const num = parseFloat(qtyStr.split(" ")[0]);
+          return !isNaN(num) && num <= 0;
+        }
+        return false;
+      });
+      if (anyMaterialEmpty) return true;
+    }
+
+    if (item.stockId) {
+      const matchingStock = stocks.find((s) => s.stockId === item.stockId);
+      if (matchingStock) {
+        const qtyStr = String(matchingStock.quantity || "").trim();
+        const num = parseFloat(qtyStr.split(" ")[0]);
+        if (!isNaN(num) && num <= 0) return true;
+      }
+    }
+  }
+
+  return false;
+};
+
+const Product = ({ items = [], stocks: propStocks = [] }) => {
+  const context = useContext(Context) || {};
+  const { PrimaryColor, productTagline, institution } = context.institutionData || {};
+  const itemsList = Array.isArray(items) && items.length > 0 ? items : (context.items || []);
+  const [stocks, setStocks] = useState(propStocks || []);
+
+  useEffect(() => {
+    if (propStocks && Array.isArray(propStocks) && propStocks.length > 0) {
+      setStocks(propStocks);
+    }
+  }, [propStocks]);
+
+  useEffect(() => {
+    if ((!stocks || stocks.length === 0) && institution) {
+      API.get("main", `/admin/stock-list-items/${institution}`)
+        .then((res) => {
+          if (Array.isArray(res)) setStocks(res);
+        })
+        .catch(() => {});
+    }
+  }, [institution, stocks.length]);
+
   const [name, setName] = useState("");
-    const [phoneNumber, setPhoneNumber] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const { userData, setLoader } = useContext(Context);
+  const { userData, setLoader } = context;
   const [isCartPopupOpen, setIsCartPopupOpen] = useState(false);
   const [showPaymentPopup, setShowPaymentPopup] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState(null);
@@ -90,21 +166,27 @@ const Product = ({ items }) => {
 
   // Handle out-of-stock items and initialize collapsed categories only on first load
   useEffect(() => {
-    const outOfStockItemIds = items.filter((item) => item.outOfStock).map((item) => item.itemId);
-    const updatedCart = cartItems.filter((cartItem) => !outOfStockItemIds.includes(cartItem.itemId));
+    const outOfStockItemIds = itemsList
+      .filter((item) => isItemOutOfStock(item, stocks))
+      .map((item) => item.itemId);
+    const updatedCart = cartItems.filter(
+      (cartItem) => !outOfStockItemIds.includes(cartItem.itemId)
+    );
     if (updatedCart.length !== cartItems.length) {
       setCartItems(updatedCart);
     }
 
-    if (isFirstLoad) {
+    if (isFirstLoad && itemsList.length > 0) {
       const initialCollapsed = {};
-      items.forEach((item) => {
-        initialCollapsed[item.category] = false;
-      });
+      itemsList
+        .filter((item) => !isItemOutOfStock(item, stocks))
+        .forEach((item) => {
+          if (item.category) initialCollapsed[item.category] = false;
+        });
       setCollapsedCategories(initialCollapsed);
       setIsFirstLoad(false);
     }
-  }, [items, refreshKey, isFirstLoad]);
+  }, [itemsList, stocks, refreshKey, isFirstLoad]);
 
   const toggleDropdown = () => {
     setIsDropdownOpen(!isDropdownOpen);
@@ -147,9 +229,12 @@ const Product = ({ items }) => {
     const value = e.target.value;
     setSearchTerm(value);
     if (value) {
-      const filteredSuggestions = items
+      const filteredSuggestions = itemsList
+        .filter((item) => !isItemOutOfStock(item, stocks))
         .map((item) => item.itemName)
-        .filter((name) => name.toLowerCase().includes(value.toLowerCase()));
+        .filter(
+          (name) => name && name.toLowerCase().includes(value.toLowerCase())
+        );
       setSuggestions(filteredSuggestions);
     } else {
       setSuggestions([]);
@@ -211,17 +296,25 @@ const Product = ({ items }) => {
     }
   };
 
-  const filteredItems = items.filter(
+  const filteredItems = itemsList.filter(
     (item) =>
-      !item.outOfStock &&
+      !isItemOutOfStock(item, stocks) &&
+      item.itemName &&
       item.itemName.toLowerCase().includes(searchTerm.toLowerCase()) &&
       (categoryFilter ? item.category === categoryFilter : true) &&
       (vegFilter === "All" || (vegFilter === "Veg" ? item.veg : !item.veg))
   );
 
-  const categories = [...new Set(filteredItems.map((item) => item.category))];
-  const allCategories = [...new Set(items.map((item) => item.category))];
-  const sortedItems = filteredItems.sort((a, b) => {
+  const categories = [...new Set(filteredItems.map((item) => item.category))].filter(Boolean);
+  const allCategories = [
+    ...new Set(
+      itemsList
+        .filter((item) => !isItemOutOfStock(item, stocks))
+        .map((item) => item.category)
+    ),
+  ].filter(Boolean);
+
+  const sortedItems = [...filteredItems].sort((a, b) => {
     if (sortOrder === "lowToHigh") {
       return a.price - b.price;
     } else if (sortOrder === "highToLow") {
@@ -233,11 +326,12 @@ const Product = ({ items }) => {
   const groupedItems = categories
     .map((category) => ({
       category,
-      items: filteredItems.filter((item) => item.category === category),
+      items: sortedItems.filter((item) => item.category === category),
     }))
     .filter((group) => group.items.length > 0);
 
   const ModernProductCard = ({ item }) => {
+    if (!item || isItemOutOfStock(item, stocks)) return null;
     const isInCart = isItemInCart(item.itemId);
     const quantity = getItemQuantity(item.itemId);
 
