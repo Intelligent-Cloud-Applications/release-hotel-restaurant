@@ -1,15 +1,52 @@
-import React, { useContext, useEffect } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import Product from './Product';
 import { Context } from '../../../Context';
 import Header from '../../../components/Header';
 import Footer from '../Home/Footer';
+import { API } from 'aws-amplify';
 
 const index = () => {
-  const { items, institutionData } = useContext(Context);
+  const { items: contextItems, setItems: setContextItems, institutionData } = useContext(Context);
+  const [items, setItems] = useState(contextItems || []);
+  const [stocks, setStocks] = useState([]);
   const location = useLocation();
   const navigate = useNavigate();
+
+  const institution =
+    institutionData?.institution ||
+    institutionData?.id ||
+    institutionData?.name ||
+    "";
+
+  useEffect(() => {
+    if (contextItems && Array.isArray(contextItems) && contextItems.length > 0) {
+      setItems(contextItems);
+    }
+  }, [contextItems]);
+
+  useEffect(() => {
+    const fetchFreshData = async () => {
+      if (!institution) return;
+      try {
+        const [itemsRes, stockRes] = await Promise.all([
+          API.get("main", `/any/list-items/${institution}`, {}).catch(() => []),
+          API.get("main", `/admin/stock-list-items/${institution}`).catch(() => []),
+        ]);
+        if (Array.isArray(itemsRes) && itemsRes.length > 0) {
+          setItems(itemsRes);
+          if (setContextItems) setContextItems(itemsRes);
+        }
+        if (Array.isArray(stockRes)) {
+          setStocks(stockRes);
+        }
+      } catch (err) {
+        console.error("Error fetching fresh items/stocks in Product page:", err);
+      }
+    };
+    fetchFreshData();
+  }, [institution]);
 
   // Improved table validation function with debugging
   const isTableValid = (tableName, institutionData) => {
@@ -53,7 +90,7 @@ const index = () => {
   return (
     <div>
       <Header />
-      <Product items={items} />
+      <Product items={items} stocks={stocks} />
       <Footer />
     </div>
   );

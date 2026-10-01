@@ -7,8 +7,8 @@ import StockFilter from "./StockFilter";
 import { Button } from "flowbite-react";
 import { X, PlusCircle, Trash2, Package } from "lucide-react";
 import { exportStockPDF } from "./StockPDFExporter";
-import { exportCafeDailyReport } from "./CafeDailyReport";
 import { StockInput } from "../../../../common/Inputs/DropDownInput";
+import operationData from "../../../../../Operation/data.json";
 const Loader = () => (
   <div className="flex flex-col items-center justify-center p-12">
     <div className="relative">
@@ -20,6 +20,8 @@ const Loader = () => (
     <p className="mt-4 text-primaryColor font-medium">Loading items...</p>
   </div>
 );
+
+const hasBarIntegration = Boolean(operationData?.bar_integration?.trim());
 
 const AdjustmentModal = ({
   showModal,
@@ -37,18 +39,30 @@ const AdjustmentModal = ({
   const addAdjustment = () => {
     setAdjustments([
       ...adjustments,
-      { stockId: "", amount: 0, unit: filterType === "cafe" ? "kg" : "l" },
+      { stockId: "", amount: 1, unit: filterType === "cafe" ? "kg" : "l" },
     ]);
   };
   const removeAdjustment = (index) =>
     setAdjustments(adjustments.filter((_, i) => i !== index));
   const handleChange = (index, field, value) => {
     const newAdjs = [...adjustments];
-    newAdjs[index][field] = field === "amount" ? Number(value) : value;
+    newAdjs[index][field] = field === "amount" ? (value === "" ? "" : Number(value)) : value;
+    if (field === "stockId") {
+      const selected = stocks.find((s) => s.stockId === value);
+      if (selected) {
+        const sUnit = String(selected.unit || "").toLowerCase();
+        const sQty = String(selected.quantity || "").toLowerCase();
+        if (sUnit === "l" || sQty.includes("l") || sUnit === "ml" || sQty.includes("ml")) {
+          newAdjs[index].unit = "l";
+        } else if (sUnit === "piece" || sQty.includes("piece")) {
+          newAdjs[index].unit = "piece";
+        } else {
+          newAdjs[index].unit = "kg";
+        }
+      }
+    }
     setAdjustments(newAdjs);
   };
-  const capitalize = (str) =>
-    str ? str.charAt(0).toUpperCase() + str.slice(1) : "";
   return (
     <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 backdrop-blur-sm">
       <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-4 relative">
@@ -59,10 +73,12 @@ const AdjustmentModal = ({
         </button>
         <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
           <Package className="text-primaryColor" size={20} />{" "}
-          {capitalize(adjustmentType)} Stock
+          {adjustmentType === "receive"
+            ? "Receive Stock"
+            : "Record Consumption / Waste"}
         </h2>
 
-        <form onSubmit={handleAdjustmentSubmit} className="space-y-3">
+        <form onSubmit={handleAdjustmentSubmit} noValidate className="space-y-3">
           {adjustments.map((adj, index) => (
             <div
               key={index}
@@ -85,22 +101,46 @@ const AdjustmentModal = ({
                     Amount
                   </label>
                   <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={adj.amount}
-                      onChange={(e) =>
-                        handleChange(index, "amount", e.target.value)
-                      }
-                      className="border px-2 py-1 rounded w-full text-sm focus:ring-1 focus:ring-primaryColor focus:outline-none"
-                    />
+                    <div className="flex items-center border border-gray-300 rounded overflow-hidden w-full bg-white focus-within:ring-1 focus-within:ring-primaryColor">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const current = Number(adj.amount) || 0;
+                          handleChange(index, "amount", Math.max(1, current - 1));
+                        }}
+                        className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold border-r transition select-none"
+                        title="Decrease by 1"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={adj.amount}
+                        onChange={(e) =>
+                          handleChange(index, "amount", e.target.value)
+                        }
+                        className="px-2 py-1 w-full text-sm text-center border-0 focus:outline-none focus:ring-0"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const current = Number(adj.amount) || 0;
+                          handleChange(index, "amount", current + 1);
+                        }}
+                        className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold border-l transition select-none"
+                        title="Increase by 1"
+                      >
+                        +
+                      </button>
+                    </div>
                     <select
                       value={adj.unit}
                       onChange={(e) =>
                         handleChange(index, "unit", e.target.value)
                       }
-                      className="border px-2 py-1 rounded w-16 text-sm focus:ring-1 focus:ring-primaryColor focus:outline-none">
+                      className="border border-gray-300 px-2 py-1 rounded w-20 text-sm focus:ring-1 focus:ring-primaryColor focus:outline-none">
                       {filterType === "cafe" ? (
                         <>
                           <option value="kg">kg</option>
@@ -159,8 +199,22 @@ const AdjustmentModal = ({
   );
 };
 
-const dateToKey = (isoDate) => {
-  const d = new Date(isoDate);
+const dateToKey = (dateOrStr) => {
+  if (!dateOrStr) return "";
+  if (typeof dateOrStr === "string") {
+    const parts = dateOrStr.split("-");
+    if (parts.length === 3) {
+      const yy = parts[0].slice(-2);
+      const mm = parts[1].padStart(2, "0");
+      const dd = parts[2].slice(0, 2).padStart(2, "0");
+      return `${yy}${mm}${dd}`;
+    }
+    if (/^\d{6}$/.test(dateOrStr)) {
+      return dateOrStr;
+    }
+  }
+  const d = dateOrStr instanceof Date ? dateOrStr : new Date(dateOrStr);
+  if (isNaN(d.getTime())) return "";
   const yy = String(d.getFullYear()).slice(-2);
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
@@ -205,7 +259,7 @@ const formatBottlesMl = (mlTotal, oneBottleMl) => {
 };
 
 const StockManagement = () => {
-  const { institutionData } = useContext(Context) || {};
+  const { institutionData, items: contextItems } = useContext(Context) || {};
   const institution =
     institutionData?.institution ||
     institutionData?.id ||
@@ -213,6 +267,7 @@ const StockManagement = () => {
     "";
 
   const [stocks, setStocks] = useState([]);
+  const [menuItems, setMenuItems] = useState(contextItems || []);
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -231,10 +286,6 @@ const StockManagement = () => {
   const [adjustments, setAdjustments] = useState([]);
   const [adjustmentLoading, setAdjustmentLoading] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
-  const [dailyDate, setDailyDate] = useState(() =>
-    new Date().toISOString().slice(0, 10)
-  );
-  const [allOrders, setAllOrders] = useState([]);
 
   useEffect(() => {
     const fetchStockData = async () => {
@@ -245,13 +296,19 @@ const StockManagement = () => {
             "No institution id available in Context. Skipping fetch."
           );
           setStocks([]);
+          setMenuItems([]);
           return;
         }
-        const response = await API.get(
-          "main",
-          `/admin/stock-list-items/${institution}`
-        );
-        setStocks(response || []);
+        const [stockResponse, itemsResponse] = await Promise.all([
+          API.get("main", `/admin/stock-list-items/${institution}`),
+          API.get("main", `/any/list-items/${institution}`, {}).catch(() => []),
+        ]);
+        setStocks(stockResponse || []);
+        const loadedItems =
+          Array.isArray(itemsResponse) && itemsResponse.length > 0
+            ? itemsResponse
+            : (contextItems || []);
+        setMenuItems(loadedItems);
       } catch (error) {
         console.error("Error fetching stock data:", error);
       } finally {
@@ -262,27 +319,10 @@ const StockManagement = () => {
   }, [institution]);
 
   useEffect(() => {
-    const fetchOrders = async () => {
-      if (!institution) return;
-      try {
-        const type =
-          institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
-        const result = await API.get(
-          "main",
-          `/admin/list-orders/${institution}?type=${type}`,
-          {}
-        );
-        const paidOrders = (result || []).filter(
-          (order) => order.paymentStatus === true
-        );
-        setAllOrders(paidOrders);
-      } catch (error) {
-        console.error("Error fetching orders:", error);
-        setAllOrders([]);
-      }
-    };
-    fetchOrders();
-  }, [institution]);
+    if (contextItems && Array.isArray(contextItems) && contextItems.length > 0) {
+      setMenuItems((prev) => (prev.length === 0 ? contextItems : prev));
+    }
+  }, [contextItems]);
 
   const handleSearch = (e) => setSearch(e.target.value);
 
@@ -316,10 +356,20 @@ const StockManagement = () => {
 
     if (typeof stock.quantity === "string") {
       const parts = stock.quantity.split(" ");
-      quantityNum = Number(parts[0]) || 0;
-      unitStr = parts[1] || unitStr;
+      quantityNum = parseFloat(parts[0]) || 0;
+      unitStr = (parts[1] || stock.unit || unitStr).toLowerCase();
     } else {
       quantityNum = Number(stock.quantity) || 0;
+      unitStr = (stock.unit || unitStr).toLowerCase();
+    }
+
+    // De-convert base units so the user sees clean, friendly values and avoids double-multiplication on update
+    if (unitStr === "g" && quantityNum >= 1000 && quantityNum % 1000 === 0) {
+      quantityNum = quantityNum / 1000;
+      unitStr = "kg";
+    } else if (unitStr === "ml" && quantityNum >= 1000 && quantityNum % 1000 === 0) {
+      quantityNum = quantityNum / 1000;
+      unitStr = "l";
     }
 
     if (stock.type === "bar" && stock.oneBottleVolume) {
@@ -341,15 +391,53 @@ const StockManagement = () => {
     setShowModal(true);
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this stock item?"))
+  const handleDelete = async (stockOrId) => {
+    const id = typeof stockOrId === "object" ? stockOrId.stockId : stockOrId;
+    const targetStock =
+      stocks.find((s) => s.stockId === id) ||
+      (typeof stockOrId === "object" ? stockOrId : null);
+    const stockName =
+      targetStock?.stockName || targetStock?.name || "this stock item";
+
+    // Check if any menu item is connected to this stock
+    const connected = (menuItems || []).filter((item) => {
+      if (Array.isArray(item.materials)) {
+        return item.materials.some((m) => {
+          if (m.stockId && id && m.stockId === id) return true;
+          if (
+            m.stockName &&
+            targetStock?.stockName &&
+            m.stockName.trim().toLowerCase() ===
+              targetStock.stockName.trim().toLowerCase()
+          )
+            return true;
+          return false;
+        });
+      }
+      if (item.stockId && id && item.stockId === id) return true;
+      return false;
+    });
+
+    if (connected.length > 0) {
+      const names = connected
+        .map((it) => it.itemName || it.name)
+        .filter(Boolean)
+        .join(", ");
+      alert(
+        `Cannot delete "${stockName}" because it is connected to the following menu item(s):\n\n• ${names}\n\nPlease remove this stock material from those item(s) before deleting.`
+      );
       return;
+    }
+
+    if (!window.confirm(`Are you sure you want to delete "${stockName}"?`))
+      return;
+
     try {
       await API.del("main", `/admin/stock-delete-item/${institution}/${id}`);
-      setStocks(stocks.filter((stock) => stock.stockId !== id));
+      setStocks((prev) => prev.filter((stock) => stock.stockId !== id));
     } catch (error) {
       console.error("Error deleting stock item:", error);
-      alert("Delete failed.");
+      alert("Delete failed. Please try again.");
     }
   };
 
@@ -359,7 +447,7 @@ const StockManagement = () => {
       ...prev,
       [name]:
         name === "quantity" || name === "oneBottleVolumeNum"
-          ? Number(value)
+          ? (value === "" ? "" : Number(value))
           : value,
     }));
   };
@@ -424,7 +512,7 @@ const StockManagement = () => {
   const openAdjustmentModal = (type) => {
     setAdjustmentType(type);
     setAdjustments([
-      { stockId: "", amount: 0, unit: filterType === "cafe" ? "kg" : "l" },
+      { stockId: "", amount: 1, unit: filterType === "cafe" ? "kg" : "l" },
     ]);
     setShowAdjustmentModal(true);
   };
@@ -874,7 +962,7 @@ const StockManagement = () => {
             <th colspan="2" style="text-align: center; padding: 1px; border-bottom: 1px solid #ccc;">OPENING</th>
             <th colspan="2" style="text-align: center; padding: 1px; border-bottom: 1px solid #ccc;">RECEIVED</th>
             <th colspan="2" style="text-align: center; padding: 1px; border-bottom: 1px solid #ccc;">TOTAL</th>
-            <th colspan="2" style="text-align: center; padding: 1px; border-bottom: 1px solid #ccc;">TRANSFER</th>
+            <th colspan="2" style="text-align: center; padding: 1px; border-bottom: 1px solid #ccc;">CONSUMPTION / WASTE</th>
             <th colspan="3" style="text-align: center; padding: 1px; border-bottom: 1px solid #ccc;">SALES</th>
             <th colspan="3" style="text-align: center; padding: 1px; border-bottom: 1px solid #ccc;">RATE</th>
             <th colspan="2" style="text-align: center; padding: 1px; border-bottom: 1px solid #ccc;">CLOSING</th>
@@ -1153,17 +1241,17 @@ const StockManagement = () => {
           {/* <Button className="bg-green-600 text-white font-semibold px-4 py-2 rounded-lg shadow-md" onClick={exportCSV}>Export CSV</Button>
           <Button className="bg-red-600 text-white font-semibold px-4 py-2 rounded-lg shadow-md" onClick={exportPDF}>Export PDF</Button> */}
           <Button
-            className="bg-blue-600 text-white font-semibold px-2 py-1 rounded-lg shadow-md"
+            className="bg-blue-600 text-white font-semibold px-3 py-1 rounded-lg shadow-md hover:bg-blue-700 transition"
             onClick={() => openAdjustmentModal("receive")}>
             Receive Stock
           </Button>
           <Button
-            className="bg-orange-600 text-white font-semibold px-2 py-1 rounded-lg shadow-md"
+            className="bg-amber-600 text-white font-semibold px-3 py-1 rounded-lg shadow-md hover:bg-amber-700 transition"
             onClick={() => openAdjustmentModal("transfer")}>
-            Transfer Stock
+            Consumption / Waste
           </Button>
           <Button
-            className="bg-primaryColor text-white font-semibold px-2 py- rounded-lg shadow-md"
+            className="bg-primaryColor text-white font-semibold px-3 py-1 rounded-lg shadow-md hover:opacity-90 transition"
             onClick={openAddModal}>
             <span className="flex items-center justify-center">
               <svg
@@ -1181,32 +1269,6 @@ const StockManagement = () => {
               Add Stock
             </span>
           </Button>
-
-          <div className="flex items-center gap-2 ml-2">
-            <input
-              type="date"
-              value={dailyDate}
-              onChange={(e) => setDailyDate(e.target.value)}
-              className="border px-3 py-2 rounded text-sm"
-            />
-            <Button
-              onClick={() => exportDailyReport(dailyDate)}
-              className="bg-indigo-600 text-white font-semibold px-2 py-1 rounded-lg shadow-md">
-              Print Bar Daily Report
-            </Button>
-            <Button
-              onClick={() =>
-                exportCafeDailyReport(
-                  dailyDate,
-                  stocks,
-                  institutionData,
-                  allOrders
-                )
-              }
-              className="bg-teal-600 text-white font-semibold px-2 py-1 rounded-lg shadow-md">
-              Print Cafe Daily Report
-            </Button>
-          </div>
         </div>
       </div>
 
@@ -1216,6 +1278,7 @@ const StockManagement = () => {
             stocks={filteredStocks}
             onEdit={openEditModal}
             onDelete={handleDelete}
+            menuItems={menuItems}
           />
         </div>
       </div>
