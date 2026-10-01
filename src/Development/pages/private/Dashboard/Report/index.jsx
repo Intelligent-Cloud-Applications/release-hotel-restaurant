@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext } from "react";
 import { API } from "aws-amplify";
 import { Context } from "../../../../Context";
 import operationData from "../../../../../Operation/data.json";
-import { fetchOrders as fetchFoodDeliveryOrders } from "../../../../utils/foodDeliveryApi";
+// import { fetchOrders as fetchFoodDeliveryOrders } from "../../../../utils/foodDeliveryApi";
 import { Button } from "flowbite-react";
 import { DayPicker } from "react-day-picker";
 import * as XLSX from "xlsx";
@@ -1303,13 +1303,13 @@ const Report = () => {
 
         const type = institutionData?.bar_integration === "Yes" ? "bar" : "cafe";
 
-        const foodDeliveryInstitution = operationData?.foodDeliveryInstitution || "";
+        // const foodDeliveryInstitution = operationData?.foodDeliveryInstitution || "";
 
         const [stockResponse, orderResponse, menuResponse, foodDeliveryResponse] = await Promise.all([
           API.get("main", `/admin/stock-list-items/${institution}`),
           API.get("main", `/admin/list-orders/${institution}?type=${type}`, {}),
           API.get("main", `/any/list-items/${institution}`),
-          foodDeliveryInstitution ? fetchFoodDeliveryOrders(foodDeliveryInstitution) : Promise.resolve([]),
+          // foodDeliveryInstitution ? fetchFoodDeliveryOrders(foodDeliveryInstitution) : Promise.resolve([]),
         ]);
 
         setStocks(stockResponse || []);
