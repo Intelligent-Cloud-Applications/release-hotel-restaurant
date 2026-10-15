@@ -1,13 +1,13 @@
 {
-    "institutionId": "HOTEL001",
+    "institutionId": "HOTE9687",
 
     "index":"1",
 
-    "s3BucketName": "templatecm.awsaiapp.com",
+    "s3BucketName": "hotelcitypriderestaurant.tekkzy.com",
 
     "cloudFrontId": "",
 
-    "domain": "https://templatecm.awsaiapp.com",
+    "domain": "https://hotelcitypriderestaurant.tekkzy.com",
 
     "printerType":"local",
 
