@@ -23,6 +23,8 @@ const UnpaidOrderPaymentModal = ({
   const [cashAmount, setCashAmount] = useState(null);
   const [cardAmount, setCardAmount] = useState(null);
   const [qrAmount, setQrAmount] = useState(null);
+  const [swiggyAmount, setSwiggyAmount] = useState(null);
+  const [zomatoAmount, setZomatoAmount] = useState(null);
   const [roomAmount, setRoomAmount] = useState(null);
   const [btcAmount, setBtcAmount] = useState(null);
   const [complementaryAmount, setComplementaryAmount] = useState(null);
@@ -65,7 +67,7 @@ const UnpaidOrderPaymentModal = ({
   ];
 
   const [customManagementInput, setCustomManagementInput] = useState("");
-  const paymentMethods = ["QR", "Cash", "Card", "BTC", "Complementary", "Void"];
+  const paymentMethods = ["QR", "Cash", "Card", "Swiggy", "Zomato", "BTC", "Complementary", "Void"];
 
   const isManagementSpecial = (() => {
     const inst = String(institutionData?.institution || "").trim();
@@ -297,9 +299,21 @@ const UnpaidOrderPaymentModal = ({
   const totalBillAmount = calculateTotals(unpaidOrder.items).totalWithTax;
 
   useEffect(() => {
-    if (institutionData.integration === "HOTEL" && tableIdStr.toLowerCase().startsWith("hotel")) {
-      const roomNumber = tableIdStr.replace(/^hotel/i, "");
-      const matchingBooking = hotelBookings.find((b) => String(b.roomNumber) === roomNumber);
+    const tLower = String(unpaidOrder?.tableName || tableIdStr || "").toLowerCase();
+    if (tLower.includes("swiggy")) {
+      setSelectedPaymentMethod("Swiggy");
+    } else if (tLower.includes("zomato")) {
+      setSelectedPaymentMethod("Zomato");
+    } else if (institutionData.integration === "HOTEL" && (tLower.startsWith("hotel") || tLower.startsWith("room"))) {
+      setSelectedPaymentMethod("ROOM");
+    }
+  }, [unpaidOrder, tableIdStr, institutionData.integration]);
+
+  useEffect(() => {
+    const tLower = tableIdStr.toLowerCase();
+    if (institutionData.integration === "HOTEL" && (tLower.startsWith("hotel") || tLower.startsWith("room"))) {
+      const roomNumber = tableIdStr.replace(/^(hotel|room)\s*/i, "");
+      const matchingBooking = hotelBookings?.find((b) => String(b.roomNumber) === roomNumber);
       setBooking(matchingBooking || null);
     }
   }, [tableIdStr, hotelBookings, institutionData.integration]);
@@ -454,6 +468,8 @@ const UnpaidOrderPaymentModal = ({
     const cashAmountFinal = cashAmount || 0;
     const cardAmountFinal = cardAmount || 0;
     const qrAmountFinal = qrAmount || 0;
+    const swiggyAmountFinal = swiggyAmount || 0;
+    const zomatoAmountFinal = zomatoAmount || 0;
     const roomAmountFinal = roomAmount || 0;
     const btcAmountFinal = btcAmount || 0;
     const complementaryAmountFinal = complementaryAmount || 0;
@@ -463,6 +479,8 @@ const UnpaidOrderPaymentModal = ({
       cashAmountFinal +
       cardAmountFinal +
       qrAmountFinal +
+      swiggyAmountFinal +
+      zomatoAmountFinal +
       roomAmountFinal +
       btcAmountFinal +
       complementaryAmountFinal +
@@ -516,6 +534,12 @@ const UnpaidOrderPaymentModal = ({
     }
     if (qrAmountFinal > 0) {
       paymentMethodsArray.push({ method: "QR", amount: qrAmountFinal });
+    }
+    if (swiggyAmountFinal > 0) {
+      paymentMethodsArray.push({ method: "Swiggy", amount: swiggyAmountFinal });
+    }
+    if (zomatoAmountFinal > 0) {
+      paymentMethodsArray.push({ method: "Zomato", amount: zomatoAmountFinal });
     }
     if (roomAmountFinal > 0) {
       paymentMethodsArray.push({ method: "ROOM", amount: roomAmountFinal });
@@ -627,6 +651,8 @@ const UnpaidOrderPaymentModal = ({
     ((cashAmount || 0) +
       (cardAmount || 0) +
       (qrAmount || 0) +
+      (swiggyAmount || 0) +
+      (zomatoAmount || 0) +
       (roomAmount || 0) +
       (btcAmount || 0) +
       (complementaryAmount || 0) +
@@ -684,6 +710,26 @@ const UnpaidOrderPaymentModal = ({
                   onChange={(e) => validateAmountInput(e.target.value, setQrAmount)}
                   className="w-full p-2 border rounded-md text-center"
                   placeholder="QR"
+                />
+              </div>
+              <div className="flex flex-col">
+                <label className="text-gray-700 text-sm mb-1">Swiggy</label>
+                <input
+                  type="number"
+                  value={swiggyAmount === null ? "" : swiggyAmount}
+                  onChange={(e) => validateAmountInput(e.target.value, setSwiggyAmount)}
+                  className="w-full p-2 border rounded-md text-center"
+                  placeholder="Swiggy"
+                />
+              </div>
+              <div className="flex flex-col">
+                <label className="text-gray-700 text-sm mb-1">Zomato</label>
+                <input
+                  type="number"
+                  value={zomatoAmount === null ? "" : zomatoAmount}
+                  onChange={(e) => validateAmountInput(e.target.value, setZomatoAmount)}
+                  className="w-full p-2 border rounded-md text-center"
+                  placeholder="Zomato"
                 />
               </div>
               <div className="flex flex-col">

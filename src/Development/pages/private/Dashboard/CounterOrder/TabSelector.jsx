@@ -53,10 +53,28 @@ const TabSelector = ({
 
   // Set booking for hotel tables
   useEffect(() => {
-    if (institutionData.integration === "HOTEL" && selectedTable?.name?.toLowerCase().startsWith("hotel ")) {
-      const roomNumber = selectedTable.name.replace(/^hotel\s+/i, "");
-      const matchingBooking = hotelBookings?.find((b) => String(b.roomNumber) === roomNumber);
-      setBooking(matchingBooking || null);
+    if (institutionData.integration === "HOTEL" && selectedTable) {
+      const name = String(selectedTable.name || "").toLowerCase();
+      const id = String(selectedTable.id || "").toLowerCase();
+      let roomNumber = null;
+      if (name.startsWith("hotel ")) {
+        roomNumber = selectedTable.name.replace(/^hotel\s+/i, "");
+      } else if (name.startsWith("room ")) {
+        roomNumber = selectedTable.name.replace(/^room\s+/i, "");
+      } else if (id.startsWith("hotel")) {
+        const cleanId = id.replace(/^hotel/, "");
+        const matchingBooking = hotelBookings?.find(
+          (b) => String(b.roomNumber).replace(/[^a-zA-Z0-9]/g, "").toLowerCase() === cleanId
+        );
+        setBooking(matchingBooking || null);
+        return;
+      }
+      if (roomNumber) {
+        const matchingBooking = hotelBookings?.find((b) => String(b.roomNumber) === String(roomNumber));
+        setBooking(matchingBooking || null);
+      } else {
+        setBooking(null);
+      }
     } else {
       setBooking(null);
     }

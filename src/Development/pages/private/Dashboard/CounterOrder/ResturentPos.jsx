@@ -65,7 +65,27 @@ const [tables, setTables] = useState([
     orderType: "takeaway",
   })),
 
-  // Hotel rooms (only if bar integration is enabled)
+  // Swiggy counters (1 to 10)
+  ...Array(10).fill(null).map((_, i) => ({
+    id: `Swiggy${i + 1}`,
+    name: `Swiggy ${i + 1}`,
+    status: "available",
+    orders: [],
+    currentBill: 0,
+    orderType: "swiggy",
+  })),
+
+  // Zomato counters (1 to 10)
+  ...Array(10).fill(null).map((_, i) => ({
+    id: `Zomato${i + 1}`,
+    name: `Zomato ${i + 1}`,
+    status: "available",
+    orders: [],
+    currentBill: 0,
+    orderType: "zomato",
+  })),
+
+  // Hotel rooms
   ...(institutionData?.integration === "HOTEL" && hotelBookings
     ? hotelBookings.map(booking => {
         const sanitizedRoomNumber = booking.roomNumber.replace(/[^a-zA-Z0-9]/g, '');
@@ -195,6 +215,12 @@ const calculateTotals = (items, discountInfo = null) => {
     if (tableName.toLowerCase().startsWith("hotel ")) {
       const roomNumber = tableName.replace(/^hotel\s+/i, "");
       booking = hotelBookings?.find((b) => String(b.roomNumber) === String(roomNumber));
+    } else if (tableName.toLowerCase().startsWith("room ")) {
+      const roomNumber = tableName.replace(/^room\s+/i, "");
+      booking = hotelBookings?.find((b) => String(b.roomNumber) === String(roomNumber));
+    } else if (String(tableIdStr).toLowerCase().startsWith("hotel")) {
+      const cleanId = String(tableIdStr).toLowerCase().replace(/^hotel/, "");
+      booking = hotelBookings?.find((b) => String(b.roomNumber).replace(/[^a-zA-Z0-9]/g, "").toLowerCase() === cleanId);
     }
     return booking;
   };

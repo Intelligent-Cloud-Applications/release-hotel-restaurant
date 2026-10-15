@@ -46,10 +46,19 @@ const PrintKOT = ({
       }).replace(",", ""); 
     };
     
+    const tableIdLower = String(table?.id || "").toLowerCase();
     const orderType = !isNaN(table.id)
       ? "Dine In"
-      : table.id.toLowerCase().startsWith("takeaway")
+      : tableIdLower.startsWith("takeaway")
       ? "Takeaway"
+      : tableIdLower.startsWith("swiggy")
+      ? "Swiggy"
+      : tableIdLower.startsWith("zomato")
+      ? "Zomato"
+      : tableIdLower.startsWith("hotel") || tableIdLower.startsWith("room")
+      ? "Room"
+      : tableIdLower.startsWith("management")
+      ? "Management"
       : "Dine In";
 
     const currentKOT = KOTByTable[table.id] || { items: [], totalAmount: 0 };

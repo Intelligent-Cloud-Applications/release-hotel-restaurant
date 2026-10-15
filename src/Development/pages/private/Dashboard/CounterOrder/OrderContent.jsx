@@ -451,10 +451,19 @@ const OrderContent = ({
         })
         .replace(",", "");
     };
+    const tableIdLower = String(selectedTable?.id || "").toLowerCase();
     const orderType = !isNaN(selectedTable?.id)
       ? "Dine In"
-      : selectedTable?.id.toLowerCase().startsWith("takeaway")
+      : tableIdLower.startsWith("takeaway")
       ? "Takeaway"
+      : tableIdLower.startsWith("swiggy")
+      ? "Swiggy"
+      : tableIdLower.startsWith("zomato")
+      ? "Zomato"
+      : tableIdLower.startsWith("hotel") || tableIdLower.startsWith("room")
+      ? "Room"
+      : tableIdLower.startsWith("management")
+      ? "Management"
       : "Dine In";
     const kotNo = getKOTNumber(selectedTable?.id) || "N/A";
     const items = kotcurrent?.items || [];

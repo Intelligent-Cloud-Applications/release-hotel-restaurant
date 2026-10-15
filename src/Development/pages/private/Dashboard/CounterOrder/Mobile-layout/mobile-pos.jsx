@@ -257,18 +257,33 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
   }, []);
 
   const getFilteredTables = () => {
-    if (institutionData?.integration !== "HOTEL") {
-      return tables;
-    }
-
     if (activeTab === "Table") {
       return tables.filter(
         (table) =>
           String(table.name).toLowerCase().startsWith("table") ||
           String(table.id).toLowerCase().startsWith("takeaway")
       );
-    } else if (activeTab === "Hotel") {
-      return tables.filter((table) => String(table.id).toLowerCase().startsWith("hotel"));
+    } else if (activeTab === "Room" || activeTab === "Hotel") {
+      return tables.filter(
+        (table) =>
+          String(table.id).toLowerCase().startsWith("hotel") ||
+          String(table.id).toLowerCase().startsWith("room") ||
+          String(table.orderType).toLowerCase() === "hotel"
+      );
+    } else if (activeTab === "Swiggy") {
+      return tables.filter(
+        (table) =>
+          String(table.id).toLowerCase().startsWith("swiggy") ||
+          String(table.name).toLowerCase().startsWith("swiggy") ||
+          String(table.orderType).toLowerCase() === "swiggy"
+      );
+    } else if (activeTab === "Zomato") {
+      return tables.filter(
+        (table) =>
+          String(table.id).toLowerCase().startsWith("zomato") ||
+          String(table.name).toLowerCase().startsWith("zomato") ||
+          String(table.orderType).toLowerCase() === "zomato"
+      );
     }
     return tables;
   };
@@ -289,8 +304,12 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
       if (String(table.id).toLowerCase().startsWith("takeaway")) return table.name;
       if (String(table.id).toLowerCase().startsWith("hotel")) {
         const hotelId = String(table.id).replace(/^hotel/i, "");
-        return `Hotel ${hotelId}`;
+        return `Room ${hotelId}`;
       }
+      if (String(table.id).toLowerCase().startsWith("room")) return table.name;
+      if (String(table.id).toLowerCase().startsWith("swiggy")) return table.name;
+      if (String(table.id).toLowerCase().startsWith("zomato")) return table.name;
+      if (String(table.orderType).toLowerCase() === "management") return table.name;
       return `Table ${table.id}`;
     };
 
@@ -340,28 +359,27 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
   };
 
   const renderVerticalTabs = () => {
-    if (institutionData?.integration !== "HOTEL") return null;
+    const tabs = [
+      { id: "Table", label: "Table" },
+      { id: "Room", label: "Room" },
+      { id: "Swiggy", label: "Swiggy" },
+      { id: "Zomato", label: "Zomato" },
+    ];
 
     return (
-      <div className="flex flex-col w-12 sm:w-14 bg-gray-50 border-r">
-        <button
-          onClick={() => setActiveTab("Table")}
-          className={`
-            p-1.5 sm:p-2 text-[10px] sm:text-xs font-medium border-b transition-all
-            ${activeTab === "Table" ? "bg-blue-600 text-white border-blue-700" : "bg-white text-gray-700 hover:bg-gray-100 border-gray-200"}
-          `}
-        >
-          Table
-        </button>
-        <button
-          onClick={() => setActiveTab("Hotel")}
-          className={`
-            p-1.5 sm:p-2 text-[10px] sm:text-xs font-medium border-b transition-all
-            ${activeTab === "Hotel" ? "bg-blue-600 text-white border-blue-700" : "bg-white text-gray-700 hover:bg-gray-100 border-gray-200"}
-          `}
-        >
-          Hotel
-        </button>
+      <div className="flex flex-col w-12 sm:w-14 bg-gray-50 border-r shrink-0">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`
+              p-1.5 sm:p-2 text-[10px] sm:text-xs font-medium border-b transition-all
+              ${activeTab === tab.id ? "bg-blue-600 text-white border-blue-700" : "bg-white text-gray-700 hover:bg-gray-100 border-gray-200"}
+            `}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
     );
   };

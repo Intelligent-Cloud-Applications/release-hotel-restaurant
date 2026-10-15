@@ -70,10 +70,19 @@ const ReprintKOT = ({
       return;
     }
 
+    const tableIdLower = String(table?.id || "").toLowerCase();
     const orderType = !isNaN(table.id)
       ? "Dine In"
-      : table.id.toLowerCase().startsWith("takeaway")
+      : tableIdLower.startsWith("takeaway")
       ? "Takeaway"
+      : tableIdLower.startsWith("swiggy")
+      ? "Swiggy"
+      : tableIdLower.startsWith("zomato")
+      ? "Zomato"
+      : tableIdLower.startsWith("hotel") || tableIdLower.startsWith("room")
+      ? "Room"
+      : tableIdLower.startsWith("management")
+      ? "Management"
       : "Dine In";
 
     const itemsToPrint = billItems || [];
@@ -578,7 +587,20 @@ const ReprintKOT = ({
 
   const formatKOT = () => {
     if (!table || !table.id) return "";
-    const orderType = !isNaN(table.id) ? "Dine In" : table.id.toLowerCase().startsWith("takeaway") ? "Takeaway" : "Dine In";
+    const tableIdLower = String(table?.id || "").toLowerCase();
+    const orderType = !isNaN(table.id)
+      ? "Dine In"
+      : tableIdLower.startsWith("takeaway")
+      ? "Takeaway"
+      : tableIdLower.startsWith("swiggy")
+      ? "Swiggy"
+      : tableIdLower.startsWith("zomato")
+      ? "Zomato"
+      : tableIdLower.startsWith("hotel") || tableIdLower.startsWith("room")
+      ? "Room"
+      : tableIdLower.startsWith("management")
+      ? "Management"
+      : "Dine In";
     const kotNo = getKOTNumber(table.id);
     const items = billItems || [];
     const totalQty = items.reduce((sum, item) => sum + item.quantity, 0);
