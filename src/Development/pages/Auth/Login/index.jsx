@@ -20,17 +20,27 @@ const AuthPage = () => {
     event.preventDefault();
 
     setLoader(true);
+    const email = String(event.target.email?.value || '').trim();
+    const password = String(event.target.password?.value || '').trim();
+
     try {
-      await Auth.signIn(event.target.email.value, event.target.password.value);
+      const user = await Auth.signIn(email, password);
+      if (user?.challengeName === 'NEW_PASSWORD_REQUIRED') {
+        await Auth.completeNewPassword(user, password);
+      }
       setLoader(false);
       navigate('/redirect');
     } catch (e) {
       console.log(e);
-      if (e.name === 'NotAuthorizedException')
-        toast.error('Incorrect password');
-      else {
-        toast.error('Please signup first.');
+      if (e.name === 'NotAuthorizedException') {
+        toast.error('Incorrect username or password');
+      } else if (e.name === 'UserNotFoundException') {
+        toast.error('User not found. Please signup first.');
         navigate('/signup');
+      } else if (e.name === 'UserNotConfirmedException') {
+        toast.error('Account is not confirmed. Please verify your email.');
+      } else {
+        toast.error(e.message || 'Login failed. Please try again.');
       }
     } finally {
       setLoader(false);

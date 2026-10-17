@@ -123,11 +123,12 @@ const Stafflist = () => {
           ));
         }
         
+        const targetEmail = (selectedStaff.emailId || selectedStaff.email || formData.email || "").trim().toLowerCase();
         await API.put("main", `/admin/update-staff/${institution}/${selectedStaff.cognitoId}`, {
           body: {
             name: formData.name,
             userType: formData.userType,
-            email: selectedStaff.emailId,
+            email: targetEmail,
             phoneNumber: updatedPhone,
             ...(formData?.role ? { role: formData.role } : {}),
             ...(formData?.password ? { password: formData.password } : {}),
@@ -137,28 +138,44 @@ const Stafflist = () => {
         toast.success("Staff member updated successfully");
         await fetchData();
       } else {
-        const tempId = `temp-${Date.now()}`;
+        const staffEmail = (formData.email || formData.emailId || "").trim().toLowerCase();
+        
+        // Check if staff with this email already exists
+        const existingMember = staffData.find(s => 
+          (s.emailId || s.email || "").trim().toLowerCase() === staffEmail
+        );
+
+        const tempId = existingMember ? existingMember.cognitoId : `temp-${Date.now()}`;
         const tempStaff = {
           cognitoId: tempId,
           userName: formData.name,
-          emailId: formData.email,
+          emailId: staffEmail,
           phoneNumber: formData.phoneNumber,
           userType: formData.userType,
           role: formData.role || undefined
         };
         
-        setStaffData(prevData => [...prevData, tempStaff]);
-        
-        const effectiveRole = tempStaff.role || tempStaff.userType;
-        if (selectedUserType === "" || selectedUserType.toLowerCase() === effectiveRole.toLowerCase()) {
-          setFilteredData(prevData => [...prevData, tempStaff]);
+        if (existingMember) {
+          // Update in-place to avoid duplicate entry
+          setStaffData(prevData => prevData.map(staff => 
+            staff.cognitoId === existingMember.cognitoId ? { ...staff, ...tempStaff } : staff
+          ));
+          setFilteredData(prevData => prevData.map(staff => 
+            staff.cognitoId === existingMember.cognitoId ? { ...staff, ...tempStaff } : staff
+          ));
+        } else {
+          setStaffData(prevData => [...prevData, tempStaff]);
+          const effectiveRole = tempStaff.role || tempStaff.userType;
+          if (selectedUserType === "" || selectedUserType.toLowerCase() === effectiveRole.toLowerCase()) {
+            setFilteredData(prevData => [...prevData, tempStaff]);
+          }
         }
         
         const response = await API.post("main", "/admin/create-staff", {
           body: {
             institution,
             name: formData.name,
-            email: formData.email,
+            email: staffEmail,
             phoneNumber: formData.phoneNumber,
             country: formData.country || "india",
             userType: formData.userType,
@@ -178,18 +195,18 @@ const Stafflist = () => {
         };
         
         setStaffData(prevData => prevData.map(staff => 
-          staff.cognitoId === tempId ? actualStaff : staff
+          (staff.cognitoId === tempId || (staff.emailId && staff.emailId.toLowerCase() === staffEmail)) ? actualStaff : staff
         ));
         
-        if (selectedUserType === "" || 
-            selectedUserType === actualStaff.userType || 
-            (selectedUserType === "owner" && actualStaff.role === "owner")) {
-          setFilteredData(prevData => prevData.map(staff => 
-            staff.cognitoId === tempId ? actualStaff : staff
-          ));
-        }
+        setFilteredData(prevData => prevData.map(staff => 
+          (staff.cognitoId === tempId || (staff.emailId && staff.emailId.toLowerCase() === staffEmail)) ? actualStaff : staff
+        ));
         
-        toast.success("Staff member created successfully");
+        if (existingMember || response?.isExisting) {
+          toast.success("Staff details and password updated successfully");
+        } else {
+          toast.success("Staff member created successfully");
+        }
         await fetchData();
       }
       
@@ -251,6 +268,7 @@ const Stafflist = () => {
               data={filteredData.map((staff) => [
                 staff.userName,
                 staff.emailId,
+                staff.phoneNumber || "-",
                 staff.role ? (staff.role.charAt(0).toUpperCase() + staff.role.slice(1)) : (staff.userType ? (staff.userType.charAt(0).toUpperCase() + staff.userType.slice(1)) : ""),
                 <div className="flex space-x-2">
                   <Button onClick={() => handleOpenModal(staff)} className="bg-primaryColor">
@@ -323,6 +341,7 @@ const Stafflist = () => {
         initialData={selectedStaff}
         isUpdate={!!selectedStaff}
         isLoading={isLoading}
+        existingStaffList={staffData}
       />
     </div>
   );
