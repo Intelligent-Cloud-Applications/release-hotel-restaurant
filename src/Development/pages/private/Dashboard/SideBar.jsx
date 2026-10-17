@@ -19,7 +19,7 @@ import { FaCashRegister } from "react-icons/fa";
 
 const routes = [
   { path: 'counterorder', label: 'Counter Order (POS)', icon: TbToolsKitchen3, allowedUserTypes: ['admin'] },
-  { path: 'orders', label: 'Orders', icon: MdFastfood, allowedUserTypes: ['admin', 'member', 'waiter'] },
+  { path: 'orders', label: 'Orders', icon: MdFastfood, allowedUserTypes: ['member', 'waiter'] },
   // { path: 'pendingorders', label: 'Pending Orders', icon: MdOutlinePendingActions, allowedUserTypes: ['admin', 'waiter'] },
   { path: 'addstaff', label: 'Add Staff', icon: IoMdPersonAdd, allowedUserTypes: ['admin'] },
   { path: 'item', label: 'Menu Items', icon: MdOutlineProductionQuantityLimits, allowedUserTypes: ['admin', 'chef'] },
