@@ -28,8 +28,8 @@ const Stafflist = () => {
 
   const head = ["Name", "Email", "Phone Number", "User Type", "Actions"];
 
-  if (userData?.userType !== 'admin') {
-    return <Error message="Access Denied: Admins Only" />;
+  if (userData?.userType !== 'admin' || userData?.role === 'cashier') {
+    return <Error message="Access Denied: Admins and Managers Only" />;
   }
 
   const fetchData = async () => {
@@ -56,9 +56,10 @@ const Stafflist = () => {
 
     if (userType) {
       setFilteredData(
-        staffData.filter((staff) => 
-          userType === "owner" ? staff.role === "owner" : staff.userType === userType
-        )
+        staffData.filter((staff) => {
+          const effectiveRole = staff.role || staff.userType;
+          return effectiveRole.toLowerCase() === userType.toLowerCase();
+        })
       );
     } else {
       setFilteredData(staffData);
@@ -97,9 +98,11 @@ const Stafflist = () => {
     
     try {
       if (selectedStaff) {
+        const updatedPhone = formData.phoneNumber || selectedStaff.phoneNumber;
         const tempStaff = { 
           ...selectedStaff,
           userName: formData.name,
+          phoneNumber: updatedPhone,
           userType: formData.userType,
           role: formData.role || undefined
         };
@@ -109,9 +112,8 @@ const Stafflist = () => {
         
         setStaffData(updatedStaffData);
         
-        if (selectedUserType === "" || 
-            selectedUserType === tempStaff.userType || 
-            (selectedUserType === "owner" && tempStaff.role === "owner")) {
+        const effectiveRole = tempStaff.role || tempStaff.userType;
+        if (selectedUserType === "" || selectedUserType.toLowerCase() === effectiveRole.toLowerCase()) {
           setFilteredData(filteredData.map((staff) =>
             staff.cognitoId === selectedStaff.cognitoId ? tempStaff : staff
           ));
@@ -126,12 +128,14 @@ const Stafflist = () => {
             name: formData.name,
             userType: formData.userType,
             email: selectedStaff.emailId,
-            phoneNumber: selectedStaff.phoneNumber,
+            phoneNumber: updatedPhone,
             ...(formData?.role ? { role: formData.role } : {}),
+            ...(formData?.password ? { password: formData.password } : {}),
           }
         });
         
         toast.success("Staff member updated successfully");
+        await fetchData();
       } else {
         const tempId = `temp-${Date.now()}`;
         const tempStaff = {
@@ -145,9 +149,8 @@ const Stafflist = () => {
         
         setStaffData(prevData => [...prevData, tempStaff]);
         
-        if (selectedUserType === "" || 
-            selectedUserType === tempStaff.userType || 
-            (selectedUserType === "owner" && tempStaff.role === "owner")) {
+        const effectiveRole = tempStaff.role || tempStaff.userType;
+        if (selectedUserType === "" || selectedUserType.toLowerCase() === effectiveRole.toLowerCase()) {
           setFilteredData(prevData => [...prevData, tempStaff]);
         }
         
@@ -159,14 +162,18 @@ const Stafflist = () => {
             phoneNumber: formData.phoneNumber,
             country: formData.country || "india",
             userType: formData.userType,
+            password: formData.password || "Password@123",
             ...(formData?.role ? { role: formData.role } : {})
           }
         });
         
         const actualStaff = {
           ...response,
-          userName: response.name || formData.name,
-          emailId: response.email || formData.email,
+          cognitoId: response.cognitoId || tempId,
+          userName: response.userName || response.name || formData.name,
+          emailId: response.emailId || response.email || formData.email,
+          phoneNumber: response.phoneNumber || formData.phoneNumber,
+          userType: response.userType || formData.userType,
           role: formData.role || undefined
         };
         
@@ -183,6 +190,7 @@ const Stafflist = () => {
         }
         
         toast.success("Staff member created successfully");
+        await fetchData();
       }
       
       handleCloseModal();
@@ -211,6 +219,8 @@ const Stafflist = () => {
             <option value="">All</option>
             <option value="chef">Chef</option>
             <option value="waiter">Waiter</option>
+            <option value="manager">Manager</option>
+            <option value="cashier">Cashier</option>
             <option value="admin">Admin</option>
             <option value="owner">Owner</option>
             <option value="member">Member</option>
@@ -241,8 +251,7 @@ const Stafflist = () => {
               data={filteredData.map((staff) => [
                 staff.userName,
                 staff.emailId,
-                staff.phoneNumber,
-                staff.role === "owner" ? "Owner" : staff.userType, // Display "Owner" if role is owner
+                staff.role ? (staff.role.charAt(0).toUpperCase() + staff.role.slice(1)) : (staff.userType ? (staff.userType.charAt(0).toUpperCase() + staff.userType.slice(1)) : ""),
                 <div className="flex space-x-2">
                   <Button onClick={() => handleOpenModal(staff)} className="bg-primaryColor">
                     <FaEdit />
@@ -279,7 +288,7 @@ const Stafflist = () => {
                             : 'bg-green-600 text-white'
                         }`}
                       >
-                        {staff.role === "owner" ? "Owner" : staff.userType} {/* Display "Owner" if role is owner */}
+                        {staff.role ? (staff.role.charAt(0).toUpperCase() + staff.role.slice(1)) : (staff.userType ? (staff.userType.charAt(0).toUpperCase() + staff.userType.slice(1)) : "")}
                       </span>
                     </div>
                 
