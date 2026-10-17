@@ -19,19 +19,19 @@ import { FaCashRegister } from "react-icons/fa";
 
 const routes = [
   { path: 'counterorder', label: 'Counter Order (POS)', icon: TbToolsKitchen3, allowedUserTypes: ['admin'] },
-  { path: 'orders', label: 'Orders', icon: MdFastfood, allowedUserTypes: ['member', 'chef', 'waiter'] },
+  { path: 'orders', label: 'Orders', icon: MdFastfood, allowedUserTypes: ['admin', 'member', 'waiter'] },
   // { path: 'pendingorders', label: 'Pending Orders', icon: MdOutlinePendingActions, allowedUserTypes: ['admin', 'waiter'] },
-  { path: 'addstaff', label: 'Add Staff', icon: IoMdPersonAdd, allowedUserTypes: ['admin'], requiresOwnerRole: true },
+  { path: 'addstaff', label: 'Add Staff', icon: IoMdPersonAdd, allowedUserTypes: ['admin'] },
   { path: 'item', label: 'Menu Items', icon: MdOutlineProductionQuantityLimits, allowedUserTypes: ['admin', 'chef'] },
   { path: 'stockmanagement', label: 'Stock Management', icon: MdInventory2, allowedUserTypes: ['admin'], showIfBarOrStock: true },
-  { path: 'qrmanage', label: 'QR Manage', icon: MdQrCodeScanner, allowedUserTypes: ['admin'], requiresOwnerRole: true },
+  { path: 'qrmanage', label: 'QR Manage', icon: MdQrCodeScanner, allowedUserTypes: ['admin'] },
   { path: 'room-details', label: 'Room Details', icon: FaHotel, allowedUserTypes: ['admin', 'waiter'] ,requiresCafeIntegration: true},
   { path: 'day-end', label: 'Day End', icon: IoMdTimer, allowedUserTypes: ['admin', 'waiter'], requiresBarIntegration: true },
   { path: 'revenue', label: 'Revenue', icon: RiMoneyRupeeCircleFill, allowedUserTypes: ['admin'] },
   { path: 'orderhistory', label: 'Order History', icon: RiBillLine, allowedUserTypes: ['admin'] },
   { path: 'cashbook', label: 'Cashbook', icon: FaCashRegister, allowedUserTypes: ['admin'], requiresCafeIntegration: true },
   { path: 'report', label: 'Reports', icon: TbReportSearch, allowedUserTypes: ['admin'] },
-  { path: 'profile', label: 'Profile', icon: CgProfile, allowedUserTypes: ['member', 'admin', 'chef', 'waiter'] },
+  { path: 'profile', label: 'Profile', icon: CgProfile, allowedUserTypes: ['admin', 'member', 'chef', 'waiter'] },
 ];
 
 const SideBar = () => {
@@ -49,21 +49,28 @@ const SideBar = () => {
   // Helper function to check if route should be displayed
   const shouldDisplayRoute = (route) => {
     const hasUserType = route.allowedUserTypes.includes(userType);
+    if (!hasUserType) return false;
+
+    // Cashier cannot access Add Staff
+    if (route.path === 'addstaff' && role === 'cashier') {
+      return false;
+    }
+
     // Check for owner role if required
     if (route.requiresOwnerRole) {
-      return hasUserType && role === 'owner';
+      return role === 'owner' || role === 'admin' || role === 'manager';
     }
     // Check for bar integration for day-end route
     if (route.requiresBarIntegration) {
-      return hasUserType && bar_integration === "Yes";
+      return bar_integration === "Yes";
     }
-     if (route.requiresCafeIntegration) {
-      return hasUserType && bar_integration !== "Yes";
+    if (route.requiresCafeIntegration) {
+      return bar_integration !== "Yes";
     }
     if (route.showIfBarOrStock) {
-      return hasUserType && (bar_integration === "Yes" || stock === true);
+      return bar_integration === "Yes" || stock === true;
     }
-    return hasUserType;
+    return true;
   };
 
   // Fullscreen Toggle

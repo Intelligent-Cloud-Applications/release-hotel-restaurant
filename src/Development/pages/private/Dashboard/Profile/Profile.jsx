@@ -27,7 +27,7 @@ const Profile = () => {
       setServiceTax(institutionData.serviceTax || 0);
       setCgst(institutionData.cgst || 0);
       setSgst(institutionData.sgst || 0);
-      setGstin(institutionData.gstin || '');
+      setGstin(institutionData.gstin || institutionData.institutionGst || institutionData.taxNumber || '');
       setGstshow(institutionData.gstshow || false);
     }
   }, [institutionData]);
@@ -61,25 +61,20 @@ const Profile = () => {
   const [err, setErr] = useState('')
   const [phoneNumber, setPhoneNumber] = useState(userData.phoneNumber)
   const [phoneCode, setPhoneCode] = useState('')
-  const [isPhoneChange, setIsPhoneChange] = useState(false)
-  const [isPhoneCode, setIsPhoneCode] = useState(false)
+  const isAdmin = userData?.userType === 'admin';
 
   const ifDataChanged = () => {
-    if (
-      name.trim() === userData.userName.trim() &&
-      phoneNumber === userData.phoneNumber &&
-      (userData.userType !== 'admin' || (
-        serviceTax === userData.serviceTax &&
-        sgst === userData.sgst &&
-        cgst === userData.cgst &&
-        gstin === userData.gstin &&
-        gstshow === userData.gstshow
-      ))
-    ) {
-      return false
-    } else {
-      return true
-    }
+    const profileChanged =
+      name.trim() !== (userData?.userName || '').trim() ||
+      phoneNumber !== userData?.phoneNumber;
+    const taxChanged = isAdmin && (
+      serviceTax !== (institutionData?.serviceTax || 0) ||
+      sgst !== (institutionData?.sgst || 0) ||
+      cgst !== (institutionData?.cgst || 0) ||
+      gstin !== (institutionData?.gstin || institutionData?.institutionGst || institutionData?.taxNumber || '') ||
+      gstshow !== (institutionData?.gstshow || false)
+    );
+    return profileChanged || taxChanged;
   }
 
   const handleImageChange = (e) => {
@@ -139,8 +134,16 @@ const Profile = () => {
             userName: name,
             phoneNumber: phoneNumber,
             country: country,
-            imgUrl: imageUrl.split('?')[0],
-            ...(userData.userType === 'admin' && { serviceTax, cgst, sgst, gstin, gstshow })
+            ...(isAdmin && {
+              serviceTax,
+              cgst,
+              sgst,
+              gstin,
+              institutionGst: gstin,
+              taxNumber: gstin,
+              gstshow,
+              index: institutionData?.index || '1'
+            })
           }
         }
       )
@@ -211,7 +214,7 @@ const Profile = () => {
     setLoader(false);
     return;
   }
-    if (userData.userType === 'admin' && gstin) {
+  if (isAdmin && gstin) {
       const gstinPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
       if (!gstinPattern.test(gstin)) {
         toast.info('Please enter a valid GSTIN number (e.g., 22AAAAA0000A1Z5)');
@@ -234,12 +237,46 @@ const Profile = () => {
               status: userData.status,
               country: country,
               imgUrl: userData.imgUrl || null,
-              ...(userData.userType === 'admin' && { serviceTax, cgst, sgst, gstin, gstshow })
+              ...(isAdmin && {
+                serviceTax,
+                cgst,
+                sgst,
+                gstin,
+                institutionGst: gstin,
+                taxNumber: gstin,
+                gstshow,
+                index: institutionData?.index || '1'
+              })
             }
           }
         )
 
         Ctx.setUserData(userdata.Attributes)
+        if (isAdmin) {
+          Ctx.setInstitutionData((prev) => {
+            const updated = {
+              ...prev,
+              serviceTax,
+              cgst,
+              sgst,
+              gstin,
+              institutionGst: gstin,
+              taxNumber: gstin,
+              gstshow,
+            };
+            try {
+              const cacheKey = "institutionData";
+              const cached = JSON.parse(localStorage.getItem(cacheKey) || "{}");
+              if (cached && cached.data) {
+                cached.data = { ...cached.data, ...updated };
+                localStorage.setItem(cacheKey, JSON.stringify(cached));
+              }
+            } catch (cacheErr) {
+              console.warn("Failed to update cache:", cacheErr);
+            }
+            return updated;
+          });
+        }
         toast.info('Updated')
         setLoader(false)
       } catch (e) {
@@ -438,7 +475,7 @@ const Profile = () => {
                     />
                   </div>
 
-                  {userData.userType === 'admin' && (
+                  {isAdmin && (
                     <div className="w-full mt-4">
                       <div
                         className="flex justify-between items-center cursor-pointer bg-[#30AFBC] text-white px-4 py-2 rounded-t-lg"

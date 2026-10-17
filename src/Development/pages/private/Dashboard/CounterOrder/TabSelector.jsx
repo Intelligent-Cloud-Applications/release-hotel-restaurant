@@ -37,9 +37,7 @@ const TabSelector = ({
   // Ref for textarea to manage focus
   const reasonTextareaRef = useRef(null);
 
-  // Check if user can cancel orders (admin with owner role)
-  const canCancelOrders =
-    userData?.userType === "admin" && userData?.role === "owner";
+  const canCancelOrders = userData?.userType === "admin";
 
   // Update available tables when tables or selectedTable changes
   useEffect(() => {
