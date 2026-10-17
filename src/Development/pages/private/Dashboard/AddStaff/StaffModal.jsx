@@ -3,7 +3,7 @@ import { Modal } from "flowbite-react";
 import { AiOutlineClose } from "react-icons/ai";
 import StaffForm from "./StaffForm";
 
-const StaffModal = ({ isOpen, onClose, onSubmit, initialData, isUpdate, isLoading }) => {
+const StaffModal = ({ isOpen, onClose, onSubmit, initialData, isUpdate, isLoading, existingStaffList }) => {
   return (
     <Modal show={isOpen} onClose={onClose} size="md">
       <div className="flex flex-col px-6 py-6 bg-white rounded-lg shadow-lg space-y-4">
@@ -23,6 +23,7 @@ const StaffModal = ({ isOpen, onClose, onSubmit, initialData, isUpdate, isLoadin
           isUpdate={isUpdate}
           onSubmit={onSubmit}
           isLoading={isLoading}
+          existingStaffList={existingStaffList}
         />
       </div>
     </Modal>
