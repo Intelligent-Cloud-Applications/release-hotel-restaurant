@@ -61,6 +61,8 @@ const Profile = () => {
   const [err, setErr] = useState('')
   const [phoneNumber, setPhoneNumber] = useState(userData.phoneNumber)
   const [phoneCode, setPhoneCode] = useState('')
+  const [isPhoneChange, setIsPhoneChange] = useState(false)
+  const [isPhoneCode, setIsPhoneCode] = useState(false)
   const isAdmin = userData?.userType === 'admin';
 
   const ifDataChanged = () => {
