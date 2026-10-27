@@ -1021,8 +1021,7 @@ const OrderHistory = () => {
   const isHotel = institutionData?.integration === "HOTEL" || institutionData?.hotel_integration === true || institutionData?.hotel_integration === "Yes";
   const head = [
     "Sl No",
-    ...(isHotel ? ["Bill No"] : []),
-    "Order ID",
+    ...(isHotel ? ["Bill No"] : ["Order ID"]),
     "Name",
     institution === "bhuk2323" ? "Phone Number" : null,
     "Table",
@@ -1234,8 +1233,7 @@ const OrderHistory = () => {
               if (isSummary) {
                 return [
                   index + 1,
-                  ...(isHotel ? ["-"] : []),
-                  obj.orderId,
+                  ...(isHotel ? ["-"] : [obj.orderId]),
                   "Monthly Summary",
                   institution === "bhuk2323" ? "N/A" : null,
                   "N/A",
@@ -1259,8 +1257,7 @@ const OrderHistory = () => {
               }
               return [
                 index + 1,
-                ...(isHotel ? [obj.billNo || obj.billNumber || obj.orderId || "-"] : []),
-                obj.orderId,
+                ...(isHotel ? [obj.billNo || obj.billNumber || obj.orderId || "-"] : [obj.orderId]),
                 obj.name,
                 institution === "bhuk2323" ? obj.phoneNumber || "N/A" : null,
                 obj.tableName,
