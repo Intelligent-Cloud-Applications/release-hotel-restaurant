@@ -64,7 +64,7 @@ const OrderContent = ({
   setTableInstructions,
 }) => {
   const { printerType, printerpaperSize } = data;
-  const { staffData, fetchStaffData, setLoader, hotelBookings } = useContext(Context);
+  const { staffData, fetchStaffData, setLoader, hotelBookings, nextBillNumber, fetchNextBillNumber } = useContext(Context);
   const screenWidth = window.innerWidth;
   // Existing state variables
   const [orderRoomSelection, setOrderRoomSelection] = useState({});
@@ -197,6 +197,9 @@ const OrderContent = ({
   // Reset instruction states when table changes
   useEffect(() => {
     setInstructionStates({});
+    if (fetchNextBillNumber) {
+      fetchNextBillNumber();
+    }
   }, [selectedTable?.id]);
 
   // Get current day session display name
@@ -591,6 +594,13 @@ const formatBill = (orderItems, customerId) => {
   bill += `Session: ${getCurrentDaySessionName()}\n`; // Added day session
   bill += `${gstShow && institutionData?.gstin ? `GSTIN: ${institutionData.gstin}\n` : ""}`;
   bill += `Table: ${selectedTable?.id || "N/A"}\n`;
+  const firstOrderForBt = Object.values(currentTableData?.orders || {})[0];
+  const activeBillNoForBt = customerId
+    ? orderGroups?.find(g => g.orderId === customerId)?.billNo || nextBillNumber
+    : firstOrderForBt?.billNo || firstOrderForBt?.billNumber || nextBillNumber;
+  if (activeBillNoForBt) {
+    bill += `Bill No: ${activeBillNoForBt}\n`;
+  }
   if (splitBillMode && customerId) {
     bill += `Order ID: ${customerId}\n`;
   }
@@ -667,10 +677,12 @@ const formatBill = (orderItems, customerId) => {
       } else {
         console.log("Attempting local print for split Bill...");
         const discountInfo = getCurrentDiscountInfo();
+        const activeBillNo = selectedOrder?.billNo || selectedOrder?.billNumber || nextBillNumber;
         printBill({
           table: selectedTable,
           items: selectedOrder.items,
           orderId: selectedOrderId,
+          billNo: activeBillNo,
           discountMethod: discountInfo.method,
           discountValue: discountInfo.value,
         });
@@ -694,9 +706,13 @@ const formatBill = (orderItems, customerId) => {
       } else {
         console.log("Attempting local print for Bill...");
         const discountInfo = getCurrentDiscountInfo();
+        const firstOrder = Object.values(currentTableData?.orders || {})[0];
+        const activeBillNo = firstOrder?.billNo || firstOrder?.billNumber || nextBillNumber;
         printBill({
           table: selectedTable,
           items: localBillItems,
+          orderId: firstOrder?.orderId,
+          billNo: activeBillNo,
           discountMethod: discountInfo.method,
           discountValue: discountInfo.value,
         });

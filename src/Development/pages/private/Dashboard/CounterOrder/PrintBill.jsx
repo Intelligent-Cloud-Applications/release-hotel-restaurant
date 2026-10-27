@@ -2,7 +2,7 @@ import React from "react";
 import data from '../../../../../Operation/data.json';
 import qrimage from '../../../../utils/image/qrimage.jpeg'
 
-const PrintBill = ({ table, items, institutionData, screenWidth, orderId, discountMethod = "none", discountValue = 0 }) => {
+const PrintBill = ({ table, items, institutionData, screenWidth, orderId, discountMethod = "none", discountValue = 0, billNo }) => {
   const { printerpaperSize } = data;
 
   const gstShow = institutionData?.gstshow ?? false;
@@ -135,6 +135,7 @@ if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) 
 
             <div class="bill-details">
               <div class="table-info">Table: ${table.id}</div>
+              ${billNo ? `<div class="table-info"><b>Bill No: ${billNo}</b></div>` : (orderId ? `<div class="table-info">Order ID: ${orderId}</div>` : "")}
             </div>
 
             <table class="items-table">
@@ -428,6 +429,7 @@ if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) 
 
             <div class="bill-details">
               <div class="table-info">Table: ${table.id}</div>
+              ${billNo ? `<div class="table-info"><b>Bill No: ${billNo}</b></div>` : (orderId ? `<div class="table-info">Order ID: ${orderId}</div>` : "")}
             </div>
 
             <table class="items-table">
@@ -667,6 +669,7 @@ if (Number(institutionData?.cgst) === 0 || Number(institutionData?.sgst) === 0) 
             <div class="sub-header">${institutionData?.Query_Address || ""}</div>
             <div class="info">Contact: ${institutionData?.Query_PhoneNumber || ""}<br>Date: ${formatDateTime()}</div>
             ${institutionData?.gstin ? `<div class="info">GSTIN: ${institutionData.gstin}</div>` : ""}
+            ${billNo ? `<div class="info"><b>Bill No: ${billNo}</b></div>` : ""}
             ${orderId ? `<div class="info">Order ID: ${orderId}</div>` : ""}
             <div class="divider"></div>
             <div><b>Table:</b> ${table.id}</div>
