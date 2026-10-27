@@ -1,4 +1,4 @@
-import { Sidebar } from "flowbite-react";
+import { Sidebar, Tooltip } from "flowbite-react";
 import { MdFastfood, MdOutlineProductionQuantityLimits, MdQrCodeScanner, MdOutlinePendingActions } from "react-icons/md";
 import { IoMdPersonAdd } from "react-icons/io";
 import { CgProfile } from "react-icons/cg";
@@ -18,20 +18,20 @@ import { FaCashRegister } from "react-icons/fa";
 
 
 const routes = [
-  { path: 'counterorder', label: '', icon: TbToolsKitchen3, allowedUserTypes: ['admin'] },
-  { path: 'orders', label: '', icon: MdFastfood, allowedUserTypes: ['member', 'chef', 'waiter'] },
-  // { path: 'pendingorders', label: '', icon: MdOutlinePendingActions, allowedUserTypes: ['admin', 'waiter'] },
-  { path: 'addstaff', label: '', icon: IoMdPersonAdd, allowedUserTypes: ['admin'], requiresOwnerRole: true },
-  { path: 'item', label: '', icon: MdOutlineProductionQuantityLimits, allowedUserTypes: ['admin', 'chef'] },
-  { path: 'stockmanagement', label: '', icon: MdInventory2, allowedUserTypes: ['admin'], showIfBarOrStock: true },
-  { path: 'qrmanage', label: '', icon: MdQrCodeScanner, allowedUserTypes: ['admin'], requiresOwnerRole: true },
-  { path: 'room-details', label: '', icon: FaHotel, allowedUserTypes: ['admin', 'waiter'] ,requiresCafeIntegration: true},
-  { path: 'day-end', label: '', icon: IoMdTimer, allowedUserTypes: ['admin', 'waiter'], requiresBarIntegration: true },
-  { path: 'revenue', label: '', icon: RiMoneyRupeeCircleFill, allowedUserTypes: ['admin'] },
-  { path: 'orderhistory', label: '', icon: RiBillLine, allowedUserTypes: ['admin'] },
-  { path: 'cashbook', label: '', icon: FaCashRegister, allowedUserTypes: ['admin'], requiresCafeIntegration: true },
-  { path: 'report', label: '', icon: TbReportSearch, allowedUserTypes: ['admin'] },
-  { path: 'profile', label: '', icon: CgProfile, allowedUserTypes: ['member', 'admin', 'chef', 'waiter'] },
+  { path: 'counterorder', label: 'Counter Order (POS)', icon: TbToolsKitchen3, allowedUserTypes: ['admin'] },
+  { path: 'orders', label: 'Orders', icon: MdFastfood, allowedUserTypes: ['member', 'waiter'] },
+  // { path: 'pendingorders', label: 'Pending Orders', icon: MdOutlinePendingActions, allowedUserTypes: ['admin', 'waiter'] },
+  { path: 'addstaff', label: 'Add Staff', icon: IoMdPersonAdd, allowedUserTypes: ['admin'] },
+  { path: 'item', label: 'Menu Items', icon: MdOutlineProductionQuantityLimits, allowedUserTypes: ['admin', 'chef'] },
+  { path: 'stockmanagement', label: 'Stock Management', icon: MdInventory2, allowedUserTypes: ['admin'], showIfBarOrStock: true },
+  { path: 'qrmanage', label: 'QR Manage', icon: MdQrCodeScanner, allowedUserTypes: ['admin'] },
+  { path: 'room-details', label: 'Room Details', icon: FaHotel, allowedUserTypes: ['admin', 'waiter'] ,requiresCafeIntegration: true},
+  { path: 'day-end', label: 'Day End', icon: IoMdTimer, allowedUserTypes: ['admin', 'waiter'], requiresBarIntegration: true },
+  { path: 'revenue', label: 'Revenue', icon: RiMoneyRupeeCircleFill, allowedUserTypes: ['admin'] },
+  { path: 'orderhistory', label: 'Order History', icon: RiBillLine, allowedUserTypes: ['admin'] },
+  { path: 'cashbook', label: 'Cashbook', icon: FaCashRegister, allowedUserTypes: ['admin'], requiresCafeIntegration: true },
+  { path: 'report', label: 'Reports', icon: TbReportSearch, allowedUserTypes: ['admin'] },
+  { path: 'profile', label: 'Profile', icon: CgProfile, allowedUserTypes: ['admin', 'member', 'chef', 'waiter'] },
 ];
 
 const SideBar = () => {
@@ -49,21 +49,28 @@ const SideBar = () => {
   // Helper function to check if route should be displayed
   const shouldDisplayRoute = (route) => {
     const hasUserType = route.allowedUserTypes.includes(userType);
+    if (!hasUserType) return false;
+
+    // Cashier cannot access Add Staff
+    if (route.path === 'addstaff' && role === 'cashier') {
+      return false;
+    }
+
     // Check for owner role if required
     if (route.requiresOwnerRole) {
-      return hasUserType && role === 'owner';
+      return role === 'owner' || role === 'admin' || role === 'manager';
     }
     // Check for bar integration for day-end route
     if (route.requiresBarIntegration) {
-      return hasUserType && bar_integration === "Yes";
+      return bar_integration === "Yes";
     }
-     if (route.requiresCafeIntegration) {
-      return hasUserType && bar_integration !== "Yes";
+    if (route.requiresCafeIntegration) {
+      return bar_integration !== "Yes";
     }
     if (route.showIfBarOrStock) {
-      return hasUserType && (bar_integration === "Yes" || stock === true);
+      return bar_integration === "Yes" || stock === true;
     }
-    return hasUserType;
+    return true;
   };
 
   // Fullscreen Toggle
@@ -101,44 +108,54 @@ const SideBar = () => {
           <Sidebar.ItemGroup>
             {routes.map((item, index) => (
               shouldDisplayRoute(item) && (
-                <Link
-                  key={index}
-                  to={`/dashboard/${item.path}`}
-                  className={`relative flex items-center p-2 rounded-lg hover:bg-gray-200 transition-colors ${
-                    location.pathname === `/dashboard/${item.path}` ? 'bg-gray-300' : ''
-                  }`}
-                >
-                  <item.icon className="text-xl" />
-                  <span className="ml-2">{item.label}</span>
-                  {item.path === "pendingorders" && pendingOrdersCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-                      {pendingOrdersCount}
-                    </span>
-                  )}
-                  {item.path === "orders" && totalOrdersCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-                      {totalOrdersCount}
-                    </span>
-                  )}
-                  {item.path === "item" && outOfStockCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-                      {outOfStockCount}
-                    </span>
-                  )}
-                </Link>
+                <Tooltip key={index} content={item.label} placement="right" style="dark">
+                  <Link
+                    to={`/dashboard/${item.path}`}
+                    title={item.label}
+                    className={`relative flex items-center p-2 rounded-lg hover:bg-gray-200 transition-colors ${
+                      location.pathname === `/dashboard/${item.path}` ? 'bg-gray-300' : ''
+                    }`}
+                  >
+                    <item.icon className="text-xl" />
+                    {item.path === "pendingorders" && pendingOrdersCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+                        {pendingOrdersCount}
+                      </span>
+                    )}
+                    {item.path === "orders" && totalOrdersCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+                        {totalOrdersCount}
+                      </span>
+                    )}
+                    {item.path === "item" && outOfStockCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+                        {outOfStockCount}
+                      </span>
+                    )}
+                  </Link>
+                </Tooltip>
               )
             ))}
-            <button onClick={toggleFullScreen} className="text-gray-600 hover:text-black text-xl ml-2">
-              {isFullScreen ? <FiMinimize /> : <FiMaximize />}
-            </button>
-            <Link
-              to="/logout"
-              className="flex items-center p-2 mt-4 text-red-600 hover:bg-red-100 transition-colors rounded-lg"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h5a2 2 0 012 2v1" />
-              </svg>
-            </Link>
+            <Tooltip content={isFullScreen ? "Exit Full Screen" : "Full Screen"} placement="right" style="dark">
+              <button
+                onClick={toggleFullScreen}
+                title={isFullScreen ? "Exit Full Screen" : "Full Screen"}
+                className="text-gray-600 hover:text-black text-xl p-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center"
+              >
+                {isFullScreen ? <FiMinimize /> : <FiMaximize />}
+              </button>
+            </Tooltip>
+            <Tooltip content="Logout" placement="right" style="dark">
+              <Link
+                to="/logout"
+                title="Logout"
+                className="flex items-center p-2 mt-4 text-red-600 hover:bg-red-100 transition-colors rounded-lg"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h5a2 2 0 012 2v1" />
+                </svg>
+              </Link>
+            </Tooltip>
           </Sidebar.ItemGroup>
         </Sidebar.Items>
       </Sidebar>
@@ -150,12 +167,13 @@ const SideBar = () => {
               <Link
                 key={index}
                 to={`/dashboard/${item.path}`}
+                title={item.label}
                 className={`relative flex flex-col items-center ${
                   location.pathname === `/dashboard/${item.path}` ? 'text-blue-600' : 'text-gray-600'
                 }`}
               >
                 <item.icon className="text-xl" />
-                <span className="text-xs">{item.label}</span>
+                <span className="text-[10px] hidden sm:block truncate max-w-[65px]">{item.label}</span>
                 {item.path === "pendingorders" && pendingOrdersCount > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold px-1 py-0.5 rounded-full">
                     {pendingOrdersCount}
