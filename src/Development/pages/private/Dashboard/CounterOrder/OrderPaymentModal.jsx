@@ -19,7 +19,7 @@ const OrderPaymentModal = ({
   const matchedOrder = orderGroups.find((order) => order.orderId === selectedOrderId);
 
   // Common state
-  const { setLoader, hotelBookings, addHotelService } = useContext(Context);
+  const { setLoader, hotelBookings, addHotelService, nextBillNumber, fetchNextBillNumber } = useContext(Context);
   const tableIdStr = String(selectedTable.id);
    const tableIdStrname = String(selectedTable.name);
   const [totalBillAmount, setTotalBillAmount] = useState(0);
@@ -393,6 +393,7 @@ const OrderPaymentModal = ({
 
     const totals = calculateTotals(matchedOrder.items);
     setTotalBillAmount(totals.finalTotal);
+    if (fetchNextBillNumber) fetchNextBillNumber();
   }, [matchedOrder, institutionData, discountData]);
 
   // Auto-select payment method based on table name (Swiggy, Zomato, Hotel/Room)
@@ -838,6 +839,16 @@ const OrderPaymentModal = ({
           </p>
           <p className="text-gray-600 mb-2">
             Order ID: <strong>{selectedOrderId}</strong>
+            {nextBillNumber && selectedPaymentMethod !== "Complementary" && (
+              <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-mono font-semibold">
+                Bill #{nextBillNumber}
+              </span>
+            )}
+            {selectedPaymentMethod === "Complementary" && (
+              <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-mono font-semibold">
+                Complementary (No Bill No)
+              </span>
+            )}
           </p>
           {(() => {
             const totals = calculateTotals(matchedOrder?.items || []);

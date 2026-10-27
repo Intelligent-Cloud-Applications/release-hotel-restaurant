@@ -60,6 +60,27 @@ const getPaymentStatusValue = (order) => String(order?.paymentStatus ?? order?.p
 const getOrderStatusValue = (order) => String(order?.orderStatus ?? order?.status ?? "").toLowerCase();
 const COMPLETED_STATUSES = new Set(["completed", "delivered", "payment_done", "confirmed", "paid"]);
 
+
+const isOrderComplementary = (order) => {
+  if (!order) return false;
+  const pm = String(order.paymentMethod || order.payment_method || "").toLowerCase().trim();
+  if (pm.includes("complementary") || pm.includes("complimentary")) return true;
+  if (Array.isArray(order.paymentMethods) && order.paymentMethods.length > 0) {
+    const nonZero = order.paymentMethods.filter((p) => Number(p.amount || 0) > 0);
+    if (
+      nonZero.length > 0 &&
+      nonZero.every(
+        (p) =>
+          String(p.method || "").toLowerCase().trim().includes("complement") ||
+          String(p.method || "").toLowerCase().trim().includes("compliment")
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
 const isPaidOrCompletedOrder = (order) => {
   const paymentStatus = getPaymentStatusValue(order);
   const orderStatus = getOrderStatusValue(order);
@@ -651,11 +672,13 @@ const exportOrderPDF = (builtData, institutionData, start, end, subtype=null) =>
   yPos += 5; doc.line(20,yPos,115,yPos); yPos += 8;
 
   const isBhuk = institutionData?.institution === "bhuk2323";
-  let tableColumns = ["Order ID","Customer","Table",...(isBhuk?["Phone"]:[]),"Date","Time","Items","Amount"];
+  const isHotel = institutionData?.integration === "HOTEL" || institutionData?.hotel_integration === true || institutionData?.hotel_integration === "Yes";
+  let tableColumns = [...(isHotel ? ["Bill No"] : []), "Order ID","Customer","Table",...(isBhuk?["Phone"]:[]),"Date","Time","Items","Amount"];
 
   const tableData = orders.map(order=>{
     const itemsText = Array.isArray(order.items)?order.items.map(i=>`${i.name}(${i.quantity})`).join(", "):"No items";
     const row = [
+      ...(isHotel ? [order.billNo || order.billNumber || order.orderId || "-"] : []),
       order.orderId||"N/A", order.name||"N/A", order.tableName||"N/A", ...(isBhuk?[order.phoneNumber||"N/A"]:[]),
       new Date(order.createdAt).toLocaleDateString("en-IN"),
       new Date(order.createdAt).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit",hour12:false}),
@@ -696,6 +719,153 @@ const exportOrderPDF = (builtData, institutionData, start, end, subtype=null) =>
   doc.save(`${safeName}_Order_Report_${start.toISOString().slice(0,10)}_to_${end.toISOString().slice(0,10)}.pdf`);
 };
 
+
+
+// ================== exportComplementaryPDF ==================
+const exportComplementaryPDF = (builtData, institutionData, start, end) => {
+  const { orders = [], totalBilledAmount = 0, totalBarAmount = 0, totalCafeAmount = 0 } = builtData || {};
+
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const currentTime = new Date().toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour12: true,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const title = (institutionData?.companyName || "Company Name").toUpperCase();
+  const subtitle = "COMPLEMENTARY ORDERS REPORT";
+  const dateText = `Period: ${start.toLocaleDateString("en-IN")} to ${end.toLocaleDateString("en-IN")}`;
+  const generatedText = `Generated: ${currentTime}`;
+
+  let yPos = addProfessionalHeader(doc, title, subtitle, dateText, generatedText);
+
+  // Executive Summary
+  yPos += 8;
+  doc.setFont("helvetica", "bold").setFontSize(12).text("EXECUTIVE SUMMARY", 20, yPos);
+  yPos += 5;
+  doc.setDrawColor(200).line(20, yPos, 80, yPos);
+  yPos += 8;
+
+  const summaryBody = [
+    ["Total Complementary Orders", String(orders.length), "Total Complementary Value", `${totalBilledAmount.toFixed(2)}`],
+    ["Bar Complementary Value", `${totalBarAmount.toFixed(2)}`, "Cafe Complementary Value", `${totalCafeAmount.toFixed(2)}`],
+  ];
+
+  doc.autoTable({
+    startY: yPos,
+    body: summaryBody,
+    theme: "grid",
+    styles: { fontSize: 9, cellPadding: 3 },
+    margin: { left: 20, right: 20 },
+    tableWidth: "auto",
+    halign: "center",
+  });
+
+  // Detailed Orders
+  yPos = doc.lastAutoTable.finalY + 15;
+  doc.setFont("helvetica", "bold").setFontSize(10).text("DETAILED COMPLEMENTARY ORDERS", 20, yPos);
+  yPos += 5;
+  doc.line(20, yPos, 115, yPos);
+  yPos += 8;
+
+  const tableColumns = ["Order ID", "Customer", "Table", "Option / Reason", "Date", "Items", "Value"];
+
+  const tableData = orders.map((order) => {
+    const itemsText = Array.isArray(order.items)
+      ? order.items.map((i) => `${i.name || "Item"}(x${i.quantity || 1})`).join(", ")
+      : "No items";
+    const optionText = order.orderSource || order.payerName || order.narration || order.staffName || "Complementary";
+    return [
+      order.orderId || "N/A",
+      getCustomerDisplayName(order),
+      order.tableName || "N/A",
+      optionText,
+      new Date(order.createdAt).toLocaleDateString("en-IN"),
+      itemsText.length > 50 ? itemsText.slice(0, 47) + "..." : itemsText,
+      `${safeNum(order.totalAmount).toFixed(2)}`,
+    ];
+  });
+
+  doc.autoTable({
+    startY: yPos,
+    head: [tableColumns],
+    body: tableData,
+    theme: "striped",
+    headStyles: { fillColor: [52, 73, 94], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8, halign: "center" },
+    bodyStyles: { fontSize: 7, textColor: [44, 62, 80] },
+    styles: { cellPadding: 2, overflow: "linebreak", lineColor: [189, 195, 199], lineWidth: 0.1 },
+    margin: { left: 20, right: 20 },
+    tableWidth: "auto",
+    halign: "center",
+  });
+
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    addProfessionalFooter(doc, i, totalPages, "This document is computer generated and requires no signature for authenticity.");
+    if (i === totalPages) {
+      const footerY = Math.max(doc.lastAutoTable.finalY + 15, doc.internal.pageSize.height - 40);
+      doc.setFont("helvetica", "bold").setFontSize(10).setTextColor(40, 40, 40);
+      doc.text(`TOTAL COMPLEMENTARY ORDERS: ${orders.length}`, 20, footerY);
+      doc.text(`TOTAL VALUE: ${totalBilledAmount.toFixed(2)}`, doc.internal.pageSize.width - 80, footerY);
+    }
+  }
+
+  const safeName = (institutionData.companyName || "company").replace(/\s+/g, "_").toLowerCase();
+  doc.save(`${safeName}_Complementary_Report_${start.toISOString().slice(0, 10)}_to_${end.toISOString().slice(0, 10)}.pdf`);
+};
+
+// ================== exportComplementaryExcel ==================
+const exportComplementaryExcel = (builtData, institutionData, start, end) => {
+  const { orders = [], totalBilledAmount = 0 } = builtData;
+  const exportData = orders.map((order) => ({
+    "Order ID": order.orderId || "N/A",
+    Customer: getCustomerDisplayName(order),
+    Table: order.tableName || "N/A",
+    "Option / Reason": order.orderSource || order.payerName || order.narration || "Complementary",
+    "Authorized By / Staff": order.staffName || "N/A",
+    Date: getOrderDateValue(order).toLocaleDateString(),
+    Time: getOrderDateValue(order).toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
+    "Value ()": safeNum(order.totalAmount),
+    Items: order.items
+      ? order.items.map((it) => `${it.name || "N/A"}(x${it.quantity || 0})`).join("; ")
+      : "",
+  }));
+
+  exportData.push({
+    "Order ID": "Total",
+    Customer: "",
+    Table: "",
+    "Option / Reason": "",
+    "Authorized By / Staff": "",
+    Date: "",
+    Time: "",
+    "Value ()": totalBilledAmount,
+    Items: `${orders.length} orders`,
+  });
+
+  const ws = XLSX.utils.json_to_sheet(exportData);
+  applyExcelStyles(ws, exportData);
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Complementary Report");
+  XLSX.writeFile(
+    wb,
+    `${institutionData.companyName}_complementary_${start.toISOString().slice(0, 10)}${
+      start.toLocaleDateString() !== end.toLocaleDateString()
+        ? `_to_${end.toISOString().slice(0, 10)}`
+        : ""
+    }.xlsx`
+  );
+};
 
 // ================== exportSettlementPDF ==================
 const exportSettlementPDF = (builtData, institutionData, start, end) => {
@@ -765,16 +935,24 @@ const exportSettlementPDF = (builtData, institutionData, start, end) => {
   doc.setFont("helvetica","bold").setFontSize(12).text("ORDER SUMMARY",20,yPos);
   yPos += 5; doc.line(20,yPos,65,yPos); yPos += 10;
 
+  const isHotel = institutionData?.integration === "HOTEL" || institutionData?.hotel_integration === true || institutionData?.hotel_integration === "Yes";
   const orderSummaryData = orders.slice(0,15).map(o=>[
+    ...(isHotel ? [o.billNo || o.billNumber || o.orderId || "-"] : []),
     o.orderId||"N/A", o.name||"N/A",
     new Date(o.createdAt).toLocaleDateString("en-IN"),
     `${safeNum(o.totalAmount).toFixed(2)}`
   ]);
-  if (orders.length>15) orderSummaryData.push(["... ", `${orders.length - 15} more orders`, "...", "" + orders.slice(15).reduce((s, o) => s + safeNum(o.totalAmount), 0).toFixed(2)]);
+  if (orders.length>15) orderSummaryData.push([
+    ...(isHotel ? ["..."] : []),
+    "... ",
+    `${orders.length - 15} more orders`,
+    "...",
+    "" + orders.slice(15).reduce((s, o) => s + safeNum(o.totalAmount), 0).toFixed(2)
+  ]);
 
   doc.autoTable({
     startY: yPos,
-    head: [["Order ID","Customer","Date","Amount"]],
+    head: [[...(isHotel ? ["Bill No"] : []), "Order ID","Customer","Date","Amount"]],
     body: orderSummaryData,
     theme: "striped",
     headStyles: { fillColor:[52,73,94], textColor:[255,255,255], fontStyle:"bold", halign:"center" },
@@ -1005,8 +1183,10 @@ const exportItemExcel = (builtData, institutionData, start, end) => {
 };
 
 const exportOrderExcel = (builtData, institutionData, start, end) => {
+  const isHotel = institutionData?.integration === "HOTEL" || institutionData?.hotel_integration === true || institutionData?.hotel_integration === "Yes";
   const { orders } = builtData;
   const exportData = orders.map((order) => ({
+    ...(isHotel ? { "Bill No": order.billNo || order.billNumber || order.orderId || "-" } : {}),
     "Order ID": order.orderId || "N/A",
     Customer: getCustomerDisplayName(order),
     Table: order.tableName || "N/A",
@@ -1054,7 +1234,30 @@ const exportSettlementExcel = (builtData, institutionData, start, end) => {
   applyExcelStyles(ws, exportData);
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Settlement Report");
+  XLSX.utils.book_append_sheet(wb, ws, "Settlement Summary");
+
+  if (builtData.orders && builtData.orders.length > 0) {
+    const isHotel = institutionData?.integration === "HOTEL" || institutionData?.hotel_integration === true || institutionData?.hotel_integration === "Yes";
+    const ordersSheetData = builtData.orders.map((order) => ({
+      ...(isHotel ? { "Bill No": order.billNo || order.billNumber || order.orderId || "-" } : {}),
+      "Order ID": order.orderId || "N/A",
+      Customer: getCustomerDisplayName(order),
+      Table: order.tableName || "N/A",
+      Date: getOrderDateValue(order).toLocaleDateString(),
+      Time: getOrderDateValue(order).toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }),
+      Total: safeNum(order.totalAmount),
+      Items: order.items
+        ? order.items.map((it) => `${it.name || "N/A"}(x${it.quantity || 0})`).join("; ")
+        : "",
+    }));
+    const ordersWs = XLSX.utils.json_to_sheet(ordersSheetData);
+    applyExcelStyles(ordersWs, ordersSheetData);
+    XLSX.utils.book_append_sheet(wb, ordersWs, "Settled Orders");
+  }
   XLSX.writeFile(
     wb,
     `${institutionData.companyName}_settlement_${start.toISOString().slice(0, 10)}${
@@ -1233,6 +1436,10 @@ const Report = () => {
     institutionData?.id ||
     institutionData?.name ||
     "";
+  const isHotel =
+    institutionData?.integration === "HOTEL" ||
+    institutionData?.hotel_integration === true ||
+    institutionData?.hotel_integration === "Yes";
 
   const [stocks, setStocks] = useState([]);
   const [allOrders, setAllOrders] = useState([]);
@@ -1265,6 +1472,7 @@ const Report = () => {
         return reportData.data.items?.length || 0;
       case "order":
       case "settlement":
+      case "complementary":
       case "food_delivery_order":
         return reportData.data.orders?.length || 0;
       case "itemId":
@@ -1285,6 +1493,7 @@ const Report = () => {
     { value: "order", label: "Order Report" },
     ...(hasFoodDeliveryInstitution ? [{ value: "food_delivery_order", label: "Food Delivery Report" }] : []),
     { value: "settlement", label: "Settlement Report" },
+    { value: "complementary", label: "Complementary Report" },
     { value: "pending_orders", label: "Pending Orders Report" },
     { value: "cancelled_orders", label: "Cancelled Orders Report" },
     { value: "itemId", label: "Item ID Reference" },
@@ -1378,12 +1587,16 @@ useEffect(() => {
     };
 
     let filteredOrders = allOrders;
-if (["order", "settlement"].includes(selectedReport)) {
+if (["order", "settlement", "complementary"].includes(selectedReport)) {
   filteredOrders = allOrders.filter(
     (o) =>
       hasPayment(o, paymentFilter) &&
       hasOrderSource(o, orderSourceFilter) &&
-      (selectedReport === "settlement" ? o.paymentStatus === true : true)
+      (selectedReport === "settlement"
+        ? o.paymentStatus === true && !o.cancel && !isOrderComplementary(o)
+        : selectedReport === "complementary"
+        ? isOrderComplementary(o) && !o.cancel
+        : true)
   );
 } else if (selectedReport === "food_delivery_order") {
   filteredOrders = allOrders.filter(
@@ -1423,11 +1636,11 @@ if (["order", "settlement"].includes(selectedReport)) {
 } else if (selectedReport === "food_delivery_order") {
   const data = buildFoodDeliveryReport(startDate, effectiveEnd, filteredOrders);
   setReportData({ type: "food_delivery_order", data });
-} else if (["order", "settlement", "pending_orders", "cancelled_orders"].includes(selectedReport)) {
+} else if (["order", "settlement", "complementary", "pending_orders", "cancelled_orders"].includes(selectedReport)) {
         const data = buildOrderReport(startDate, effectiveEnd, filteredOrders);
         setReportData({
-          type: selectedReport === "settlement" ? "settlement" : "order",
-          subtype: selectedReport === "pending_orders" ? "pending" : selectedReport === "cancelled_orders" ? "cancelled" : null,
+          type: selectedReport === "settlement" ? "settlement" : selectedReport === "complementary" ? "complementary" : "order",
+          subtype: selectedReport === "pending_orders" ? "pending" : selectedReport === "cancelled_orders" ? "cancelled" : selectedReport === "complementary" ? "complementary" : null,
           data,
         });
       }
@@ -1623,6 +1836,7 @@ if (["order", "settlement"].includes(selectedReport)) {
             <table className="min-w-full bg-white border border-gray-300 text-sm">
               <thead className="bg-gray-100">
     <tr>
+    {isHotel && <th className="px-3 py-2 border text-left text-xs font-semibold text-blue-900 bg-blue-50">Bill No</th>}
     <th className="px-3 py-2 border text-left text-xs">Order ID</th>
     <th className="px-3 py-2 border text-left text-xs">Customer</th>
     <th className="px-3 py-2 border text-left text-xs">Table</th>
@@ -1647,6 +1861,11 @@ if (["order", "settlement"].includes(selectedReport)) {
 
                   return (
                     <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
+                      {isHotel && (
+                        <td className="px-3 py-2 border text-left font-mono font-bold text-blue-700 bg-blue-50/50">
+                          {order.billNo || order.billNumber || order.orderId || "-"}
+                        </td>
+                      )}
                       <td className="px-3 py-2 border text-left">{order.orderId}</td>
                       <td className="px-3 py-2 border text-left">{getCustomerDisplayName(order)}</td>
                       <td className="px-3 py-2 border text-left">{order.tableName || "N/A"}</td>
@@ -1712,6 +1931,7 @@ if (["order", "settlement"].includes(selectedReport)) {
             <table className="min-w-full bg-white border border-gray-300 text-sm">
               <thead className="bg-gray-100">
                 <tr>
+                  {isHotel && <th className="px-3 py-2 border text-left text-xs font-semibold text-blue-900 bg-blue-50">Bill No</th>}
                   <th className="px-3 py-2 border text-left text-xs">Order ID</th>
                   <th className="px-3 py-2 border text-left text-xs">Customer</th>
                   <th className="px-3 py-2 border text-center text-xs">Date</th>
@@ -1729,6 +1949,11 @@ if (["order", "settlement"].includes(selectedReport)) {
 
                   return (
                     <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
+                      {isHotel && (
+                        <td className="px-3 py-2 border text-left font-mono font-bold text-blue-700 bg-blue-50/50">
+                          {order.billNo || order.billNumber || order.orderId || "-"}
+                        </td>
+                      )}
                       <td className="px-3 py-2 border text-left">{order.orderId}</td>
                       <td className="px-3 py-2 border text-left">{getCustomerDisplayName(order)}</td>
                       <td className="px-3 py-2 border text-center">{getOrderDateValue(order).toLocaleDateString()}</td>
@@ -1740,6 +1965,73 @@ if (["order", "settlement"].includes(selectedReport)) {
                         })}
                       </td>
                       <td className="px-3 py-2 border text-right">{safeNum(order.totalAmount).toFixed(2)}</td>
+                      <td className="px-3 py-2 border text-left">{itemsSummary}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+
+      case "complementary": {
+        const { orders, totalBilledAmount, totalBarAmount, totalCafeAmount } = reportData.data;
+        return (
+          <div className="overflow-x-auto text-sm">
+            <h2 className="text-base font-bold mb-2">Complementary Orders Summary</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+              <div className="bg-amber-50 border border-amber-200 rounded p-3 text-center">
+                <span className="text-xs text-amber-700 block">Total Complementary Orders</span>
+                <span className="text-xl font-bold text-amber-900">{orders.length}</span>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded p-3 text-center">
+                <span className="text-xs text-amber-700 block">Total Value</span>
+                <span className="text-xl font-bold text-amber-900">{totalBilledAmount.toFixed(2)}</span>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded p-3 text-center">
+                <span className="text-xs text-amber-700 block">Bar / Cafe Value</span>
+                <span className="text-sm font-semibold text-amber-900">{totalBarAmount.toFixed(2)} / {totalCafeAmount.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <h2 className="text-base font-bold mb-2">Complementary Orders List</h2>
+            <table className="min-w-full bg-white border border-gray-300 text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="px-3 py-2 border text-left text-xs">Order ID</th>
+                  <th className="px-3 py-2 border text-left text-xs">Customer</th>
+                  <th className="px-3 py-2 border text-left text-xs">Table</th>
+                  <th className="px-3 py-2 border text-left text-xs">Option / Reason</th>
+                  <th className="px-3 py-2 border text-left text-xs">Staff</th>
+                  <th className="px-3 py-2 border text-center text-xs">Date</th>
+                  <th className="px-3 py-2 border text-center text-xs">Time</th>
+                  <th className="px-3 py-2 border text-right text-xs">Value</th>
+                  <th className="px-3 py-2 border text-left text-xs">Items</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((order, index) => {
+                  const itemsSummary = order.items
+                    ? order.items.map((item) => `${item.name || "N/A"} (Qty: ${item.quantity || 0})`).join(", ")
+                    : "N/A";
+                  const reason = order.orderSource || order.payerName || order.narration || "Complementary";
+                  return (
+                    <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
+                      <td className="px-3 py-2 border text-left font-mono font-medium">{order.orderId}</td>
+                      <td className="px-3 py-2 border text-left">{getCustomerDisplayName(order)}</td>
+                      <td className="px-3 py-2 border text-left">{order.tableName || "N/A"}</td>
+                      <td className="px-3 py-2 border text-left font-medium text-amber-800">{reason}</td>
+                      <td className="px-3 py-2 border text-left">{order.staffName || "N/A"}</td>
+                      <td className="px-3 py-2 border text-center">{new Date(order.createdAt).toLocaleDateString()}</td>
+                      <td className="px-3 py-2 border text-center">
+                        {new Date(order.createdAt).toLocaleTimeString("en-US", {
+                          hour: "numeric",
+                          minute: "2-digit",
+                          hour12: true,
+                        })}
+                      </td>
+                      <td className="px-3 py-2 border text-right font-medium">{safeNum(order.totalAmount).toFixed(2)}</td>
                       <td className="px-3 py-2 border text-left">{itemsSummary}</td>
                     </tr>
                   );
@@ -1808,6 +2100,7 @@ if (["order", "settlement"].includes(selectedReport)) {
             <table className="min-w-full bg-white border border-gray-300 text-sm">
               <thead className="bg-gray-100">
                 <tr>
+                  {isHotel && <th className="px-3 py-2 border text-left text-xs font-semibold text-blue-900 bg-blue-50">Bill No</th>}
                   <th className="px-3 py-2 border text-left text-xs">Order ID</th>
                   <th className="px-3 py-2 border text-left text-xs">Customer</th>
                   <th className="px-3 py-2 border text-left text-xs">Table</th>
@@ -1830,6 +2123,11 @@ if (["order", "settlement"].includes(selectedReport)) {
 
                   return (
                     <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
+                      {isHotel && (
+                        <td className="px-3 py-2 border text-left font-mono font-bold text-blue-700 bg-blue-50/50">
+                          {order.billNo || order.billNumber || order.orderId || "-"}
+                        </td>
+                      )}
                       <td className="px-3 py-2 border text-left">{order.orderId}</td>
                       <td className="px-3 py-2 border text-left">{order.name || "N/A"}</td>
                       <td className="px-3 py-2 border text-left">{order.tableName || "N/A"}</td>
@@ -1972,6 +2270,27 @@ if (["order", "settlement"].includes(selectedReport)) {
         );
         break;
 
+      case "complementary":
+        buttons.push(
+          <button
+            key="complementary-excel"
+            onClick={() => exportComplementaryExcel(reportData.data, institutionData, startDate, endDate)}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+          >
+            <FileSpreadsheet className="w-3 h-3" />
+            Excel
+          </button>,
+          <button
+            key="complementary-pdf"
+            onClick={() => exportComplementaryPDF(reportData.data, institutionData, startDate, endDate)}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            <FileText className="w-3 h-3" />
+            PDF
+          </button>
+        );
+        break;
+
       case "settlement":
         buttons.push(
           <button
@@ -2101,7 +2420,7 @@ if (["order", "settlement"].includes(selectedReport)) {
 
               {/* End Date */}
               {selectedReport &&
-                ["item", "beverage_item", "kitchen_item", "order", "settlement", "pending_orders", "cancelled_orders"].includes(
+                ["item", "beverage_item", "kitchen_item", "order", "settlement", "complementary", "pending_orders", "cancelled_orders"].includes(
                   selectedReport
                 ) && (
                   <div>
@@ -2156,7 +2475,7 @@ if (["order", "settlement"].includes(selectedReport)) {
               )}
 
               {/* Order Source Filter */}
-              {["order", "settlement", "pending_orders", "cancelled_orders"].includes(selectedReport) && (
+              {["order", "settlement", "complementary", "pending_orders", "cancelled_orders"].includes(selectedReport) && (
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Order Source</label>
                   <div className="relative">

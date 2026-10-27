@@ -1018,8 +1018,10 @@ const OrderHistory = () => {
     });
     doc.save(`${institutionData.companyName}_items_report.pdf`);
   };
+  const isHotel = institutionData?.integration === "HOTEL" || institutionData?.hotel_integration === true || institutionData?.hotel_integration === "Yes";
   const head = [
     "Sl No",
+    ...(isHotel ? ["Bill No"] : []),
     "Order ID",
     "Name",
     institution === "bhuk2323" ? "Phone Number" : null,
@@ -1232,6 +1234,7 @@ const OrderHistory = () => {
               if (isSummary) {
                 return [
                   index + 1,
+                  ...(isHotel ? ["-"] : []),
                   obj.orderId,
                   "Monthly Summary",
                   institution === "bhuk2323" ? "N/A" : null,
@@ -1256,6 +1259,7 @@ const OrderHistory = () => {
               }
               return [
                 index + 1,
+                ...(isHotel ? [obj.billNo || obj.billNumber || obj.orderId || "-"] : []),
                 obj.orderId,
                 obj.name,
                 institution === "bhuk2323" ? obj.phoneNumber || "N/A" : null,
@@ -1346,7 +1350,7 @@ const OrderHistory = () => {
                 >
                   <div className="flex justify-between items-center mb-1">
                     <h2 className="text-lg font-semibold text-gray-800">
-                      {order.name}
+                      {order.name} {isHotel && <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-mono">Bill #{order.billNo || order.billNumber || order.orderId}</span>}
                     </h2>
                     <div className="flex space-x-2">
                       <button
@@ -1452,6 +1456,7 @@ const OrderHistory = () => {
           <PrintOrderHistoryBill
             order={{
               orderId: selectedPrintOrder.orderId,
+              billNo: isHotel ? (selectedPrintOrder.billNo || selectedPrintOrder.billNumber || selectedPrintOrder.orderId) : (selectedPrintOrder.billNo || selectedPrintOrder.billNumber),
               tableName: selectedPrintOrder.tableName,
               items: selectedPrintOrder.items || [],
               createdAt: selectedPrintOrder.createdAt,

@@ -19,6 +19,7 @@ const Provider = ({ children }) => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false);
   const [hotelBookings, setHotelBookings] = useState([]);
+  const [nextBillNumber, setNextBillNumber] = useState(null);
 
   const saveToCache = (key, data) => {
     try {
@@ -257,6 +258,27 @@ const Provider = ({ children }) => {
     }
   };
 
+  const fetchNextBillNumber = async () => {
+    try {
+      const isHotel = institutionData?.integration === "HOTEL" || 
+                      institutionData?.hotel_integration === true || 
+                      institutionData?.hotel_integration === "Yes";
+      if (!isHotel || !institutionData?.institution) return null;
+
+      const res = await API.get(
+        "main",
+        `/any/next-bill-number/${institutionData.institution}?hotelIntegration=true`
+      );
+      if (res && res.nextBillNo !== undefined && res.nextBillNo !== null) {
+        setNextBillNumber(res.nextBillNo);
+        return res.nextBillNo;
+      }
+    } catch (err) {
+      console.error("Error fetching next bill number:", err);
+    }
+    return null;
+  };
+
   const addHotelService = async (booking_id, services) => {
     try {
       setLoader(true);
@@ -328,6 +350,7 @@ const Provider = ({ children }) => {
       if (checkIfReady(institutionDataLoaded, itemsLoaded, staffDataLoaded)) {
         setLoader(false);
         setReady(true);
+        fetchNextBillNumber();
         setTimeout(() => {
           console.log("Starting background refresh after cache load");
           refreshData(true);
@@ -448,6 +471,9 @@ const response = await API.get(
         hotelBookings,
         setHotelBookings,
         addHotelService,
+        nextBillNumber,
+        setNextBillNumber,
+        fetchNextBillNumber,
       }}
     >
       {children}

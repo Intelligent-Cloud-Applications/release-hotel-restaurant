@@ -129,6 +129,7 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
                 <div>${formatDateTime()}</div>
               </div>
               ${ institutionData?.gstin ? `<div class="gstin">GSTIN: ${institutionData.gstin}</div>` : ""}
+              ${order.billNo ? `<div class="order-id"><b>Bill No: ${order.billNo}</b></div>` : ""}
               <div class="order-id">Order ID: ${order.orderId}</div>
             </div>
             <div class="bill-details">
@@ -422,6 +423,7 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
                 <div>${formatDateTime()}</div>
               </div>
               ${institutionData?.gstin ? `<div class="gstin">GSTIN: ${institutionData.gstin}</div>` : ""}
+              ${order.billNo ? `<div class="order-id"><b>Bill No: ${order.billNo}</b></div>` : ""}
               <div class="order-id">Order ID: ${order.orderId}</div>
             </div>
             <div class="bill-details">
@@ -659,6 +661,7 @@ const PrintOrderHistoryBill = ({ order, institutionData, screenWidth, onClose })
             <div class="sub-header">${institutionData?.Query_Address || ""}</div>
             <div class="info">Contact: ${institutionData?.Query_PhoneNumber || ""}<br>Date: ${formatDateTime()}</div>
             ${institutionData?.gstin ? `<div class="info">GSTIN: ${institutionData.gstin}</div>` : ""}
+            ${order.billNo ? `<div class="info"><b>Bill No: ${order.billNo}</b></div>` : ""}
             <div class="info">Order ID: ${order.orderId}</div>
             <div class="divider"></div>
             <div><b>Table:</b> ${order.tableName}</div>
