@@ -15,7 +15,7 @@ import data from '../../../../../Operation/data.json';
 
 const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBookings }) => {
   const { printerType } = data;
-  const { setLoader, addHotelService } = useContext(Context);
+  const { setLoader, addHotelService, nextBillNumber, fetchNextBillNumber } = useContext(Context);
   const { subscribe, isConnected } = useWebSocket();
   const [showReprintKOT, setShowReprintKOT] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -753,15 +753,19 @@ if (
 ) {
   apiBody.dateId = institutionData.dateId;
 }
+    if (institutionData?.integration === "HOTEL" || institutionData?.hotel_integration === true || institutionData?.hotel_integration === "Yes") {
+      apiBody.hotelIntegration = true;
+    }
     const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
     // Make the API call to settle the order
-    await API.post(
+    const settleRes = await API.post(
       "main",
       `/admin/settle-bill-order/${institutionData.institution}/${tableIdStr}/${order.orderId}`,
       {
         body: apiBody,
       }
     );
+    if (typeof fetchNextBillNumber === "function") fetchNextBillNumber();
 
     if (isHotelTable && booking) {
       await API.put(
@@ -1612,7 +1616,7 @@ if (isHotelTable) {
               })
             }
             setTableOccupancy={setTableOccupancy}
-            printBill={({ table, items, orderId, discountMethod, discountValue }) =>
+            printBill={({ table, items, orderId, discountMethod, discountValue, billNo }) =>
               PrintBill({
                 table,
                 items,
@@ -1621,6 +1625,7 @@ if (isHotelTable) {
                 orderId,
                 discountMethod: discountMethod ?? "none",
                 discountValue: discountValue ?? 0,
+                billNo,
               })
             }
             setShowModal={setShowModal}
@@ -1690,8 +1695,8 @@ if (isHotelTable) {
             removeItemFromKOT={removeItemFromKOT}
             updateItemQuantity={updateItemQuantity}
             printKOT={(table) => PrintKOT({ table, customerDetails, KOTByTable, institutionData, saveKOT, screenWidth, setActiveTab, tableData, printData, connected, tableInstructions })}
-            printBill={({ table, items, orderId, discountMethod, discountValue }) => PrintBill({ table, items, institutionData, screenWidth, orderId, discountMethod: discountMethod ?? "none",
-    discountValue: discountValue ?? 0, })}
+            printBill={({ table, items, orderId, discountMethod, discountValue, billNo }) => PrintBill({ table, items, institutionData, screenWidth, orderId, discountMethod: discountMethod ?? "none",
+    discountValue: discountValue ?? 0, billNo, })}
             customerDetails={customerDetails}
             setCustomerDetails={setCustomerDetails}
             setShowModal={setShowModal}

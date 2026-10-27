@@ -23,7 +23,7 @@ const PaymentModal = ({
   discountData,
   setDiscountData,
 }) => {
-  const { setLoader, hotelBookings, addHotelService } = useContext(Context);
+  const { setLoader, hotelBookings, addHotelService, nextBillNumber, fetchNextBillNumber } = useContext(Context);
   const tableIdStr = String(selectedTable?.id || "");
   const tableIdStrname = String(selectedTable.name);
   const [totalBillAmount, setTotalBillAmount] = useState(0);
@@ -367,6 +367,7 @@ const PaymentModal = ({
   useEffect(() => {
     const totals = calculateTotals(localBillItems || []);
     setTotalBillAmount(totals.finalTotal);
+    if (fetchNextBillNumber) fetchNextBillNumber();
   }, [localBillItems, discountData, orderId]);
 
   // Extract order IDs
@@ -548,10 +549,14 @@ const PaymentModal = ({
       if (institutionData.bar_integration === "Yes") {
         settleBody.dateId = institutionData.dateId;
       }
+      if (institutionData?.integration === "HOTEL" || institutionData?.hotel_integration === true || institutionData?.hotel_integration === "Yes") {
+        settleBody.hotelIntegration = true;
+      }
       const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
-      await API.post("main", `/admin/settle-bill/${institutionData.institution}/${tableIdStr}`, {
+      const settleRes = await API.post("main", `/admin/settle-bill/${institutionData.institution}/${tableIdStr}`, {
         body: settleBody,
       });
+      if (fetchNextBillNumber) fetchNextBillNumber();
       if (isHotelTable) {
         await API.put(
           "frontdesk",
@@ -613,8 +618,10 @@ const PaymentModal = ({
           orderSource: orderSource === "custom" ? customManagementInput : orderSource,
           name: payerName,
           ...(institutionData?.bar_integration === "Yes" ? { dateId: institutionData.dateId } : {}),
+          ...((institutionData?.integration === "HOTEL" || institutionData?.hotel_integration === true || institutionData?.hotel_integration === "Yes") ? { hotelIntegration: true } : {}),
         },
       });
+      if (fetchNextBillNumber) fetchNextBillNumber();
 
       // Send SMS if enabled
       await sendSMS(selectedOrderId);
@@ -821,6 +828,16 @@ const PaymentModal = ({
         <div className="mb-4 text-center">
           <p className="text-gray-600">
             Table: <strong>{selectedTable?.id}</strong>
+            {nextBillNumber && selectedPaymentMethod !== "Complementary" && (
+              <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-mono font-semibold">
+                Bill #{nextBillNumber}
+              </span>
+            )}
+            {selectedPaymentMethod === "Complementary" && (
+              <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-mono font-semibold">
+                Complementary (No Bill No)
+              </span>
+            )}
           </p>
           <p className="text-3xl font-bold text-green-600 mt-2">₹{totalBillAmount}</p>
         </div>
