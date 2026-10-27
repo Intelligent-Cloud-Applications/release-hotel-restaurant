@@ -1259,7 +1259,7 @@ const OrderHistory = () => {
               }
               return [
                 index + 1,
-                ...(isHotel ? [obj.billNo || obj.billNumber || "-"] : []),
+                ...(isHotel ? [obj.billNo || obj.billNumber || obj.orderId || "-"] : []),
                 obj.orderId,
                 obj.name,
                 institution === "bhuk2323" ? obj.phoneNumber || "N/A" : null,
@@ -1350,7 +1350,7 @@ const OrderHistory = () => {
                 >
                   <div className="flex justify-between items-center mb-1">
                     <h2 className="text-lg font-semibold text-gray-800">
-                      {order.name} {(order.billNo || order.billNumber) && <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-mono">Bill #{order.billNo || order.billNumber}</span>}
+                      {order.name} {isHotel && <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-mono">Bill #{order.billNo || order.billNumber || order.orderId}</span>}
                     </h2>
                     <div className="flex space-x-2">
                       <button
@@ -1456,7 +1456,7 @@ const OrderHistory = () => {
           <PrintOrderHistoryBill
             order={{
               orderId: selectedPrintOrder.orderId,
-              billNo: selectedPrintOrder.billNo || selectedPrintOrder.billNumber,
+              billNo: isHotel ? (selectedPrintOrder.billNo || selectedPrintOrder.billNumber || selectedPrintOrder.orderId) : (selectedPrintOrder.billNo || selectedPrintOrder.billNumber),
               tableName: selectedPrintOrder.tableName,
               items: selectedPrintOrder.items || [],
               createdAt: selectedPrintOrder.createdAt,

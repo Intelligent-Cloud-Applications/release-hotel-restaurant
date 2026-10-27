@@ -678,7 +678,7 @@ const exportOrderPDF = (builtData, institutionData, start, end, subtype=null) =>
   const tableData = orders.map(order=>{
     const itemsText = Array.isArray(order.items)?order.items.map(i=>`${i.name}(${i.quantity})`).join(", "):"No items";
     const row = [
-      ...(isHotel ? [order.billNo || order.billNumber || "-"] : []),
+      ...(isHotel ? [order.billNo || order.billNumber || order.orderId || "-"] : []),
       order.orderId||"N/A", order.name||"N/A", order.tableName||"N/A", ...(isBhuk?[order.phoneNumber||"N/A"]:[]),
       new Date(order.createdAt).toLocaleDateString("en-IN"),
       new Date(order.createdAt).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit",hour12:false}),
@@ -937,7 +937,7 @@ const exportSettlementPDF = (builtData, institutionData, start, end) => {
 
   const isHotel = institutionData?.integration === "HOTEL" || institutionData?.hotel_integration === true || institutionData?.hotel_integration === "Yes";
   const orderSummaryData = orders.slice(0,15).map(o=>[
-    ...(isHotel ? [o.billNo || o.billNumber || "-"] : []),
+    ...(isHotel ? [o.billNo || o.billNumber || o.orderId || "-"] : []),
     o.orderId||"N/A", o.name||"N/A",
     new Date(o.createdAt).toLocaleDateString("en-IN"),
     `${safeNum(o.totalAmount).toFixed(2)}`
@@ -1186,7 +1186,7 @@ const exportOrderExcel = (builtData, institutionData, start, end) => {
   const isHotel = institutionData?.integration === "HOTEL" || institutionData?.hotel_integration === true || institutionData?.hotel_integration === "Yes";
   const { orders } = builtData;
   const exportData = orders.map((order) => ({
-    ...(isHotel ? { "Bill No": order.billNo || order.billNumber || "-" } : {}),
+    ...(isHotel ? { "Bill No": order.billNo || order.billNumber || order.orderId || "-" } : {}),
     "Order ID": order.orderId || "N/A",
     Customer: getCustomerDisplayName(order),
     Table: order.tableName || "N/A",
@@ -1239,7 +1239,7 @@ const exportSettlementExcel = (builtData, institutionData, start, end) => {
   if (builtData.orders && builtData.orders.length > 0) {
     const isHotel = institutionData?.integration === "HOTEL" || institutionData?.hotel_integration === true || institutionData?.hotel_integration === "Yes";
     const ordersSheetData = builtData.orders.map((order) => ({
-      ...(isHotel ? { "Bill No": order.billNo || order.billNumber || "-" } : {}),
+      ...(isHotel ? { "Bill No": order.billNo || order.billNumber || order.orderId || "-" } : {}),
       "Order ID": order.orderId || "N/A",
       Customer: getCustomerDisplayName(order),
       Table: order.tableName || "N/A",
@@ -1863,7 +1863,7 @@ if (["order", "settlement", "complementary"].includes(selectedReport)) {
                     <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
                       {isHotel && (
                         <td className="px-3 py-2 border text-left font-mono font-bold text-blue-700 bg-blue-50/50">
-                          {order.billNo || order.billNumber || "-"}
+                          {order.billNo || order.billNumber || order.orderId || "-"}
                         </td>
                       )}
                       <td className="px-3 py-2 border text-left">{order.orderId}</td>
@@ -1951,7 +1951,7 @@ if (["order", "settlement", "complementary"].includes(selectedReport)) {
                     <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
                       {isHotel && (
                         <td className="px-3 py-2 border text-left font-mono font-bold text-blue-700 bg-blue-50/50">
-                          {order.billNo || order.billNumber || "-"}
+                          {order.billNo || order.billNumber || order.orderId || "-"}
                         </td>
                       )}
                       <td className="px-3 py-2 border text-left">{order.orderId}</td>
@@ -2125,7 +2125,7 @@ if (["order", "settlement", "complementary"].includes(selectedReport)) {
                     <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : ""}>
                       {isHotel && (
                         <td className="px-3 py-2 border text-left font-mono font-bold text-blue-700 bg-blue-50/50">
-                          {order.billNo || order.billNumber || "-"}
+                          {order.billNo || order.billNumber || order.orderId || "-"}
                         </td>
                       )}
                       <td className="px-3 py-2 border text-left">{order.orderId}</td>
