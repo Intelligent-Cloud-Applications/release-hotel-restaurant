@@ -13,7 +13,7 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
   }, []);
 
   const getFilteredTables = () => {
-    if (institutionData?.integration !== "HOTEL") {
+        if (institutionData?.integration !== "HOTEL") {
       return tables.filter(
         (table) =>
           String(table.name).toLowerCase().startsWith("table") ||
@@ -21,17 +21,37 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
           String(table.orderType).toLowerCase() === "management"
       );
     }
-
     if (activeTab === "Table") {
       return tables.filter(
         (table) =>
           String(table.name).toLowerCase().startsWith("table") ||
           String(table.id).toLowerCase().startsWith("takeaway")
       );
-    } else if (activeTab === "Hotel") {
-      return tables.filter((table) => String(table.id).toLowerCase().startsWith("hotel"));
+    } else if (activeTab === "Room" || activeTab === "Hotel") {
+      return tables.filter(
+        (table) =>
+          String(table.id).toLowerCase().startsWith("hotel") ||
+          String(table.id).toLowerCase().startsWith("room") ||
+          String(table.orderType).toLowerCase() === "hotel"
+      );
+    } else if (activeTab === "Swiggy") {
+      return tables.filter(
+        (table) =>
+          String(table.id).toLowerCase().startsWith("swiggy") ||
+          String(table.name).toLowerCase().startsWith("swiggy") ||
+          String(table.orderType).toLowerCase() === "swiggy"
+      );
+    } else if (activeTab === "Zomato") {
+      return tables.filter(
+        (table) =>
+          String(table.id).toLowerCase().startsWith("zomato") ||
+          String(table.name).toLowerCase().startsWith("zomato") ||
+          String(table.orderType).toLowerCase() === "zomato"
+      );
     } else if (activeTab === "Management") {
-      return tables.filter((table) => String(table.orderType).toLowerCase() === "management");
+      return tables.filter(
+        (table) => String(table.orderType).toLowerCase() === "management"
+      );
     }
     return tables;
   };
@@ -52,10 +72,13 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
       if (String(table.id).toLowerCase().startsWith("takeaway")) return table.name;
       if (String(table.id).toLowerCase().startsWith("hotel")) {
         const hotelId = String(table.id).replace(/^hotel/i, "");
-        return `Hotel ${hotelId}`;
+        return `Room ${hotelId}`;
       }
+      if (String(table.id).toLowerCase().startsWith("room")) return table.name;
+      if (String(table.id).toLowerCase().startsWith("swiggy")) return table.name;
+      if (String(table.id).toLowerCase().startsWith("zomato")) return table.name;
       if (String(table.orderType).toLowerCase() === "management") {
-        return table.name; // Use the name directly for management rooms
+        return table.name;
       }
       return `Table ${table.id}`;
     };
@@ -110,8 +133,12 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
     const getTableName = (table) => {
       if (String(table.id).toLowerCase().startsWith("takeaway")) return table.name;
       if (String(table.id).toLowerCase().startsWith("hotel")) {
-        return `Hotel ${table.id.replace(/^hotel/i, "")}`;
+        const hotelId = String(table.id).replace(/^hotel/i, "");
+        return `Room ${hotelId}`;
       }
+      if (String(table.id).toLowerCase().startsWith("room")) return table.name;
+      if (String(table.id).toLowerCase().startsWith("swiggy")) return table.name;
+      if (String(table.id).toLowerCase().startsWith("zomato")) return table.name;
       if (String(table.orderType).toLowerCase() === "management") {
         return table.name;
       }
@@ -156,40 +183,29 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
   };
 
   const renderVerticalTabs = () => {
+    const tabs = [
+      { id: "Table", label: "Table" },
+      { id: "Room", label: "Room" },
+      { id: "Swiggy", label: "Swiggy" },
+      { id: "Zomato", label: "Zomato" },
+      { id: "Management", label: "Mng." },
+    ];
+
     return (
-      <div className="flex flex-col w-16 bg-gray-50 border-r">
-        <button
-          onClick={() => setActiveTab("Table")}
-          className={`p-2 text-xs font-medium border-b transition-all ${
-            activeTab === "Table"
-              ? "bg-blue-600 text-white border-blue-700"
-              : "bg-white text-gray-700 hover:bg-gray-100 border-gray-200"
-          }`}
-        >
-          Table
-        </button>
-        {institutionData?.integration === "HOTEL" && (
+      <div className="flex flex-col w-20 bg-gray-50 border-r select-none shrink-0">
+        {tabs.map((tab) => (
           <button
-            onClick={() => setActiveTab("Hotel")}
-            className={`p-2 text-xs font-medium border-b transition-all ${
-              activeTab === "Hotel"
-                ? "bg-blue-600 text-white border-blue-700"
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`p-2 text-xs font-semibold border-b transition-all text-center ${
+              activeTab === tab.id
+                ? "bg-blue-600 text-white border-blue-700 shadow-sm"
                 : "bg-white text-gray-700 hover:bg-gray-100 border-gray-200"
             }`}
           >
-            Hotel
+            {tab.label}
           </button>
-        )}
-        <button
-          onClick={() => setActiveTab("Management")}
-          className={`p-2 text-xs font-medium border-b transition-all ${
-            activeTab === "Management"
-              ? "bg-blue-600 text-white border-blue-700"
-              : "bg-white text-gray-700 hover:bg-gray-100 border-gray-200"
-          }`}
-        >
-          Mng.
-        </button>
+        ))}
       </div>
     );
   };
