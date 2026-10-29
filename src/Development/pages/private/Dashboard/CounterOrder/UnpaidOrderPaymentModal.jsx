@@ -16,8 +16,11 @@ const UnpaidOrderPaymentModal = ({
   discountData,
   setDiscountData,
 }) => {
-  const { setLoader, hotelBookings, addHotelService } = useContext(Context);
+  const { setLoader, hotelBookings, addHotelService, nextBillNumber } = useContext(Context);
   const tableIdStr = String(selectedTable.id);
+    // Resolve active bill number for this unpaid order
+  const existingBillNo = unpaidOrder?.billNo || unpaidOrder?.billNumber || null;
+  const displayBillNo = existingBillNo || nextBillNumber;
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
   const [booking, setBooking] = useState(null);
   const [cashAmount, setCashAmount] = useState(null);
@@ -645,6 +648,16 @@ const UnpaidOrderPaymentModal = ({
           </p>
           <p className="text-gray-600 mb-2">
             Order ID: <strong>{unpaidOrder.orderId}</strong>
+            {displayBillNo && selectedPaymentMethod !== "Complementary" && (
+              <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-mono font-semibold">
+                Bill #{displayBillNo}
+              </span>
+            )}
+            {selectedPaymentMethod === "Complementary" && (
+              <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-mono font-semibold">
+                Complementary (No Bill No)
+              </span>
+            )}
           </p>
           <p className="text-3xl font-bold text-green-600 mt-2">₹{unpaidOrder.totalAmount}</p>
         </div>
