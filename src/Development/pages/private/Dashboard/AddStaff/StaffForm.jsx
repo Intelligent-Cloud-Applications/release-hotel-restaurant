@@ -234,6 +234,7 @@ const StaffForm = ({ initialData, isUpdate, onSubmit, isLoading, existingStaffLi
         >
           <option value="chef">Chef</option>
           <option value="waiter">Waiter</option>
+          <option value="captain">Captain</option>
           <option value="manager">Manager</option>
           <option value="cashier">Cashier</option>
           <option value="admin">Admin</option>

@@ -259,6 +259,7 @@ const calculateTotals = (items, discountInfo = null) => {
           ...(userData && { orderBy: userData.cognitoId }),
           tableOccupied: true,
           daySession: currentDaySession,
+          ...((institutionData?.integration === "HOTEL" || institutionData?.hotel_integration === true || institutionData?.hotel_integration === "Yes") ? { hotelIntegration: true } : {}),
         },
       });
 if (isHotelTable) {
@@ -1147,6 +1148,7 @@ const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
             tableOccupied: true,
             type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
             daySession: currentDaySession,
+            ...((institutionData?.integration === "HOTEL" || institutionData?.hotel_integration === true || institutionData?.hotel_integration === "Yes") ? { hotelIntegration: true } : {}),
           },
         });
 if (isHotelTable) {
