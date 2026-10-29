@@ -542,6 +542,274 @@ const exportCafeDailyReport = (builtData, institutionData = {}, isoDate, options
 
 
 
+// ================== Night Audit Report Functions ==================
+const buildNightAuditData = (start, end, orders) => {
+  const startTime = new Date(start).setHours(0, 0, 0, 0);
+  const endTime = new Date(end).setHours(23, 59, 59, 999);
+
+  const filtered = (orders || []).filter((order) => {
+    const orderDate = getOrderDateValue(order);
+    const time = orderDate instanceof Date ? orderDate.getTime() : new Date(orderDate).getTime();
+    return time >= startTime && time <= endTime;
+  });
+
+  const dateMap = new Map();
+
+  filtered.forEach((order) => {
+    const orderDate = getOrderDateValue(order);
+    const dObj = orderDate instanceof Date ? orderDate : new Date(orderDate);
+    const dateStr = dObj.toISOString().slice(0, 10);
+
+    if (!dateMap.has(dateStr)) {
+      dateMap.set(dateStr, {
+        date: dateStr,
+        restaurantOrders: 0,
+        restaurantRevenue: 0,
+        roomServiceOrders: 0,
+        roomServiceRevenue: 0,
+        zomatoOrders: 0,
+        zomatoRevenue: 0,
+        swiggyOrders: 0,
+        swiggyRevenue: 0,
+        banquetOrders: 0,
+        banquetRevenue: 0,
+        boardRoomOrders: 0,
+        boardRoomRevenue: 0,
+        totalOrders: 0,
+        totalRevenue: 0,
+      });
+    }
+
+    const row = dateMap.get(dateStr);
+    const amt = safeNum(order.totalAmount || order.finalTotal || order.total || 0);
+    const tbl = String(order.tableName || order.table || "").toLowerCase();
+    const src = String(order.orderSource || order.source || order.orderSourceGroup || "").toLowerCase();
+    const billNo = String(order.billNo || order.bill_no || order.orderId || "").toUpperCase();
+
+    row.totalOrders += 1;
+    row.totalRevenue += amt;
+
+    if (tbl.includes("room") || tbl.includes("hotel") || src.includes("room") || tbl.startsWith("rm")) {
+      row.roomServiceOrders += 1;
+      row.roomServiceRevenue += amt;
+    } else if (tbl.startsWith("zomato") || src.includes("zomato") || billNo.startsWith("ZM_") || billNo.startsWith("ZOMATO")) {
+      row.zomatoOrders += 1;
+      row.zomatoRevenue += amt;
+    } else if (tbl.startsWith("swiggy") || src.includes("swiggy") || billNo.startsWith("SW_") || billNo.startsWith("SWIGGY")) {
+      row.swiggyOrders += 1;
+      row.swiggyRevenue += amt;
+    } else if (tbl.includes("banquet") || src.includes("banquet")) {
+      row.banquetOrders += 1;
+      row.banquetRevenue += amt;
+    } else if (tbl.includes("board") || src.includes("board") || tbl.includes("conference")) {
+      row.boardRoomOrders += 1;
+      row.boardRoomRevenue += amt;
+    } else {
+      row.restaurantOrders += 1;
+      row.restaurantRevenue += amt;
+    }
+  });
+
+  const rows = Array.from(dateMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+
+  const totals = rows.reduce(
+    (acc, r) => ({
+      restaurantOrders: acc.restaurantOrders + r.restaurantOrders,
+      restaurantRevenue: acc.restaurantRevenue + r.restaurantRevenue,
+      roomServiceOrders: acc.roomServiceOrders + r.roomServiceOrders,
+      roomServiceRevenue: acc.roomServiceRevenue + r.roomServiceRevenue,
+      zomatoOrders: acc.zomatoOrders + r.zomatoOrders,
+      zomatoRevenue: acc.zomatoRevenue + r.zomatoRevenue,
+      swiggyOrders: acc.swiggyOrders + r.swiggyOrders,
+      swiggyRevenue: acc.swiggyRevenue + r.swiggyRevenue,
+      banquetOrders: acc.banquetOrders + r.banquetOrders,
+      banquetRevenue: acc.banquetRevenue + r.banquetRevenue,
+      boardRoomOrders: acc.boardRoomOrders + r.boardRoomOrders,
+      boardRoomRevenue: acc.boardRoomRevenue + r.boardRoomRevenue,
+      totalOrders: acc.totalOrders + r.totalOrders,
+      totalRevenue: acc.totalRevenue + r.totalRevenue,
+    }),
+    {
+      restaurantOrders: 0,
+      restaurantRevenue: 0,
+      roomServiceOrders: 0,
+      roomServiceRevenue: 0,
+      zomatoOrders: 0,
+      zomatoRevenue: 0,
+      swiggyOrders: 0,
+      swiggyRevenue: 0,
+      banquetOrders: 0,
+      banquetRevenue: 0,
+      boardRoomOrders: 0,
+      boardRoomRevenue: 0,
+      totalOrders: 0,
+      totalRevenue: 0,
+    }
+  );
+
+  return { rows, totals };
+};
+
+const exportNightAuditExcel = (builtData, institutionData, start, end) => {
+  const { rows = [], totals = {} } = builtData || {};
+  const exportData = rows.map((r) => ({
+    "Date": r.date,
+    "Restaurant Orders": r.restaurantOrders,
+    "Restaurant Revenue": safeNum(r.restaurantRevenue),
+    "Room Service Orders": r.roomServiceOrders,
+    "Room Service Revenue": safeNum(r.roomServiceRevenue),
+    "Zomato Orders": r.zomatoOrders,
+    "Zomato Revenue": safeNum(r.zomatoRevenue),
+    "Swiggy Orders": r.swiggyOrders,
+    "Swiggy Revenue": safeNum(r.swiggyRevenue),
+    "Banquet Hall Orders": r.banquetOrders,
+    "Banquet Hall Revenue": safeNum(r.banquetRevenue),
+    "Board Room Orders": r.boardRoomOrders,
+    "Board Room Revenue": safeNum(r.boardRoomRevenue),
+    "Total Orders": r.totalOrders,
+    "Total Revenue": safeNum(r.totalRevenue),
+  }));
+
+  if (totals && rows.length > 0) {
+    exportData.push({
+      "Date": "TOTAL",
+      "Restaurant Orders": totals.restaurantOrders,
+      "Restaurant Revenue": safeNum(totals.restaurantRevenue),
+      "Room Service Orders": totals.roomServiceOrders,
+      "Room Service Revenue": safeNum(totals.roomServiceRevenue),
+      "Zomato Orders": totals.zomatoOrders,
+      "Zomato Revenue": safeNum(totals.zomatoRevenue),
+      "Swiggy Orders": totals.swiggyOrders,
+      "Swiggy Revenue": safeNum(totals.swiggyRevenue),
+      "Banquet Hall Orders": totals.banquetOrders,
+      "Banquet Hall Revenue": safeNum(totals.banquetRevenue),
+      "Board Room Orders": totals.boardRoomOrders,
+      "Board Room Revenue": safeNum(totals.boardRoomRevenue),
+      "Total Orders": totals.totalOrders,
+      "Total Revenue": safeNum(totals.totalRevenue),
+    });
+  }
+
+  const ws = XLSX.utils.json_to_sheet(exportData);
+  applyExcelStyles(ws, exportData);
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Night Audit");
+  const comp = (institutionData?.companyName || "Restaurant").replace(/\s+/g, "_");
+  XLSX.writeFile(
+    wb,
+    `${comp}_Night_Audit_${start.toISOString().slice(0, 10)}${
+      start.toLocaleDateString() !== end.toLocaleDateString()
+        ? `_to_${end.toISOString().slice(0, 10)}`
+        : ""
+    }.xlsx`
+  );
+};
+
+const exportNightAuditPDF = (builtData, institutionData, start, end) => {
+  const { rows = [], totals = {} } = builtData || {};
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const currentTime = new Date().toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour12: true,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const title = (institutionData?.companyName || "Restaurant").toUpperCase();
+  const subtitle = "NIGHT AUDIT REPORT - CHANNEL REVENUE BREAKDOWN";
+  const dateText = `Period: ${start.toLocaleDateString("en-IN")} to ${end.toLocaleDateString("en-IN")}`;
+  const generatedText = `Generated: ${currentTime}`;
+
+  let yPos = addProfessionalHeader(doc, title, subtitle, dateText, generatedText);
+
+  // Executive Summary
+  yPos += 6;
+  doc.setFont("helvetica", "bold").setFontSize(11).text("NIGHT AUDIT CHANNEL SUMMARY", 15, yPos);
+  yPos += 4;
+  doc.setDrawColor(200).line(15, yPos, 90, yPos);
+  yPos += 6;
+
+  const summaryBody = [
+    ["Restaurant Dine-in", `${totals.restaurantOrders || 0} ord`, `₹${safeNum(totals.restaurantRevenue).toFixed(2)}`, "Room Service", `${totals.roomServiceOrders || 0} ord`, `₹${safeNum(totals.roomServiceRevenue).toFixed(2)}`],
+    ["Zomato Delivery", `${totals.zomatoOrders || 0} ord`, `₹${safeNum(totals.zomatoRevenue).toFixed(2)}`, "Swiggy Delivery", `${totals.swiggyOrders || 0} ord`, `₹${safeNum(totals.swiggyRevenue).toFixed(2)}`],
+    ["Banquet Hall", `${totals.banquetOrders || 0} ord`, `₹${safeNum(totals.banquetRevenue).toFixed(2)}`, "Board Room", `${totals.boardRoomOrders || 0} ord`, `₹${safeNum(totals.boardRoomRevenue).toFixed(2)}`],
+    ["Total Orders Processed", `${totals.totalOrders || 0}`, "", "Total Day Revenue", "", `₹${safeNum(totals.totalRevenue).toFixed(2)}`],
+  ];
+
+  doc.autoTable({
+    startY: yPos,
+    body: summaryBody,
+    theme: "grid",
+    styles: { fontSize: 8, cellPadding: 2.5 },
+    margin: { left: 15, right: 15 },
+  });
+
+  yPos = doc.lastAutoTable.finalY + 10;
+  doc.setFont("helvetica", "bold").setFontSize(10).text("DAILY NIGHT AUDIT BREAKDOWN", 15, yPos);
+  yPos += 4;
+  doc.line(15, yPos, 80, yPos);
+  yPos += 6;
+
+  const tableColumns = [
+    "Date",
+    "Rest (Ord / Rev)",
+    "Room Svc (Ord / Rev)",
+    "Zomato (Ord / Rev)",
+    "Swiggy (Ord / Rev)",
+    "Banquet (Ord / Rev)",
+    "Board Rm (Ord / Rev)",
+    "Total (Ord / Rev)",
+  ];
+
+  const tableData = rows.map((r) => [
+    r.date,
+    `${r.restaurantOrders} / ₹${safeNum(r.restaurantRevenue).toFixed(0)}`,
+    `${r.roomServiceOrders} / ₹${safeNum(r.roomServiceRevenue).toFixed(0)}`,
+    `${r.zomatoOrders} / ₹${safeNum(r.zomatoRevenue).toFixed(0)}`,
+    `${r.swiggyOrders} / ₹${safeNum(r.swiggyRevenue).toFixed(0)}`,
+    `${r.banquetOrders} / ₹${safeNum(r.banquetRevenue).toFixed(0)}`,
+    `${r.boardRoomOrders} / ₹${safeNum(r.boardRoomRevenue).toFixed(0)}`,
+    `${r.totalOrders} / ₹${safeNum(r.totalRevenue).toFixed(0)}`,
+  ]);
+
+  if (totals && rows.length > 0) {
+    tableData.push([
+      "TOTAL",
+      `${totals.restaurantOrders} / ₹${safeNum(totals.restaurantRevenue).toFixed(0)}`,
+      `${totals.roomServiceOrders} / ₹${safeNum(totals.roomServiceRevenue).toFixed(0)}`,
+      `${totals.zomatoOrders} / ₹${safeNum(totals.zomatoRevenue).toFixed(0)}`,
+      `${totals.swiggyOrders} / ₹${safeNum(totals.swiggyRevenue).toFixed(0)}`,
+      `${totals.banquetOrders} / ₹${safeNum(totals.banquetRevenue).toFixed(0)}`,
+      `${totals.boardRoomOrders} / ₹${safeNum(totals.boardRoomRevenue).toFixed(0)}`,
+      `${totals.totalOrders} / ₹${safeNum(totals.totalRevenue).toFixed(0)}`,
+    ]);
+  }
+
+  doc.autoTable({
+    startY: yPos,
+    head: [tableColumns],
+    body: tableData,
+    theme: "striped",
+    headStyles: { fillColor: [41, 128, 185], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8, halign: "center" },
+    bodyStyles: { fontSize: 8, textColor: [44, 62, 80], halign: "center" },
+    styles: { cellPadding: 2, lineColor: [200, 200, 200], lineWidth: 0.1 },
+    margin: { left: 15, right: 15 },
+  });
+
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    addProfessionalFooter(doc, i, totalPages, "Confidential - Night Audit Daily Channel Report");
+  }
+
+  const safeName = (institutionData?.companyName || "Restaurant").replace(/\s+/g, "_").toLowerCase();
+  doc.save(`${safeName}_Night_Audit_${start.toISOString().slice(0, 10)}_to_${end.toISOString().slice(0, 10)}.pdf`);
+};
+
 // ================== exportItemPDF ==================
 const exportItemPDF = (builtData, institutionData, start, end) => {
   const { items = [] } = builtData || {};
@@ -1475,6 +1743,8 @@ const Report = () => {
       case "complementary":
       case "food_delivery_order":
         return reportData.data.orders?.length || 0;
+      case "night_audit":
+        return reportData.data?.rows?.length || 0;
       case "itemId":
         return reportData.data.length || 0;
       default:
@@ -1485,6 +1755,7 @@ const Report = () => {
   // REPORT OPTIONS
   const reportOptions = [
     { value: "", label: "Select Report" },
+    { value: "night_audit", label: "Night Audit Report" },
     { value: "cafe", label: institutionData?.bar_integration === "Yes" ? "Cafe Stock Report" : "Stock Report" },
     ...(institutionData?.bar_integration === "Yes" ? [{ value: "bar_stock", label: "Bar Stock Report" }] : []),
     { value: "item", label: "Item Report" },
@@ -1636,7 +1907,10 @@ if (["order", "settlement", "complementary"].includes(selectedReport)) {
 } else if (selectedReport === "food_delivery_order") {
   const data = buildFoodDeliveryReport(startDate, effectiveEnd, filteredOrders);
   setReportData({ type: "food_delivery_order", data });
-} else if (["order", "settlement", "complementary", "pending_orders", "cancelled_orders"].includes(selectedReport)) {
+} else if (selectedReport === "night_audit") {
+        const data = buildNightAuditData(startDate, effectiveEnd, filteredOrders);
+        setReportData({ type: "night_audit", data });
+      } else if (["order", "settlement", "complementary", "pending_orders", "cancelled_orders"].includes(selectedReport)) {
         const data = buildOrderReport(startDate, effectiveEnd, filteredOrders);
         setReportData({
           type: selectedReport === "settlement" ? "settlement" : selectedReport === "complementary" ? "complementary" : "order",
@@ -1675,6 +1949,129 @@ if (["order", "settlement", "complementary"].includes(selectedReport)) {
 
     // make preview text a little smaller: using text-sm
     switch (reportData.type) {
+      case "night_audit": {
+        const { rows = [], totals = {} } = reportData.data || {};
+        return (
+          <div className="space-y-6">
+            {/* Channel Metrics Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+              <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg text-center">
+                <p className="text-xs text-blue-700 font-medium">Restaurant (Dine-in)</p>
+                <p className="text-lg font-bold text-blue-900 mt-1">₹{safeNum(totals.restaurantRevenue).toFixed(2)}</p>
+                <p className="text-[11px] text-blue-600">{totals.restaurantOrders || 0} orders</p>
+              </div>
+              <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-lg text-center">
+                <p className="text-xs text-indigo-700 font-medium">Room Service</p>
+                <p className="text-lg font-bold text-indigo-900 mt-1">₹{safeNum(totals.roomServiceRevenue).toFixed(2)}</p>
+                <p className="text-[11px] text-indigo-600">{totals.roomServiceOrders || 0} orders</p>
+              </div>
+              <div className="bg-red-50 border border-red-200 p-3 rounded-lg text-center">
+                <p className="text-xs text-red-700 font-medium">Zomato</p>
+                <p className="text-lg font-bold text-red-900 mt-1">₹{safeNum(totals.zomatoRevenue).toFixed(2)}</p>
+                <p className="text-[11px] text-red-600">{totals.zomatoOrders || 0} orders</p>
+              </div>
+              <div className="bg-orange-50 border border-orange-200 p-3 rounded-lg text-center">
+                <p className="text-xs text-orange-700 font-medium">Swiggy</p>
+                <p className="text-lg font-bold text-orange-900 mt-1">₹{safeNum(totals.swiggyRevenue).toFixed(2)}</p>
+                <p className="text-[11px] text-orange-600">{totals.swiggyOrders || 0} orders</p>
+              </div>
+              <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-center">
+                <p className="text-xs text-emerald-700 font-medium">Banquet Hall</p>
+                <p className="text-lg font-bold text-emerald-900 mt-1">₹{safeNum(totals.banquetRevenue).toFixed(2)}</p>
+                <p className="text-[11px] text-emerald-600">{totals.banquetOrders || 0} orders</p>
+              </div>
+              <div className="bg-purple-50 border border-purple-200 p-3 rounded-lg text-center">
+                <p className="text-xs text-purple-700 font-medium">Board Room</p>
+                <p className="text-lg font-bold text-purple-900 mt-1">₹{safeNum(totals.boardRoomRevenue).toFixed(2)}</p>
+                <p className="text-[11px] text-purple-600">{totals.boardRoomOrders || 0} orders</p>
+              </div>
+              <div className="bg-gray-100 border border-gray-300 p-3 rounded-lg text-center">
+                <p className="text-xs text-gray-700 font-semibold">Total Revenue</p>
+                <p className="text-lg font-extrabold text-gray-900 mt-1">₹{safeNum(totals.totalRevenue).toFixed(2)}</p>
+                <p className="text-[11px] text-gray-600">{totals.totalOrders || 0} total orders</p>
+              </div>
+            </div>
+
+            {/* Breakdown Table */}
+            <div className="overflow-x-auto text-sm border border-gray-200 rounded-lg">
+              <table className="min-w-full divide-y divide-gray-200 bg-white">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Date</th>
+                    <th className="px-3 py-3 text-right text-xs font-semibold text-blue-800 uppercase">Restaurant</th>
+                    <th className="px-3 py-3 text-right text-xs font-semibold text-indigo-800 uppercase">Room Service</th>
+                    <th className="px-3 py-3 text-right text-xs font-semibold text-red-800 uppercase">Zomato</th>
+                    <th className="px-3 py-3 text-right text-xs font-semibold text-orange-800 uppercase">Swiggy</th>
+                    <th className="px-3 py-3 text-right text-xs font-semibold text-emerald-800 uppercase">Banquet</th>
+                    <th className="px-3 py-3 text-right text-xs font-semibold text-purple-800 uppercase">Board Room</th>
+                    <th className="px-4 py-3 text-right text-xs font-bold text-gray-900 uppercase bg-gray-100">Day Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-6 text-center text-gray-500">
+                        No orders recorded for selected date range
+                      </td>
+                    </tr>
+                  ) : (
+                    rows.map((r, idx) => (
+                      <tr key={idx} className={idx % 2 === 0 ? "bg-white hover:bg-gray-50" : "bg-gray-50/50 hover:bg-gray-100"}>
+                        <td className="px-4 py-2.5 font-medium text-gray-900 whitespace-nowrap">{r.date}</td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          <span className="font-medium text-gray-800">₹{safeNum(r.restaurantRevenue).toFixed(2)}</span>
+                          <span className="text-xs text-gray-400 block">({r.restaurantOrders} ord)</span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          <span className="font-medium text-gray-800">₹{safeNum(r.roomServiceRevenue).toFixed(2)}</span>
+                          <span className="text-xs text-gray-400 block">({r.roomServiceOrders} ord)</span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          <span className="font-medium text-gray-800">₹{safeNum(r.zomatoRevenue).toFixed(2)}</span>
+                          <span className="text-xs text-gray-400 block">({r.zomatoOrders} ord)</span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          <span className="font-medium text-gray-800">₹{safeNum(r.swiggyRevenue).toFixed(2)}</span>
+                          <span className="text-xs text-gray-400 block">({r.swiggyOrders} ord)</span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          <span className="font-medium text-gray-800">₹{safeNum(r.banquetRevenue).toFixed(2)}</span>
+                          <span className="text-xs text-gray-400 block">({r.banquetOrders} ord)</span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          <span className="font-medium text-gray-800">₹{safeNum(r.boardRoomRevenue).toFixed(2)}</span>
+                          <span className="text-xs text-gray-400 block">({r.boardRoomOrders} ord)</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right whitespace-nowrap bg-gray-50/70 font-semibold text-gray-900">
+                          <span>₹{safeNum(r.totalRevenue).toFixed(2)}</span>
+                          <span className="text-xs text-gray-500 block">({r.totalOrders} total)</span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {rows.length > 0 && (
+                  <tfoot className="bg-gray-100 font-bold border-t-2 border-gray-300">
+                    <tr>
+                      <td className="px-4 py-3 text-gray-900">TOTAL</td>
+                      <td className="px-3 py-3 text-right text-gray-900">₹{safeNum(totals.restaurantRevenue).toFixed(2)}</td>
+                      <td className="px-3 py-3 text-right text-gray-900">₹{safeNum(totals.roomServiceRevenue).toFixed(2)}</td>
+                      <td className="px-3 py-3 text-right text-gray-900">₹{safeNum(totals.zomatoRevenue).toFixed(2)}</td>
+                      <td className="px-3 py-3 text-right text-gray-900">₹{safeNum(totals.swiggyRevenue).toFixed(2)}</td>
+                      <td className="px-3 py-3 text-right text-gray-900">₹{safeNum(totals.banquetRevenue).toFixed(2)}</td>
+                      <td className="px-3 py-3 text-right text-gray-900">₹{safeNum(totals.boardRoomRevenue).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-right text-primaryColor font-extrabold bg-gray-200">
+                        ₹{safeNum(totals.totalRevenue).toFixed(2)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
+        );
+      }
+
       case "cafe": {
         const { items: cafeItems } = reportData.data;
         return (
@@ -2304,6 +2701,27 @@ if (["order", "settlement", "complementary"].includes(selectedReport)) {
           <button
             key="settlement-pdf"
             onClick={() => exportSettlementPDF(reportData.data, institutionData, startDate, endDate)}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            <FileText className="w-3 h-3" />
+            PDF
+          </button>
+        );
+        break;
+
+      case "night_audit":
+        buttons.push(
+          <button
+            key="night-audit-excel"
+            onClick={() => exportNightAuditExcel(reportData.data, institutionData, startDate, endDate)}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+          >
+            <FileSpreadsheet className="w-3 h-3" />
+            Excel
+          </button>,
+          <button
+            key="night-audit-pdf"
+            onClick={() => exportNightAuditPDF(reportData.data, institutionData, startDate, endDate)}
             className="flex items-center gap-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded hover:bg-red-700"
           >
             <FileText className="w-3 h-3" />

@@ -26,7 +26,7 @@ const routes = [
   { path: 'stockmanagement', label: 'Stock Management', icon: MdInventory2, allowedUserTypes: ['admin'], showIfBarOrStock: true },
   { path: 'qrmanage', label: 'QR Manage', icon: MdQrCodeScanner, allowedUserTypes: ['admin'] },
   { path: 'room-details', label: 'Room Details', icon: FaHotel, allowedUserTypes: ['admin', 'waiter', 'captain'] ,requiresCafeIntegration: true},
-  { path: 'day-end', label: 'Day End', icon: IoMdTimer, allowedUserTypes: ['admin', 'waiter', 'captain'], requiresBarIntegration: true },
+  { path: 'day-end', label: 'Night Audit / Day End', icon: IoMdTimer, allowedUserTypes: ['admin', 'waiter', 'captain'] },
   { path: 'revenue', label: 'Revenue', icon: RiMoneyRupeeCircleFill, allowedUserTypes: ['admin'] },
   { path: 'orderhistory', label: 'Order History', icon: RiBillLine, allowedUserTypes: ['admin'] },
   { path: 'cashbook', label: 'Cashbook', icon: FaCashRegister, allowedUserTypes: ['admin'], requiresCafeIntegration: true },
