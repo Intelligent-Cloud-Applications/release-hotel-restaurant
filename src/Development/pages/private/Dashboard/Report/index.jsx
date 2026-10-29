@@ -734,10 +734,10 @@ const exportNightAuditPDF = (builtData, institutionData, start, end) => {
   yPos += 6;
 
   const summaryBody = [
-    ["Restaurant Dine-in", `${totals.restaurantOrders || 0} ord`, `₹${safeNum(totals.restaurantRevenue).toFixed(2)}`, "Room Service", `${totals.roomServiceOrders || 0} ord`, `₹${safeNum(totals.roomServiceRevenue).toFixed(2)}`],
-    ["Zomato Delivery", `${totals.zomatoOrders || 0} ord`, `₹${safeNum(totals.zomatoRevenue).toFixed(2)}`, "Swiggy Delivery", `${totals.swiggyOrders || 0} ord`, `₹${safeNum(totals.swiggyRevenue).toFixed(2)}`],
-    ["Banquet Hall", `${totals.banquetOrders || 0} ord`, `₹${safeNum(totals.banquetRevenue).toFixed(2)}`, "Board Room", `${totals.boardRoomOrders || 0} ord`, `₹${safeNum(totals.boardRoomRevenue).toFixed(2)}`],
-    ["Total Orders Processed", `${totals.totalOrders || 0}`, "", "Total Day Revenue", "", `₹${safeNum(totals.totalRevenue).toFixed(2)}`],
+    ["Restaurant Dine-in", `${totals.restaurantOrders || 0} ord`, `${safeNum(totals.restaurantRevenue).toFixed(2)}`, "Room Service", `${totals.roomServiceOrders || 0} ord`, `${safeNum(totals.roomServiceRevenue).toFixed(2)}`],
+    ["Zomato Delivery", `${totals.zomatoOrders || 0} ord`, `${safeNum(totals.zomatoRevenue).toFixed(2)}`, "Swiggy Delivery", `${totals.swiggyOrders || 0} ord`, `${safeNum(totals.swiggyRevenue).toFixed(2)}`],
+    ["Banquet Hall", `${totals.banquetOrders || 0} ord`, `${safeNum(totals.banquetRevenue).toFixed(2)}`, "Board Room", `${totals.boardRoomOrders || 0} ord`, `${safeNum(totals.boardRoomRevenue).toFixed(2)}`],
+    ["Total Orders Processed", `${totals.totalOrders || 0}`, "", "Total Day Revenue", "", `${safeNum(totals.totalRevenue).toFixed(2)}`],
   ];
 
   doc.autoTable({
@@ -767,25 +767,25 @@ const exportNightAuditPDF = (builtData, institutionData, start, end) => {
 
   const tableData = rows.map((r) => [
     r.date,
-    `${r.restaurantOrders} / ₹${safeNum(r.restaurantRevenue).toFixed(0)}`,
-    `${r.roomServiceOrders} / ₹${safeNum(r.roomServiceRevenue).toFixed(0)}`,
-    `${r.zomatoOrders} / ₹${safeNum(r.zomatoRevenue).toFixed(0)}`,
-    `${r.swiggyOrders} / ₹${safeNum(r.swiggyRevenue).toFixed(0)}`,
-    `${r.banquetOrders} / ₹${safeNum(r.banquetRevenue).toFixed(0)}`,
-    `${r.boardRoomOrders} / ₹${safeNum(r.boardRoomRevenue).toFixed(0)}`,
-    `${r.totalOrders} / ₹${safeNum(r.totalRevenue).toFixed(0)}`,
+    `${r.restaurantOrders} / ${safeNum(r.restaurantRevenue).toFixed(0)}`,
+    `${r.roomServiceOrders} / ${safeNum(r.roomServiceRevenue).toFixed(0)}`,
+    `${r.zomatoOrders} / ${safeNum(r.zomatoRevenue).toFixed(0)}`,
+    `${r.swiggyOrders} / ${safeNum(r.swiggyRevenue).toFixed(0)}`,
+    `${r.banquetOrders} / ${safeNum(r.banquetRevenue).toFixed(0)}`,
+    `${r.boardRoomOrders} / ${safeNum(r.boardRoomRevenue).toFixed(0)}`,
+    `${r.totalOrders} / ${safeNum(r.totalRevenue).toFixed(0)}`,
   ]);
 
   if (totals && rows.length > 0) {
     tableData.push([
       "TOTAL",
-      `${totals.restaurantOrders} / ₹${safeNum(totals.restaurantRevenue).toFixed(0)}`,
-      `${totals.roomServiceOrders} / ₹${safeNum(totals.roomServiceRevenue).toFixed(0)}`,
-      `${totals.zomatoOrders} / ₹${safeNum(totals.zomatoRevenue).toFixed(0)}`,
-      `${totals.swiggyOrders} / ₹${safeNum(totals.swiggyRevenue).toFixed(0)}`,
-      `${totals.banquetOrders} / ₹${safeNum(totals.banquetRevenue).toFixed(0)}`,
-      `${totals.boardRoomOrders} / ₹${safeNum(totals.boardRoomRevenue).toFixed(0)}`,
-      `${totals.totalOrders} / ₹${safeNum(totals.totalRevenue).toFixed(0)}`,
+      `${totals.restaurantOrders} / ${safeNum(totals.restaurantRevenue).toFixed(0)}`,
+      `${totals.roomServiceOrders} / ${safeNum(totals.roomServiceRevenue).toFixed(0)}`,
+      `${totals.zomatoOrders} / ${safeNum(totals.zomatoRevenue).toFixed(0)}`,
+      `${totals.swiggyOrders} / ${safeNum(totals.swiggyRevenue).toFixed(0)}`,
+      `${totals.banquetOrders} / ${safeNum(totals.banquetRevenue).toFixed(0)}`,
+      `${totals.boardRoomOrders} / ${safeNum(totals.boardRoomRevenue).toFixed(0)}`,
+      `${totals.totalOrders} / ${safeNum(totals.totalRevenue).toFixed(0)}`,
     ]);
   }
 
@@ -1164,7 +1164,7 @@ const exportSettlementPDF = (builtData, institutionData, start, end) => {
 
   doc.autoTable({
     startY: yPos,
-    head: [["Financial Metric","Amount ()"]],
+    head: [["Financial Metric","Amount"]],
     body: summaryData,
     theme: "grid",
     headStyles: { fillColor:[52,73,94], textColor:[255,255,255], fontStyle:"bold", halign:"center" },
@@ -1184,7 +1184,7 @@ const exportSettlementPDF = (builtData, institutionData, start, end) => {
 
   doc.autoTable({
     startY: yPos,
-    head: [["Payment Method","Amount ()","Percentage"]],
+    head: [["Payment Method","Amount","Percentage"]],
     body: breakdownBody,
     theme: "striped",
     headStyles: { fillColor:[52,73,94], textColor:[255,255,255], fontStyle:"bold", halign:"center" },
