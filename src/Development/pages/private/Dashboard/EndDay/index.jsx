@@ -168,6 +168,15 @@ const EndDay = () => {
     let totalBeverageAmount = 0;
     let totalPayments = {};
 
+    const channels = {
+      restaurant: { label: "Restaurant", orders: 0, revenue: 0 },
+      roomService: { label: "Room Service", orders: 0, revenue: 0 },
+      zomato: { label: "Zomato", orders: 0, revenue: 0 },
+      swiggy: { label: "Swiggy", orders: 0, revenue: 0 },
+      banquet: { label: "Banquet Hall", orders: 0, revenue: 0 },
+      boardRoom: { label: "Board Room", orders: 0, revenue: 0 },
+    };
+
     ordersForDate.forEach((order) => {
       const amount = Number(order.totalAmount) || 0;
       totalBilledAmount += amount;
@@ -181,6 +190,30 @@ const EndDay = () => {
         "Cash"
       ).toLowerCase();
       totalPayments[payMethod] = (totalPayments[payMethod] || 0) + amount;
+
+      const tbl = String(order.tableName || order.table || "").toLowerCase();
+      const src = String(order.orderSource || order.source || order.orderSourceGroup || "").toLowerCase();
+      const billNo = String(order.billNo || order.bill_no || order.orderId || "").toUpperCase();
+
+      if (tbl.includes("room") || tbl.includes("hotel") || src.includes("room") || tbl.startsWith("rm")) {
+        channels.roomService.orders += 1;
+        channels.roomService.revenue += amount;
+      } else if (tbl.startsWith("zomato") || src.includes("zomato") || billNo.startsWith("ZM_") || billNo.startsWith("ZOMATO")) {
+        channels.zomato.orders += 1;
+        channels.zomato.revenue += amount;
+      } else if (tbl.startsWith("swiggy") || src.includes("swiggy") || billNo.startsWith("SW_") || billNo.startsWith("SWIGGY")) {
+        channels.swiggy.orders += 1;
+        channels.swiggy.revenue += amount;
+      } else if (tbl.includes("banquet") || src.includes("banquet")) {
+        channels.banquet.orders += 1;
+        channels.banquet.revenue += amount;
+      } else if (tbl.includes("board") || src.includes("board") || tbl.includes("conference")) {
+        channels.boardRoom.orders += 1;
+        channels.boardRoom.revenue += amount;
+      } else {
+        channels.restaurant.orders += 1;
+        channels.restaurant.revenue += amount;
+      }
 
       (order.items || []).forEach((item) => {
         const itemAmount =
@@ -220,6 +253,7 @@ const EndDay = () => {
       grandTotal: totalReceiptsAmount,
       paymentBreakdown: totalPayments,
       orderCount: ordersForDate.length,
+      channels: channels,
       date: date,
     });
   };
@@ -895,6 +929,22 @@ const EndDay = () => {
                     }</div>
                   </div>
                 </div>
+
+                <div style="margin-top: 3mm;">
+                  <div class="section-header">RESTAURANT CHANNELS (SAME DAY)</div>
+                  ${leftSideData.channels ? Object.entries(leftSideData.channels).map(([key, ch]) => `
+                    <div class="amount-row">
+                      <div class="amount-label">${ch.label.toUpperCase()} (${ch.orders} orders)</div>
+                      <div class="amount-value">₹${Number(ch.revenue || 0).toFixed(2)}</div>
+                    </div>
+                  `).join("") : ""}
+                  <div class="amount-row total-row">
+                    <div class="amount-label">TOTAL CHANNEL REVENUE</div>
+                    <div class="amount-value">₹${
+                      leftSideData.channels ? Object.values(leftSideData.channels).reduce((s, c) => s + (Number(c.revenue) || 0), 0).toFixed(2) : "0.00"
+                    }</div>
+                  </div>
+                </div>
               </div>
               
               <div class="content-column">
@@ -1179,6 +1229,18 @@ const EndDay = () => {
                 <span className="font-medium">Beverage Sales:</span> ₹
                 {(leftSideData.beverageSales || 0).toFixed(2)}
               </div>
+              {leftSideData.channels && (
+                <div className="bg-indigo-50 px-3 py-2 rounded-lg">
+                  <span className="font-medium">Room Service:</span> ₹
+                  {(leftSideData.channels.roomService?.revenue || 0).toFixed(2)}
+                </div>
+              )}
+              {leftSideData.channels && (
+                <div className="bg-pink-50 px-3 py-2 rounded-lg">
+                  <span className="font-medium">Zomato / Swiggy:</span> ₹
+                  {((leftSideData.channels.zomato?.revenue || 0) + (leftSideData.channels.swiggy?.revenue || 0)).toFixed(2)}
+                </div>
+              )}
               {reportSaved && (
                 <div className="bg-green-100 text-green-800 px-3 py-2 rounded-lg">
                   ✓ Report Saved
@@ -1257,6 +1319,35 @@ const EndDay = () => {
                     <div className="flex justify-between font-bold border-t border-gray-300 pt-2 mt-2">
                       <span>Total</span>
                       <span>₹{leftSideData.totalSales?.toFixed(2) || "0.00"}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {leftSideData.channels && (
+                <div className="mt-6">
+                  <h4 className="font-bold text-lg mb-4 border-b border-gray-300 pb-2 flex justify-between items-center">
+                    <span>RESTAURANT CHANNELS (SAME DAY)</span>
+                    <span className="text-xs font-normal text-gray-500">Night Audit Breakdown</span>
+                  </h4>
+                  <div className="space-y-1.5 text-sm">
+                    {Object.entries(leftSideData.channels).map(([key, ch]) => (
+                      <div key={key} className="flex justify-between items-center py-1 border-b border-gray-100">
+                        <div>
+                          <span className="font-medium text-gray-800">{ch.label}</span>
+                          <span className="text-xs text-gray-500 ml-2 bg-gray-100 px-2 py-0.5 rounded-full">{ch.orders} orders</span>
+                        </div>
+                        <span className="font-semibold text-gray-900">₹{Number(ch.revenue || 0).toFixed(2)}</span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between font-bold border-t border-gray-300 pt-2 mt-2 text-base text-gray-900">
+                      <span>Total Channel Revenue</span>
+                      <span>
+                        ₹
+                        {Object.values(leftSideData.channels)
+                          .reduce((sum, ch) => sum + Number(ch.revenue || 0), 0)
+                          .toFixed(2)}
+                      </span>
                     </div>
                   </div>
                 </div>
