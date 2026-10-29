@@ -43,7 +43,7 @@ const RestaurantPOS = ({ itemsData = [], institutionData, userData, hotelBooking
   const [pendingKOTData, setPendingKOTData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const takeawayCount = institutionData?.institution === 'chineseq18' ? 4 : institutionData?.institution === 'Hang7438' ? 10 : 2;
+  const takeawayCount = institutionData?.institution === 'chineseq18' ? 4 : institutionData?.institution === 'Hang7438' ? 10 : 10;
 const [tables, setTables] = useState([
   // Restaurant tables
   ...(institutionData?.Table || []).map(t => ({
@@ -65,7 +65,27 @@ const [tables, setTables] = useState([
     orderType: "takeaway",
   })),
 
-  // Hotel rooms (only if bar integration is enabled)
+  // Swiggy counters (1 to 10)
+  ...Array(10).fill(null).map((_, i) => ({
+    id: `Swiggy${i + 1}`,
+    name: `Swiggy ${i + 1}`,
+    status: "available",
+    orders: [],
+    currentBill: 0,
+    orderType: "swiggy",
+  })),
+
+  // Zomato counters (1 to 10)
+  ...Array(10).fill(null).map((_, i) => ({
+    id: `Zomato${i + 1}`,
+    name: `Zomato ${i + 1}`,
+    status: "available",
+    orders: [],
+    currentBill: 0,
+    orderType: "zomato",
+  })),
+
+  // Hotel rooms
   ...(institutionData?.integration === "HOTEL" && hotelBookings
     ? hotelBookings.map(booking => {
         const sanitizedRoomNumber = booking.roomNumber.replace(/[^a-zA-Z0-9]/g, '');
@@ -195,6 +215,12 @@ const calculateTotals = (items, discountInfo = null) => {
     if (tableName.toLowerCase().startsWith("hotel ")) {
       const roomNumber = tableName.replace(/^hotel\s+/i, "");
       booking = hotelBookings?.find((b) => String(b.roomNumber) === String(roomNumber));
+    } else if (tableName.toLowerCase().startsWith("room ")) {
+      const roomNumber = tableName.replace(/^room\s+/i, "");
+      booking = hotelBookings?.find((b) => String(b.roomNumber) === String(roomNumber));
+    } else if (String(tableIdStr).toLowerCase().startsWith("hotel")) {
+      const cleanId = String(tableIdStr).toLowerCase().replace(/^hotel/, "");
+      booking = hotelBookings?.find((b) => String(b.roomNumber).replace(/[^a-zA-Z0-9]/g, "").toLowerCase() === cleanId);
     }
     return booking;
   };
@@ -259,7 +285,6 @@ const calculateTotals = (items, discountInfo = null) => {
           ...(userData && { orderBy: userData.cognitoId }),
           tableOccupied: true,
           daySession: currentDaySession,
-          ...((institutionData?.integration === "HOTEL" || institutionData?.hotel_integration === true || institutionData?.hotel_integration === "Yes") ? { hotelIntegration: true } : {}),
         },
       });
 if (isHotelTable) {
@@ -1148,7 +1173,6 @@ const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
             tableOccupied: true,
             type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
             daySession: currentDaySession,
-            ...((institutionData?.integration === "HOTEL" || institutionData?.hotel_integration === true || institutionData?.hotel_integration === "Yes") ? { hotelIntegration: true } : {}),
           },
         });
 if (isHotelTable) {
