@@ -18,20 +18,20 @@ import { FaCashRegister } from "react-icons/fa";
 
 
 const routes = [
-  { path: 'counterorder', label: 'Counter Order (POS)', icon: TbToolsKitchen3, allowedUserTypes: ['admin'] },
-  { path: 'orders', label: 'Orders', icon: MdFastfood, allowedUserTypes: ['member', 'waiter'] },
-  // { path: 'pendingorders', label: 'Pending Orders', icon: MdOutlinePendingActions, allowedUserTypes: ['admin', 'waiter'] },
+  { path: 'counterorder', label: 'Counter Order (POS)', icon: TbToolsKitchen3, allowedUserTypes: ['admin', 'captain'] },
+  { path: 'orders', label: 'Orders', icon: MdFastfood, allowedUserTypes: ['member', 'waiter', 'captain'] },
+  // { path: 'pendingorders', label: 'Pending Orders', icon: MdOutlinePendingActions, allowedUserTypes: ['admin', 'waiter', 'captain'] },
   { path: 'addstaff', label: 'Add Staff', icon: IoMdPersonAdd, allowedUserTypes: ['admin'] },
   { path: 'item', label: 'Menu Items', icon: MdOutlineProductionQuantityLimits, allowedUserTypes: ['admin', 'chef'] },
   { path: 'stockmanagement', label: 'Stock Management', icon: MdInventory2, allowedUserTypes: ['admin'], showIfBarOrStock: true },
   { path: 'qrmanage', label: 'QR Manage', icon: MdQrCodeScanner, allowedUserTypes: ['admin'] },
-  { path: 'room-details', label: 'Room Details', icon: FaHotel, allowedUserTypes: ['admin', 'waiter'] ,requiresCafeIntegration: true},
-  { path: 'day-end', label: 'Day End', icon: IoMdTimer, allowedUserTypes: ['admin', 'waiter'], requiresBarIntegration: true },
+  { path: 'room-details', label: 'Room Details', icon: FaHotel, allowedUserTypes: ['admin', 'waiter', 'captain'] ,requiresCafeIntegration: true},
+  { path: 'day-end', label: 'Day End', icon: IoMdTimer, allowedUserTypes: ['admin', 'waiter', 'captain'], requiresBarIntegration: true },
   { path: 'revenue', label: 'Revenue', icon: RiMoneyRupeeCircleFill, allowedUserTypes: ['admin'] },
   { path: 'orderhistory', label: 'Order History', icon: RiBillLine, allowedUserTypes: ['admin'] },
   { path: 'cashbook', label: 'Cashbook', icon: FaCashRegister, allowedUserTypes: ['admin'], requiresCafeIntegration: true },
   { path: 'report', label: 'Reports', icon: TbReportSearch, allowedUserTypes: ['admin'] },
-  { path: 'profile', label: 'Profile', icon: CgProfile, allowedUserTypes: ['admin', 'member', 'chef', 'waiter'] },
+  { path: 'profile', label: 'Profile', icon: CgProfile, allowedUserTypes: ['admin', 'member', 'chef', 'waiter', 'captain'] },
 ];
 
 const SideBar = () => {

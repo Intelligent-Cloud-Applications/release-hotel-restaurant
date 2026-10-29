@@ -34,6 +34,7 @@ const OrderHistory = () => {
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [showDayPicker, setShowDayPicker] = useState(false);
   const [filterType, setFilterType] = useState("day");
+  const [revenueChannel, setRevenueChannel] = useState("all"); // 'all', 'restaurant', 'zomato', 'swiggy', 'takeaway'
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [startDate, setStartDate] = useState(new Date());
   const [endDate, setEndDate] = useState(new Date());
@@ -377,7 +378,7 @@ const OrderHistory = () => {
   }, [institution, userData]);
   useEffect(() => {
     applyFilters();
-  }, [allOrders, filterType, selectedDate, startDate, endDate, selectedMonth, selectedYear, showMonthlySummaries]);
+  }, [allOrders, filterType, selectedDate, startDate, endDate, selectedMonth, selectedYear, showMonthlySummaries, revenueChannel]);
   const fetchAllOrders = async () => {
     if (!userData || !userData.userType || !userData.cognitoId) {
       console.log("Waiting for userData to load...");
@@ -458,6 +459,28 @@ const OrderHistory = () => {
     } else if (filterType === "showAll") {
       // no-op; use full list
     }
+    // Channel / Source filter (Restaurant, Zomato, Swiggy, Take Away)
+    if (revenueChannel !== "all") {
+      filteredOrders = filteredOrders.filter((order) => {
+        const tbl = String(order.tableName || "").toLowerCase();
+        const src = String(order.orderSource || "").toLowerCase();
+        const bNo = String(order.billNo || order.billNumber || "").toUpperCase();
+
+        if (revenueChannel === "zomato") {
+          return tbl.startsWith("zomato") || src.includes("zomato") || bNo.startsWith("ZM_");
+        } else if (revenueChannel === "swiggy") {
+          return tbl.startsWith("swiggy") || src.includes("swiggy") || bNo.startsWith("SW_");
+        } else if (revenueChannel === "takeaway") {
+          return tbl.startsWith("takeaway") || tbl.startsWith("take away") || src.includes("takeaway") || bNo.startsWith("TW_");
+        } else if (revenueChannel === "restaurant") {
+          const isZomato = tbl.startsWith("zomato") || src.includes("zomato") || bNo.startsWith("ZM_");
+          const isSwiggy = tbl.startsWith("swiggy") || src.includes("swiggy") || bNo.startsWith("SW_");
+          const isTakeaway = tbl.startsWith("takeaway") || tbl.startsWith("take away") || src.includes("takeaway") || bNo.startsWith("TW_");
+          return !isZomato && !isSwiggy && !isTakeaway;
+        }
+        return true;
+      });
+    }
     if (!showMonthlySummaries) {
       filteredOrders = filteredOrders.filter(order => !order.downloadLink);
     }
@@ -465,7 +488,7 @@ const OrderHistory = () => {
       (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
     );
     setOrders(sortedOrders);
-  }, [allOrders, filterType, selectedDate, startDate, endDate, selectedMonth, selectedYear, showMonthlySummaries]);
+  }, [allOrders, filterType, selectedDate, startDate, endDate, selectedMonth, selectedYear, showMonthlySummaries, revenueChannel]);
   const formatDate = (timestamp) => {
     const date = new Date(timestamp);
     return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
@@ -1060,7 +1083,22 @@ const OrderHistory = () => {
         </div>
         <div className="flex flex-col lg:flex-row gap-4 mb-4 bg-white p-4 rounded-lg shadow-md">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 min-w-0">
-            <label className="text-gray-700 whitespace-nowrap text-sm font-medium">Filter By:</label>
+                      {/* Revenue Source Filter */}
+          <div className="flex items-center gap-2">
+            <label className="text-gray-700 whitespace-nowrap text-sm font-medium">Channel / Source:</label>
+            <select
+              value={revenueChannel}
+              onChange={(e) => setRevenueChannel(e.target.value)}
+              className="border border-gray-300 rounded px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Channels</option>
+              <option value="restaurant">Restaurant (Dine-in / Room)</option>
+              <option value="zomato">Zomato</option>
+              <option value="swiggy">Swiggy</option>
+              <option value="takeaway">Take Away</option>
+            </select>
+          </div>
+          <label className="text-gray-700 whitespace-nowrap text-sm font-medium">Filter By:</label>
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from "react";
+﻿import React, { useState, useEffect, useContext } from "react";
 import { API } from "aws-amplify";
 import { useNavigate } from "react-router-dom";
 import { Context } from "../../../Context";
@@ -21,9 +21,10 @@ const ViewCartPopUp = ({ isOpen, closePopup, onOrderPlaced, cartItems, updateCar
   const [nameCleared, setNameCleared] = useState(false);
   const [phoneCleared, setPhoneCleared] = useState(false);
   
-  // Check if user is a member
-  const isMember = userData?.userType === "member" ||"undefined" && userData?.userType !== "waiter" ;
-console.log("dhdh",userData?.userType)
+  // Staff roles (waiter, captain, admin) get auto-accept - orders bypass the Accept Order queue
+  const isStaff = userData?.userType === "waiter" || userData?.userType === "captain" || userData?.userType === "admin";
+  // Check if user is a member (non-staff who ordered via QR/product page)
+  const isMember = userData?.userType === "member" && !isStaff;
   useEffect(() => {
     // Only apply the auto-fill logic for members
     if (isMember && !nameCleared ) {
@@ -166,6 +167,8 @@ console.log("dhdh",userData?.userType)
         serviceTax: serviceTax.toFixed(2),
         serviceTax_consider: Number(serviceTax) > 0.1,
         ...(userData && { orderBy: userData.cognitoId }),
+        // Staff orders (waiter/captain/admin) are auto-accepted; members/guests go through Accept Order
+        ...(isStaff ? { tableOccupied: true } : {}),
       };
 
       if (instruction.trim()) {
