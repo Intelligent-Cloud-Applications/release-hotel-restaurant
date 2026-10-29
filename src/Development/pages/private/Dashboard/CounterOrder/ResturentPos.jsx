@@ -1670,8 +1670,9 @@ if (isHotelTable) {
               setTableOccupancy={setTableOccupancy}
               orderId={ordersId[String(selectedTable?.id)]}
               customerDetails={customerDetails}
-              discountData={discountData} 
-    setDiscountData={setDiscountData}
+              discountData={discountData}
+              setDiscountData={setDiscountData}
+              tableData={tableData}
             />
           )}
         </div>
@@ -1741,6 +1742,7 @@ if (isHotelTable) {
               setTableOccupancy={setTableOccupancy}
               orderId={ordersId[String(selectedTable?.id)]}
               customerDetails={customerDetails}
+              tableData={tableData}
             />
           )}
         </div>
