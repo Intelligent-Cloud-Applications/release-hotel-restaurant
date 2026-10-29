@@ -21,10 +21,8 @@ const ViewCartPopUp = ({ isOpen, closePopup, onOrderPlaced, cartItems, updateCar
   const [nameCleared, setNameCleared] = useState(false);
   const [phoneCleared, setPhoneCleared] = useState(false);
   
-  // Staff roles (waiter, captain, admin) get auto-accept - orders bypass the Accept Order queue
-  const isStaff = userData?.userType === "waiter" || userData?.userType === "captain" || userData?.userType === "admin";
-  // Check if user is a member (non-staff who ordered via QR/product page)
-  const isMember = userData?.userType === "member" && !isStaff;
+  // Check if user is a member
+  const isMember = userData?.userType === "member";
   useEffect(() => {
     // Only apply the auto-fill logic for members
     if (isMember && !nameCleared ) {
@@ -167,8 +165,7 @@ const ViewCartPopUp = ({ isOpen, closePopup, onOrderPlaced, cartItems, updateCar
         serviceTax: serviceTax.toFixed(2),
         serviceTax_consider: Number(serviceTax) > 0.1,
         ...(userData && { orderBy: userData.cognitoId }),
-        // Staff orders (waiter/captain/admin) are auto-accepted; members/guests go through Accept Order
-        ...(isStaff ? { tableOccupied: true } : {}),
+        tableOccupied: true,
       };
 
       if (instruction.trim()) {

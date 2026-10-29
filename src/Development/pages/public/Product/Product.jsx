@@ -155,7 +155,7 @@ const Product = ({ items = [], stocks: propStocks = [] }) => {
     const tableNameFromQuery = queryParams.get("tableName");
     const userType = userData.userType;
 
-    if (userType === "admin" || userType === "chef" || (userType === "waiter" || userType === "captain")) {
+    if (userType === "admin" || userType === "chef" || userType === "waiter") {
       setIsButtonVisible(true);
     } else if (tableNameFromQuery) {
       setIsButtonVisible(true);
@@ -544,7 +544,7 @@ const Product = ({ items = [], stocks: propStocks = [] }) => {
               <FiFilter />
               <span>Filters</span>
             </button>
-            {(userData.cognitoId || orderIdInStorage )&&((userData.userType !== "waiter" && userData.userType !== "captain")) && (
+            {(userData.cognitoId || orderIdInStorage )&&(userData.userType !== "waiter") && (
               <button
                 className="flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors sm:hidden"
                 style={{ borderColor: PrimaryColor, color: PrimaryColor }}
@@ -572,7 +572,7 @@ const Product = ({ items = [], stocks: propStocks = [] }) => {
                 )}
               </button>
             )}
-            {(userData.cognitoId || orderIdInStorage )&&((userData.userType !== "waiter" && userData.userType !== "captain")) && (
+            {(userData.cognitoId || orderIdInStorage )&&(userData.userType !== "waiter") && (
               <button
                 className="px-4 py-2 rounded-lg border-2 transition-colors flex items-center gap-2"
                 style={{ borderColor: PrimaryColor, color: PrimaryColor }}
