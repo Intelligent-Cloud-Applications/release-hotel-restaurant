@@ -22,11 +22,25 @@ const PaymentModal = ({
   customerDetails,
   discountData,
   setDiscountData,
+  tableData,
 }) => {
   const { setLoader, hotelBookings, addHotelService, nextBillNumber, fetchNextBillNumber } = useContext(Context);
   const tableIdStr = String(selectedTable?.id || "");
   const tableIdStrname = String(selectedTable.name);
   const [totalBillAmount, setTotalBillAmount] = useState(0);
+    // Resolve active bill number for this table (assigned at order creation)
+  const currentTable = selectedTable ? tableData?.[String(selectedTable.id)] : null;
+  const tableOrdersList = currentTable?.orders || [];
+  const existingOrderWithBill = Array.isArray(tableOrdersList)
+    ? tableOrdersList.find((o) => o.billNo || o.billNumber)
+    : null;
+  const existingBillNo =
+    existingOrderWithBill?.billNo ||
+    existingOrderWithBill?.billNumber ||
+    currentTable?.billNo ||
+    currentTable?.billNumber ||
+    null;
+  const displayBillNo = existingBillNo || nextBillNumber;
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
   const [booking, setBooking] = useState(null);
   const [extractedOrderIds, setExtractedOrderIds] = useState([]);
@@ -851,9 +865,9 @@ const PaymentModal = ({
         <div className="mb-4 text-center">
           <p className="text-gray-600">
             Table: <strong>{selectedTable?.id}</strong>
-            {nextBillNumber && selectedPaymentMethod !== "Complementary" && (
+            {displayBillNo && selectedPaymentMethod !== "Complementary" && (
               <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-mono font-semibold">
-                Bill #{nextBillNumber}
+                Bill #{displayBillNo}
               </span>
             )}
             {selectedPaymentMethod === "Complementary" && (

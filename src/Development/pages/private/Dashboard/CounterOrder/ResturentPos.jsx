@@ -285,6 +285,7 @@ const calculateTotals = (items, discountInfo = null) => {
           ...(userData && { orderBy: userData.cognitoId }),
           tableOccupied: true,
           daySession: currentDaySession,
+          ...((institutionData?.integration === "HOTEL" || institutionData?.hotel_integration === true || institutionData?.hotel_integration === "Yes") ? { hotelIntegration: true } : {}),
         },
       });
 if (isHotelTable) {
@@ -1173,6 +1174,7 @@ const isHotelTable = tableIdStr?.toLowerCase().startsWith("hotel");
             tableOccupied: true,
             type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe",
             daySession: currentDaySession,
+            ...((institutionData?.integration === "HOTEL" || institutionData?.hotel_integration === true || institutionData?.hotel_integration === "Yes") ? { hotelIntegration: true } : {}),
           },
         });
 if (isHotelTable) {
@@ -1694,8 +1696,9 @@ if (isHotelTable) {
               setTableOccupancy={setTableOccupancy}
               orderId={ordersId[String(selectedTable?.id)]}
               customerDetails={customerDetails}
-              discountData={discountData} 
-    setDiscountData={setDiscountData}
+              discountData={discountData}
+              setDiscountData={setDiscountData}
+              tableData={tableData}
             />
           )}
         </div>
@@ -1765,6 +1768,7 @@ if (isHotelTable) {
               setTableOccupancy={setTableOccupancy}
               orderId={ordersId[String(selectedTable?.id)]}
               customerDetails={customerDetails}
+              tableData={tableData}
             />
           )}
         </div>

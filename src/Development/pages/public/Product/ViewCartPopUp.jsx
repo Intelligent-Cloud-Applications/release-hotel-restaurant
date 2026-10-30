@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from "react";
+﻿import React, { useState, useEffect, useContext } from "react";
 import { API } from "aws-amplify";
 import { useNavigate } from "react-router-dom";
 import { Context } from "../../../Context";
@@ -22,8 +22,7 @@ const ViewCartPopUp = ({ isOpen, closePopup, onOrderPlaced, cartItems, updateCar
   const [phoneCleared, setPhoneCleared] = useState(false);
   
   // Check if user is a member
-  const isMember = userData?.userType === "member" ||"undefined" && userData?.userType !== "waiter" ;
-console.log("dhdh",userData?.userType)
+  const isMember = userData?.userType === "member";
   useEffect(() => {
     // Only apply the auto-fill logic for members
     if (isMember && !nameCleared ) {
@@ -166,6 +165,7 @@ console.log("dhdh",userData?.userType)
         serviceTax: serviceTax.toFixed(2),
         serviceTax_consider: Number(serviceTax) > 0.1,
         ...(userData && { orderBy: userData.cognitoId }),
+        tableOccupied: true,
       };
 
       if (instruction.trim()) {

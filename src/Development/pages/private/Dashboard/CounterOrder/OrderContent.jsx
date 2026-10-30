@@ -716,7 +716,7 @@ const formatBill = (orderItems, customerId) => {
         console.log("Attempting local print for Bill...");
         const discountInfo = getCurrentDiscountInfo();
         const firstOrder = Object.values(currentTableData?.orders || {})[0];
-        const activeBillNo = firstOrder?.billNo || firstOrder?.billNumber || nextBillNumber;
+        const activeBillNo = firstOrder?.billNo || firstOrder?.billNumber || currentTableData?.billNo || currentTableData?.billNumber || nextBillNumber;
         printBill({
           table: selectedTable,
           items: localBillItems,
@@ -828,9 +828,12 @@ const formatBill = (orderItems, customerId) => {
       const billEndpoint = orderId
         ? `/admin/orders-bill/${institutionData.institution}/${tableIdStr}/${orderId}`
         : `/admin/orders-bill/${institutionData.institution}/${tableIdStr}`;
-      await API.post("main", billEndpoint, {
+      const billResponse = await API.post("main", billEndpoint, {
         body: { items, type: institutionData?.bar_integration === "Yes" ? "bar" : "cafe" },
       });
+      if (billResponse?.billNo && setNextBillNumber) {
+        setNextBillNumber(billResponse.billNo);
+      }
       setLoader(false);
       await fetchTableData(tableIdStr);
     } catch (error) {
