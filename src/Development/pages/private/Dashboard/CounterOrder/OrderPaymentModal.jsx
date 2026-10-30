@@ -23,6 +23,9 @@ const OrderPaymentModal = ({
   const tableIdStr = String(selectedTable.id);
    const tableIdStrname = String(selectedTable.name);
   const [totalBillAmount, setTotalBillAmount] = useState(0);
+  // Resolve active bill number for this order (assigned at order creation)
+  const existingBillNo = matchedOrder?.billNo || matchedOrder?.billNumber || null;
+  const displayBillNo = existingBillNo || nextBillNumber;
 
   // State for single payment method
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
@@ -813,9 +816,9 @@ const OrderPaymentModal = ({
           </p>
           <p className="text-gray-600 mb-2">
             Order ID: <strong>{selectedOrderId}</strong>
-            {nextBillNumber && selectedPaymentMethod !== "Complementary" && (
+            {displayBillNo && selectedPaymentMethod !== "Complementary" && (
               <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-mono font-semibold">
-                Bill #{nextBillNumber}
+                Bill #{displayBillNo}
               </span>
             )}
             {selectedPaymentMethod === "Complementary" && (
