@@ -15,6 +15,16 @@ import Error from "../../../Error";
 import OrderDetailsModal from "./OrderDetailsModal";
 import PrintOrderHistoryBill from "./PrintOrderHistoryBill";
 import { toast } from "react-toastify";
+const PAYMENT_OPTIONS = [
+  { value: "Cash", label: "Cash" },
+  { value: "Card", label: "Card" },
+  { value: "QR", label: "QR" },
+  { value: "BTC", label: "BTC" },
+  { value: "ROOM", label: "Room (ROOM)" },
+  { value: "Complementary", label: "Complementary" },
+  { value: "Void", label: "Void" },
+];
+
 const OrderHistory = () => {
   const { institution } = useContext(Context).institutionData;
   const { institutionData } = useContext(Context);
@@ -255,9 +265,20 @@ const OrderHistory = () => {
     setEditPaymentMethods(prev => [...prev, { method: "Cash", amount: 0 }]);
   };
   const handleRemovePaymentMethod = (index) => {
+    if (editPaymentMethods[index] && String(editPaymentMethods[index].method).toUpperCase() === "ROOM") {
+      toast.warning("Room payment cannot be removed.");
+      return;
+    }
     setEditPaymentMethods(prev => prev.filter((_, i) => i !== index));
   };
   const handlePaymentMethodChange = (index, field, value) => {
+    if (editPaymentMethods[index] && String(editPaymentMethods[index].method).toUpperCase() === "ROOM") {
+      return;
+    }
+    if (field === "method" && value === "BTC" && String(editPaymentMethods[index]?.method).toUpperCase() !== "BTC") {
+      toast.error("Cannot change payment method to BTC.");
+      return;
+    }
     setEditPaymentMethods(prev =>
       prev.map((pm, i) =>
         i === index ? { ...pm, [field]: field === 'amount' ? Number(value) || 0 : value } : pm
@@ -267,6 +288,11 @@ const OrderHistory = () => {
   const getCurrentPaymentMethods = useCallback((order) => {
     if (order.paymentMethods && Array.isArray(order.paymentMethods)) {
       return order.paymentMethods;
+    } else if (order.paymentMethods && typeof order.paymentMethods === "object" && order.paymentMethods !== null) {
+      return Object.entries(order.paymentMethods).map(([method, amount]) => ({
+        method,
+        amount: Number(amount) || 0,
+      }));
     } else {
       const total = order.totalAmount || 0;
       const method = order.paymentMethod || "Cash";
@@ -1600,37 +1626,59 @@ const OrderHistory = () => {
               )}
               {/* Payment Methods Section */}
               <div className="mb-4 max-h-60 overflow-y-auto">
-                {editPaymentMethods.map((pm, index) => (
-                  <div key={index} className="flex items-center gap-2 mb-3 p-3 border rounded">
-                    <select
-                      value={pm.method}
-                      onChange={(e) => handlePaymentMethodChange(index, 'method', e.target.value)}
-                      className="border rounded p-2 flex-1"
-                    >
-                      <option value="Cash">Cash</option>
-                      <option value="Card">Card</option>
-                      <option value="QR">QR</option>
-                      <option value="Complementary">Complementary</option>
-                    </select>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={pm.amount}
-                      onChange={(e) => handlePaymentMethodChange(index, 'amount', e.target.value)}
-                      className="border rounded p-2 w-24 text-right"
-                      placeholder="0.00"
-                    />
-                    <Button
-                      onClick={() => handleRemovePaymentMethod(index)}
-                      size="xs"
-                      color="failure"
-                    >
-                      <FaTrash />
-                    </Button>
-                  </div>
-                ))}
-                {editPaymentMethods.length < 5 && ( // Limit to 5 for simplicity
+                {editPaymentMethods.map((pm, index) => {
+                  const isRoom = String(pm.method || "").toUpperCase() === "ROOM";
+                  const isBtc = String(pm.method || "").toUpperCase() === "BTC";
+                  return (
+                    <div key={index} className={`flex flex-col mb-3 p-3 border rounded ${isRoom ? "bg-gray-50 border-amber-200" : ""}`}>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={pm.method}
+                          onChange={(e) => handlePaymentMethodChange(index, 'method', e.target.value)}
+                          className={`border rounded p-2 flex-1 ${isRoom ? "bg-gray-100 cursor-not-allowed opacity-80" : ""}`}
+                          disabled={isRoom}
+                        >
+                          {PAYMENT_OPTIONS.filter((opt) => (opt.value !== "ROOM" || isRoom) && (opt.value !== "BTC" || isBtc)).map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                          {pm.method &&
+                            !PAYMENT_OPTIONS.some(
+                              (opt) => opt.value.toLowerCase() === String(pm.method).toLowerCase()
+                            ) && (
+                              <option value={pm.method}>{pm.method}</option>
+                            )}
+                        </select>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={pm.amount}
+                          onChange={(e) => handlePaymentMethodChange(index, 'amount', e.target.value)}
+                          className={`border rounded p-2 w-24 text-right ${isRoom ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                          placeholder="0.00"
+                          disabled={isRoom}
+                        />
+                        <Button
+                          onClick={() => handleRemovePaymentMethod(index)}
+                          size="xs"
+                          color="failure"
+                          disabled={isRoom}
+                          className={isRoom ? "cursor-not-allowed opacity-50" : ""}
+                        >
+                          <FaTrash />
+                        </Button>
+                      </div>
+                      {isRoom && (
+                        <span className="text-xs text-amber-700 mt-1">
+                          Room (ROOM) payment cannot be edited or removed.
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+                {editPaymentMethods.length < 10 && ( // Limit to 10 for simplicity
                   <Button
                     onClick={handleAddPaymentMethod}
                     className="w-full mb-2"
