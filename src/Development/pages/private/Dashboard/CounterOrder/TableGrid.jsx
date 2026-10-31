@@ -25,6 +25,7 @@ const TableGrid = ({ tables, selectedTable, setSelectedTable, pendingOrdersByTab
       return tables.filter(
         (table) =>
           String(table.name).toLowerCase().startsWith("table") ||
+          String(table.id).toLowerCase().startsWith("arabianmandi") ||
           String(table.id).toLowerCase().startsWith("takeaway")
       );
     } else if (activeTab === "Room" || activeTab === "Hotel") {
