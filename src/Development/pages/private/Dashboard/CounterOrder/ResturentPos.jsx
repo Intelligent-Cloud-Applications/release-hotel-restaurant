@@ -64,7 +64,15 @@ const [tables, setTables] = useState([
     currentBill: 0,
     orderType: "takeaway",
   })),
-
+// Arabian Mandi counters (like Takeaway)
+...Array(2).fill(null).map((_, i) => ({
+  id: `ArabianMandi${i + 1}`,
+  name: `Arabian Mandi ${i + 1}`,
+  status: "available",
+  orders: [],
+  currentBill: 0,
+  orderType: "dineIn",
+})),
   // Swiggy counters (1 to 10)
   ...Array(10).fill(null).map((_, i) => ({
     id: `Swiggy${i + 1}`,
